@@ -16,11 +16,15 @@ import type {
 } from "../interface.ts";
 import type { SandboxStatus } from "../types.ts";
 import type { CodeSandboxConnectOptions } from "./config.ts";
+import { parseRuntimeRequirements } from "./runtime.ts";
 import type { CodeSandboxState } from "./state.ts";
 
 const MAX_OUTPUT_LENGTH = 50_000;
 const DEFAULT_TIMEOUT_MS = 300_000;
 const DEFAULT_HIBERNATION_TIMEOUT_MS = 30 * 60 * 1000;
+const COMMAND_KILL_GRACE_MS = 1_000;
+const COMMAND_IO_GRACE_MS = 1_000;
+const COMMAND_EXIT_POLL_MS = 250;
 
 function truncateOutput(output: string): {
   output: string;
@@ -62,6 +66,41 @@ function getAbortError(): DOMException {
   return new DOMException("The operation was aborted", "AbortError");
 }
 
+async function killCommandWithGrace(command: Command): Promise<void> {
+  let graceHandle: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      command.kill().catch(() => {}),
+      new Promise<void>((resolve) => {
+        graceHandle = setTimeout(resolve, COMMAND_KILL_GRACE_MS);
+      }),
+    ]);
+  } finally {
+    if (graceHandle) clearTimeout(graceHandle);
+  }
+}
+
+async function settleWithGrace<T>(
+  operation: Promise<T>,
+  fallback: T,
+): Promise<T> {
+  let graceHandle: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation.catch(() => fallback),
+      new Promise<T>((resolve) => {
+        graceHandle = setTimeout(() => resolve(fallback), COMMAND_IO_GRACE_MS);
+      }),
+    ]);
+  } finally {
+    if (graceHandle) clearTimeout(graceHandle);
+  }
+}
+
+async function waitForPollingInterval(timeoutMs: number): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
+}
+
 interface PreparedGitAuth {
   directory: string;
   env: Record<string, string>;
@@ -81,6 +120,7 @@ export class CodeSandboxSandbox implements Sandbox {
   private readonly instance: CodeSandboxInstance;
   private readonly client: SandboxClient;
   private currentBranchValue?: string;
+  private commandPathValue?: string;
   private expiresAtValue: number;
   private stopped = false;
   private stopPromise?: Promise<void>;
@@ -98,6 +138,7 @@ export class CodeSandboxSandbox implements Sandbox {
     this.workingDirectory = client.workspacePath;
     this.env = options.env;
     this.currentBranchValue = state?.currentBranch;
+    this.commandPathValue = state?.runtime?.commandPath;
     this.hooks = options.hooks;
     this.timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
     this.ports = options.ports ?? [];
@@ -201,6 +242,7 @@ export class CodeSandboxSandbox implements Sandbox {
     const hibernationTimeoutMs =
       options.hibernationTimeoutMs ?? DEFAULT_HIBERNATION_TIMEOUT_MS;
     try {
+      if (!sandbox.commandPathValue) await sandbox.configureRuntime();
       await instance.updateHibernationTimeout(
         Math.max(60, Math.ceil(hibernationTimeoutMs / 1000)),
       );
@@ -220,7 +262,12 @@ export class CodeSandboxSandbox implements Sandbox {
     const previewEnv = Object.fromEntries(
       this.ports.map((port) => [`SANDBOX_URL_${port}`, this.domain(port)]),
     );
-    const merged = { ...this.env, ...previewEnv, ...additionalEnv };
+    const merged = {
+      ...(this.commandPathValue ? { PATH: this.commandPathValue } : {}),
+      ...this.env,
+      ...previewEnv,
+      ...additionalEnv,
+    };
     if (Object.keys(merged).length === 0) return undefined;
 
     // SDK 2.4 constructs a shell env prefix and does not escape values with
@@ -317,6 +364,8 @@ esac
       await this.execOrThrow("git init");
     }
 
+    await this.configureRuntime();
+
     if (options.gitUser) {
       await this.execOrThrow(
         `git config user.name ${shellEscape(options.gitUser.name)}`,
@@ -337,6 +386,70 @@ esac
       this.currentBranchValue = source.newBranch;
     } else if (source?.branch) {
       this.currentBranchValue = source.branch;
+    }
+  }
+
+  private async configureRuntime(): Promise<void> {
+    let packageJson: string;
+    try {
+      packageJson = await this.client.fs.readTextFile(
+        `${this.workingDirectory}/package.json`,
+      );
+    } catch {
+      return;
+    }
+
+    const requirements = parseRuntimeRequirements(packageJson);
+    if (!requirements.nodeMajor && !requirements.pnpmPackage) return;
+
+    const pathResult = await this.exec(
+      'printf "%s" "$PATH"',
+      this.workingDirectory,
+      10_000,
+    );
+    if (!pathResult.success || !pathResult.stdout.trim()) {
+      throw new Error("CodeSandbox could not read its command PATH");
+    }
+
+    if (requirements.nodeMajor) {
+      const nodeBootstrap = `set -eu
+if [ ! -s /usr/local/share/nvm/nvm.sh ]; then
+  echo "CodeSandbox nvm runtime is unavailable" >&2
+  exit 1
+fi
+. /usr/local/share/nvm/nvm.sh
+nvm install ${requirements.nodeMajor} >/dev/null
+nvm alias default ${requirements.nodeMajor} >/dev/null
+printf '__LAUNCHSTACK_NODE_BIN__=%s\\n' "$(dirname "$(nvm which ${requirements.nodeMajor})")"`;
+      const nodeResult = await this.exec(
+        `bash -lc ${shellEscape(nodeBootstrap)}`,
+        this.workingDirectory,
+        DEFAULT_TIMEOUT_MS,
+      );
+      const nodeBin = /__LAUNCHSTACK_NODE_BIN__=([^\r\n]+)/.exec(
+        nodeResult.stdout,
+      )?.[1];
+      if (!nodeResult.success || !nodeBin) {
+        throw new Error(
+          nodeResult.stderr ||
+            "CodeSandbox could not install the repository Node.js runtime",
+        );
+      }
+      this.commandPathValue = `${nodeBin}:${pathResult.stdout.trim()}`;
+    }
+
+    if (requirements.pnpmPackage) {
+      const pnpmResult = await this.exec(
+        `npm install --global --no-audit --no-fund ${shellEscape(requirements.pnpmPackage)}`,
+        this.workingDirectory,
+        DEFAULT_TIMEOUT_MS,
+      );
+      if (!pnpmResult.success) {
+        throw new Error(
+          pnpmResult.stderr ||
+            "CodeSandbox could not install the repository pnpm version",
+        );
+      }
     }
   }
 
@@ -452,6 +565,8 @@ ${portLines ? `- Dev server preview URLs:\n${portLines}` : ""}`;
     let running: Command | undefined;
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     let abortHandler: (() => void) | undefined;
+    let outputSubscription: { dispose(): void } | undefined;
+    const exitPollController = new AbortController();
     let executionResult: ExecResult | undefined;
     let executionError: unknown;
     let credentialsRemain = false;
@@ -460,10 +575,12 @@ ${portLines ? `- Dev server preview URLs:\n${portLines}` : ""}`;
       const authCleanup = gitAuth
         ? `trap 'rm -rf -- "$LAUNCHSTACK_GIT_AUTH_DIR"' EXIT\n`
         : "";
+      const completionMarker = `__LAUNCHSTACK_EXEC_COMPLETE_${executionId}__`;
       const wrappedCommand = `${authCleanup}set +e
 cd -- ${shellEscape(cwd)}
 (${command}) >${shellEscape(stdoutPath)} 2>${shellEscape(stderrPath)}
 printf '%s' "$?" >${shellEscape(exitPath)}
+printf '%s\\n' ${shellEscape(completionMarker)}
 exit 0`;
       running = await this.client.commands.runBackground(wrappedCommand, {
         env: this.getCommandEnv(gitAuth?.env),
@@ -485,9 +602,46 @@ exit 0`;
         .waitUntilComplete()
         .then(() => "completed" as const)
         .catch((error: unknown) => ({ error }) as const);
-      const outcome = await Promise.race([completed, timedOut, aborted]);
+      const markerCompletion = Promise.withResolvers<"completed">();
+      let commandOutput = "";
+      const trackCommandOutput = (output: string) => {
+        commandOutput = `${commandOutput}${output}`.slice(
+          -completionMarker.length * 2,
+        );
+        if (commandOutput.includes(completionMarker)) {
+          markerCompletion.resolve("completed");
+        }
+      };
+      outputSubscription = running.onOutput(trackCommandOutput);
+      void running
+        .open()
+        .then(trackCommandOutput)
+        .catch(() => {});
+      const completedByExitMarker = (async (): Promise<"completed"> => {
+        while (!exitPollController.signal.aborted) {
+          const entries = await this.client.fs
+            .readdir(outputDirectory)
+            .catch(() => []);
+          if (entries.some((entry) => entry.name === "exit")) {
+            const hasExitMarker = await this.client.fs
+              .readTextFile(exitPath)
+              .then(() => true)
+              .catch(() => false);
+            if (hasExitMarker) return "completed";
+          }
+          await waitForPollingInterval(COMMAND_EXIT_POLL_MS);
+        }
+        return new Promise<"completed">(() => {});
+      })();
+      const outcome = await Promise.race([
+        completed,
+        markerCompletion.promise,
+        completedByExitMarker,
+        timedOut,
+        aborted,
+      ]);
       if (outcome === "timeout" || outcome === "aborted") {
-        await running.kill().catch(() => {});
+        await killCommandWithGrace(running);
       } else if (
         typeof outcome === "object" &&
         !(outcome.error instanceof CommandError)
@@ -496,9 +650,9 @@ exit 0`;
       }
 
       const [stdout, stderr, exitCodeText] = await Promise.all([
-        this.client.fs.readTextFile(stdoutPath).catch(() => ""),
-        this.client.fs.readTextFile(stderrPath).catch(() => ""),
-        this.client.fs.readTextFile(exitPath).catch(() => ""),
+        settleWithGrace(this.client.fs.readTextFile(stdoutPath), ""),
+        settleWithGrace(this.client.fs.readTextFile(stderrPath), ""),
+        settleWithGrace(this.client.fs.readTextFile(exitPath), ""),
       ]);
       const stdoutResult = truncateOutput(stdout);
       const stderrResult = truncateOutput(stderr);
@@ -531,24 +685,42 @@ exit 0`;
     } catch (error) {
       executionError = error;
     } finally {
+      exitPollController.abort();
+      outputSubscription?.dispose();
       if (timeoutHandle) clearTimeout(timeoutHandle);
       if (abortHandler && options?.signal) {
         options.signal.removeEventListener("abort", abortHandler);
       }
-      await this.client.fs.remove(outputDirectory, true).catch(() => {});
+      await settleWithGrace(
+        this.client.fs.remove(outputDirectory, true),
+        undefined,
+      );
       if (gitAuth) {
-        await this.client.fs.remove(gitAuth.directory, true).catch(() => {});
-        credentialsRemain = await this.client.fs
-          .stat(gitAuth.directory)
-          .then(() => true)
-          .catch(() => false);
+        const removed = await settleWithGrace(
+          this.client.fs
+            .remove(gitAuth.directory, true)
+            .then(() => true)
+            .catch(() => false),
+          false,
+        );
+        const absent = await settleWithGrace(
+          this.client.fs
+            .stat(gitAuth.directory)
+            .then(() => false)
+            .catch(() => true),
+          false,
+        );
+        credentialsRemain = !removed || !absent;
       }
     }
 
     if (credentialsRemain) {
-      throw new Error("Failed to clean up scoped GitHub credentials", {
-        cause: executionError,
-      });
+      throw new Error(
+        "Scoped GitHub credential cleanup could not be verified",
+        {
+          cause: executionError,
+        },
+      );
     }
     if (executionError) throw executionError;
     if (!executionResult) {
@@ -643,6 +815,9 @@ exit 0`;
       restore: { kind: "hibernate", sandboxId: this.instance.id },
       ...(this.currentBranch ? { currentBranch: this.currentBranch } : {}),
       ...(this.expiresAt ? { expiresAt: this.expiresAt } : {}),
+      ...(this.commandPathValue
+        ? { runtime: { commandPath: this.commandPathValue } }
+        : {}),
     };
   }
 }

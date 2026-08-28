@@ -50,6 +50,15 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
   stderr, and exit status in the Vercel contract shape; capture them into
   per-command temporary files and always clean those files after completion,
   abort, timeout, or provider failure.
+- CodeSandbox's universal image can lag repository runtime pins. For exact
+  `engines.node` and `packageManager` values, install the requested Node major
+  through the image's nvm and the pinned pnpm package, then persist the resolved
+  command `PATH` in provider restore state so resumed sessions stay compatible.
+- CodeSandbox SDK 2.4 can miss a shell-exit notification and leave
+  `waitUntilComplete()` pending after the command has finished. Race it against
+  the adapter-owned exit marker (discover the marker through directory listing,
+  not a read of a missing path), and bound provider-side kill cleanup so timeout
+  handling cannot hang indefinitely.
 - CodeSandbox control, preview HTTP, and preview WebSocket connections can
   otherwise keep or wake a VM; disable both automatic wake channels and call
   `keepActiveWhileConnected(false)` so durable server activity remains
