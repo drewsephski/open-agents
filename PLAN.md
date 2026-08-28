@@ -85,3 +85,68 @@ Verification:
 - Browser QA: onboarding can be completed without a key; first-run block preserves the prompt; Connections supports add/replace/remove; pricing Checkout return; Billing status and Portal; mobile and keyboard/accessibility paths.
 - Provider-runtime phase: protocol contract fixtures, process crash/restart, login expiry, approval and question round trips, interrupt/resume, CLI version mismatch, sandbox archive cleanup, and provider isolation between users.
 - Required repository gates after every implementation slice: generate and commit Drizzle migrations, run focused Bun tests, then `pnpm run ci`. Keep local code, migration application, Stripe test configuration/webhook delivery, OpenRouter provisioning, preview deployment, and real paid renewal proof as distinct release gates.
+
+## Global Constraints
+
+- Keep `z-ai/glm-5.3-flash` as the default model and include it in the managed catalog.
+- Never expose BYOK, managed subkeys, Stripe secrets, or encryption material to the browser, logs, durable workflow payloads visible to clients, or coding sandboxes.
+- Stripe webhook state is authoritative for paid access; redirects and browser state never grant entitlements.
+- A first attempted prompt without an eligible inference source remains local and is never automatically submitted after remediation.
+- Active Pro and `cancel_at_period_end` within the paid-through period grant managed access. `past_due`, `unpaid`, `paused`, and `canceled` do not grant new managed calls.
+- Managed inference is capped at $10 per Stripe billing period with no rollover. BYOK fallback is allowed only when a valid user key exists.
+- BYOK includes 2 sandbox running hours per UTC calendar month and one concurrent sandbox. Pro includes 25 hours per paid billing period and two concurrent sandboxes.
+- In-flight model calls may finish when an allowance is reached; every later model call or sandbox resume must re-authorize.
+- Existing authenticated model-call surfaces (main agents, subagents, titles, commit/PR helpers, and fixes) must use the same server access-policy boundary.
+- Live Codex and OpenCode connections are out of scope. Only persist a minimal chat-pinned `ExecutionBackend` value that defaults to the native Launchstack runtime.
+
+## Task 1: Domain, schema, and access-policy foundation
+
+- Add focused domain modules for inference sources, subscription states, allowance periods, structured access failures, and the minimal `ExecutionBackend` seam.
+- Extend the Drizzle schema for encrypted provider credentials, billing customers/subscriptions/entitlements, idempotent webhook receipts, managed-key lifecycle metadata, exact inference cost/source, sandbox usage periods, and a chat-pinned backend.
+- Generate and commit the Drizzle migration.
+- Implement a pure server-side access-policy evaluator covering BYOK, managed-first selection, model eligibility, strict subscription states, allowance exhaustion/fallback, concurrency, and sandbox limits.
+- Add focused unit tests first (RED), then implement to GREEN. Run the relevant tests and `pnpm run ci` before committing.
+
+## Task 2: BYOK credential lifecycle
+
+- Implement AES-256-GCM versioned envelope encryption and server-only credential data access with ownership checks.
+- Add authenticated status/create-or-replace/delete APIs. Validate OpenRouter keys through a low-cost authenticated metadata endpoint and return only label, last four, validation time, and state.
+- Ensure plaintext and provider error bodies cannot leak through responses or logs.
+- Add unit and route tests first (RED), then implement to GREEN. Run focused tests and `pnpm run ci` before committing.
+
+## Task 3: Explicit inference authorization and propagation
+
+- Gate chat admission before workflow creation using the central access policy and return structured remediation errors.
+- Resolve credentials server-side at model-call boundaries and explicitly pass OpenRouter configuration through the durable workflow, main agent, subagents, and authenticated helper calls without exposing secrets to clients or sandboxes.
+- Remove the `@vercel.com` privilege and five-message hosted trial from authenticated product authorization; retain only a separately configured, narrowly scoped internal operational bypass if required.
+- Keep GLM 5.3 Flash as the default and ensure no authenticated call silently falls back to the deployment-wide OpenRouter key.
+- Add access-policy integration tests first (RED), then implement to GREEN. Run focused tests and `pnpm run ci` before committing.
+
+## Task 4: Stripe Pro billing and managed OpenRouter keys
+
+- Add a single server-side Stripe client, $29 monthly Checkout route, Customer Portal route, and raw-body signed webhook endpoint.
+- Persist customer/subscription/entitlement state and process relevant events idempotently and safely when duplicated or delivered out of order.
+- Provision one limited OpenRouter subkey per entitled user with a $10 monthly limit/reset, encrypt it, and disable/revoke it when entitlement ends. Never use the management key for completion requests.
+- Do not enable automatic tax. Include Checkout ownership metadata and the required integration identifier.
+- Add billing and provisioning tests first (RED), then implement to GREEN. Run focused tests and `pnpm run ci` before committing.
+
+## Task 5: Cost and sandbox allowance enforcement
+
+- Persist exact normalized OpenRouter dollar cost plus credential source for every authenticated model call and enforce managed allowance before each later call.
+- Meter running sandbox wall-clock time separately, enforce BYOK/Pro period and concurrency limits before create/resume, and change inactivity hibernation to 15 minutes.
+- Preserve sandbox state on denial and avoid replaying completed tools when inference switches to BYOK on the next call.
+- Add boundary/reset/concurrency/fallback tests first (RED), then implement to GREEN. Run focused tests and `pnpm run ci` before committing.
+
+## Task 6: Onboarding, billing, pricing, and pending-prompt UI
+
+- Add a prominent but skippable OpenRouter onboarding step and block first-run submission locally when access is missing while preserving a local pending prompt for explicit resend.
+- Add Connections credential add/replace/remove UI, a dedicated Billing settings page, allowance warnings at 75/90/100%, upgrade/fallback actions, and Customer Portal access.
+- Add public pricing for BYOK ($0, own OpenRouter, 2h/month, one concurrent) and Pro ($29/month, $10 managed inference, BYOK fallback, 25h/period, two concurrent). Do not claim unlimited usage or live Codex/OpenCode connectors.
+- Add focused UI tests and verify responsive/keyboard behavior. Run focused tests and `pnpm run ci` before committing.
+
+## Task 7: Cross-cutting integration and release documentation
+
+- Audit every authenticated model and sandbox entry point against the central access-policy boundary, fixing omissions without broad refactors.
+- Document all new environment variables, Stripe/OpenRouter setup, operational reconciliation, key rotation, tax launch gate, and the distinct unverified external release gates.
+- Add integration coverage for the approved primary seams and run the complete `pnpm run ci` gate.
+- Perform browser QA for onboarding, pending prompt, Connections, Billing, pricing, and remediation states where local configuration permits; record any provider-dependent proof that remains blocked by missing secrets.
