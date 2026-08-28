@@ -61,7 +61,7 @@ export const metadata: Metadata = {
     template: "%s | Launchstack",
   },
   description:
-    "Cloud coding agents that work autonomously from code to launch.",
+    "Run coding agents in isolated cloud sandboxes to build features, fix bugs, test changes, and prepare pull requests.",
   icons: {
     icon: faviconPath,
     shortcut: faviconPath,
@@ -69,7 +69,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Launchstack",
     description:
-      "Cloud coding agents that work autonomously from code to launch.",
+      "Run coding agents in isolated cloud sandboxes to build features, fix bugs, test changes, and prepare pull requests.",
     url: "https://launchstack.sh",
     siteName: "Launchstack",
     type: "website",
@@ -78,7 +78,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Launchstack",
     description:
-      "Cloud coding agents that work autonomously from code to launch.",
+      "Run coding agents in isolated cloud sandboxes to build features, fix bugs, test changes, and prepare pull requests.",
   },
 };
 

@@ -85,7 +85,7 @@ export function FeatureSandbox() {
             <div className="mt-0.5 text-(--l-panel-fg-2)">
               {entry.state === "hibernated" || entry.state === "restoring"
                 ? "snap_a1b2c3"
-                : "\u2014"}
+                : "none"}
             </div>
           </div>
           <div>
