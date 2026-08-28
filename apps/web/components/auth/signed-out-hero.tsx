@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AuthButtons } from "@/components/auth/auth-buttons";
+import { AgentArchitecture } from "@/components/landing/agent-architecture";
 import { AppMockup } from "@/components/landing/app-mockup";
 import { LandingBento } from "@/components/landing/bento";
 import { LandingFeatures } from "@/components/landing/features";
@@ -68,6 +69,7 @@ export function SignedOutHero() {
         </section>
 
         <LandingFeatures />
+        <AgentArchitecture />
         <TechSelector />
         <LandingBento />
         <LandingFooter />

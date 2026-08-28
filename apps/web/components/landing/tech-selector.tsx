@@ -20,7 +20,7 @@ import {
   techStackRecommendationSchema,
 } from "@/lib/tech-stack";
 
-const starterRequest = `LaunchStack is an AI architecture recommender. A visitor writes a product brief and receives a product-specific stack with a clear explanation of what every technology handles. Build the responsive application with Next.js, TypeScript, and Tailwind CSS; use Better Auth for sign-in, Neon and PostgreSQL for durable data, Drizzle ORM for typed database access, OpenAI for recommendations, and Vercel for deployment. Technology marks come from the live SVGL catalog. Prioritize fast recommendations, accessible interactions, strong light/dark logo contrast, bot protection, and maintainable server-side validation.`;
+const starterRequest = `An AI stack recommender that turns a product brief into a clear architecture and explains what each technology handles.`;
 
 export function TechSelector() {
   const [request, setRequest] = useState(starterRequest);
