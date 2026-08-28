@@ -30,6 +30,7 @@ import {
   useSlidingTabBox,
 } from "./ui/sliding-tab-indicator";
 import { Switch } from "./ui/switch";
+import { Textarea } from "./ui/textarea";
 
 type SessionMode = "empty" | "repo";
 
@@ -43,6 +44,7 @@ interface SessionStarterProps {
     sandboxType: SandboxType;
     autoCommitPush: boolean;
     autoCreatePr: boolean;
+    initialMessage?: string;
     vercelProject?: VercelProjectSelection | null;
   }) => void;
   isLoading?: boolean;
@@ -84,6 +86,7 @@ export function SessionStarter({
   const [autoCommitPush, setAutoCommitPush] = useState<boolean | null>(null);
   const [autoCreatePr, setAutoCreatePr] = useState<boolean | null>(null);
   const [gitSettingsExpanded, setGitSettingsExpanded] = useState(false);
+  const [initialMessage, setInitialMessage] = useState("");
   const modeTabsRef = useRef<HTMLDivElement>(null);
   const activeModeTabBox = useSlidingTabBox(modeTabsRef, mode);
   const sandboxType = preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE;
@@ -231,6 +234,7 @@ export function SessionStarter({
       sandboxType,
       autoCommitPush: effectiveAutoCommitPush,
       autoCreatePr: effectiveAutoCommitPush ? effectiveAutoCreatePr : false,
+      initialMessage: mode === "empty" ? initialMessage.trim() : undefined,
       vercelProject,
     });
   };
@@ -241,8 +245,8 @@ export function SessionStarter({
       : "Start session";
 
   return (
-    <div className="w-full min-w-0 max-w-2xl overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(40,32,20,0.04),0_12px_32px_rgba(40,32,20,0.06)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_16px_40px_rgba(0,0,0,0.4)] sm:p-5">
-      <div className="flex flex-col gap-4">
+    <div className="h-[30rem] w-full min-w-0 max-w-2xl overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(40,32,20,0.04),0_12px_32px_rgba(40,32,20,0.06)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_16px_40px_rgba(0,0,0,0.4)] sm:p-5">
+      <div className="flex h-full flex-col gap-4">
         <div
           ref={modeTabsRef}
           role="tablist"
@@ -287,7 +291,7 @@ export function SessionStarter({
           </button>
         </div>
 
-        <div className="flex min-h-28 flex-col justify-center gap-4">
+        <div className="flex min-h-0 flex-1 flex-col justify-center gap-4 overflow-y-auto">
           {mode === "repo" && (
             <div className="flex flex-col gap-3">
               <RepoSelectorCompact
@@ -323,11 +327,27 @@ export function SessionStarter({
           )}
 
           {mode === "empty" && (
-            <p className="text-center text-sm text-muted-foreground">
-              {isTrialUser
-                ? "In the hosted demo, you can start chats without connecting GitHub."
-                : "Start a chat without a repository."}
-            </p>
+            <div className="flex h-full flex-col gap-3">
+              <label
+                htmlFor="initial-session-message"
+                className="text-sm font-medium text-foreground"
+              >
+                What would you like to work on?
+              </label>
+              <Textarea
+                id="initial-session-message"
+                value={initialMessage}
+                onChange={(event) => setInitialMessage(event.target.value)}
+                placeholder="Describe what you want the agent to build, fix, or explore…"
+                disabled={controlsDisabled}
+                className="min-h-0 flex-1 resize-none bg-background/50 p-4 leading-relaxed"
+              />
+              <p className="text-xs text-muted-foreground">
+                {isTrialUser
+                  ? "Start a chat without connecting GitHub."
+                  : "This message will be sent as soon as the session starts."}
+              </p>
+            </div>
           )}
 
           {mode === "repo" && !gitSettingsExpanded && (

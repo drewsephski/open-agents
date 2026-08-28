@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { SandboxType } from "@/components/sandbox-selector-compact";
 import { SessionStarter } from "@/components/session-starter";
 import type { VercelProjectSelection } from "@/lib/vercel/types";
+import { startInitialMessage } from "@/lib/chat/start-initial-message";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +23,7 @@ type CreateSessionInput = {
   sandboxType: SandboxType;
   autoCommitPush: boolean;
   autoCreatePr: boolean;
+  initialMessage?: string;
   vercelProject?: VercelProjectSelection | null;
 };
 
@@ -47,7 +49,14 @@ export function NewSessionDialog({
   const handleCreateSession = async (input: CreateSessionInput) => {
     setIsCreating(true);
     try {
-      const { session: createdSession, chat } = await createSession(input);
+      const { initialMessage, ...sessionInput } = input;
+      const { session: createdSession, chat } =
+        await createSession(sessionInput);
+      await startInitialMessage({
+        sessionId: createdSession.id,
+        chatId: chat.id,
+        text: initialMessage ?? "",
+      });
       onOpenChange(false);
       router.push(`/sessions/${createdSession.id}/chats/${chat.id}`);
     } catch (error) {

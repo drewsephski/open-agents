@@ -11,6 +11,7 @@ import { SessionStarter } from "@/components/session-starter";
 import { UserAvatarDropdown } from "@/components/user-avatar-dropdown";
 import { useSession } from "@/hooks/use-session";
 import { useSessions } from "@/hooks/use-sessions";
+import { startInitialMessage } from "@/lib/chat/start-initial-message";
 import type { VercelProjectSelection } from "@/lib/vercel/types";
 
 interface HomePageProps {
@@ -40,6 +41,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
     sandboxType: SandboxType;
     autoCommitPush: boolean;
     autoCreatePr: boolean;
+    initialMessage?: string;
     vercelProject?: VercelProjectSelection | null;
   }) => {
     setIsCreating(true);
@@ -54,6 +56,12 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
         autoCommitPush: input.autoCommitPush,
         autoCreatePr: input.autoCreatePr,
         vercelProject: input.vercelProject,
+      });
+
+      await startInitialMessage({
+        sessionId: createdSession.id,
+        chatId: chat.id,
+        text: input.initialMessage ?? "",
       });
 
       router.push(`/sessions/${createdSession.id}/chats/${chat.id}`);
