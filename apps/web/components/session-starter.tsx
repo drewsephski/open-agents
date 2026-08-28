@@ -9,7 +9,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGitHubConnectionStatus } from "@/hooks/use-github-connection-status";
 import { useSession } from "@/hooks/use-session";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
@@ -24,6 +24,11 @@ import {
   type SandboxType,
 } from "./sandbox-selector-compact";
 import { SessionStarterVercelSyncSection } from "./session-starter-vercel-sync-section";
+import {
+  SlidingTabIndicator,
+  slidingTabProps,
+  useSlidingTabBox,
+} from "./ui/sliding-tab-indicator";
 import { Switch } from "./ui/switch";
 
 type SessionMode = "empty" | "repo";
@@ -79,6 +84,8 @@ export function SessionStarter({
   const [autoCommitPush, setAutoCommitPush] = useState<boolean | null>(null);
   const [autoCreatePr, setAutoCreatePr] = useState<boolean | null>(null);
   const [gitSettingsExpanded, setGitSettingsExpanded] = useState(false);
+  const modeTabsRef = useRef<HTMLDivElement>(null);
+  const activeModeTabBox = useSlidingTabBox(modeTabsRef, mode);
   const sandboxType = preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE;
   const sandboxName =
     SANDBOX_OPTIONS.find((s) => s.id === sandboxType)?.name ?? sandboxType;
@@ -236,146 +243,162 @@ export function SessionStarter({
   return (
     <div className="w-full min-w-0 max-w-2xl overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(40,32,20,0.04),0_12px_32px_rgba(40,32,20,0.06)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_16px_40px_rgba(0,0,0,0.4)] sm:p-5">
       <div className="flex flex-col gap-4">
-        <div className="flex rounded-lg bg-muted p-1">
+        <div
+          ref={modeTabsRef}
+          role="tablist"
+          aria-label="Session type"
+          className="relative flex rounded-lg bg-muted p-1"
+        >
+          <SlidingTabIndicator box={activeModeTabBox} variant="pill" />
           <button
             type="button"
+            role="tab"
+            aria-selected={mode === "empty"}
             onClick={() => handleModeChange("empty")}
             className={cn(
-              "flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              "relative z-10 flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-500 ease-out",
               mode === "empty"
-                ? "bg-card text-foreground shadow-sm"
+                ? "text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
+            {...slidingTabProps(mode === "empty")}
           >
             <MessageSquare className="h-3.5 w-3.5" />
             Chat
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={mode === "repo"}
             onClick={() => handleModeChange("repo")}
             disabled={isRepoModeDisabled}
             className={cn(
-              "flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              "relative z-10 flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-500 ease-out",
               isRepoModeDisabled
                 ? "cursor-not-allowed text-muted-foreground/50"
                 : mode === "repo"
-                  ? "bg-card text-foreground shadow-sm"
+                  ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground",
             )}
+            {...slidingTabProps(mode === "repo")}
           >
             <GitBranch className="h-3.5 w-3.5" />
             Repository
           </button>
         </div>
 
-        {mode === "repo" && (
-          <div className="flex flex-col gap-3">
-            <RepoSelectorCompact
-              selectedOwner={selectedOwner}
-              selectedRepo={selectedRepo}
-              onSelect={handleRepoSelect}
-            />
-            {selectedOwner &&
-              selectedRepo &&
-              !githubConnectionLoading &&
-              !reconnectRequired && (
-                <BranchSelectorCompact
-                  owner={selectedOwner}
-                  repo={selectedRepo}
-                  value={selectedBranch}
-                  isNewBranch={isNewBranch}
-                  onChange={handleBranchChange}
+        <div className="flex min-h-28 flex-col justify-center gap-4">
+          {mode === "repo" && (
+            <div className="flex flex-col gap-3">
+              <RepoSelectorCompact
+                selectedOwner={selectedOwner}
+                selectedRepo={selectedRepo}
+                onSelect={handleRepoSelect}
+              />
+              {selectedOwner &&
+                selectedRepo &&
+                !githubConnectionLoading &&
+                !reconnectRequired && (
+                  <BranchSelectorCompact
+                    owner={selectedOwner}
+                    repo={selectedRepo}
+                    value={selectedBranch}
+                    isNewBranch={isNewBranch}
+                    onChange={handleBranchChange}
+                  />
+                )}
+
+              {showVercelProjectSection && (
+                <SessionStarterVercelSyncSection
+                  controlsDisabled={controlsDisabled}
+                  isVercelLookupPending={isVercelLookupPending}
+                  repoProjects={repoProjects}
+                  repoProjectsError={repoProjectsError}
+                  requiresVercelChoice={requiresVercelChoice}
+                  vercelProjectChoice={vercelProjectChoice}
+                  onVercelProjectChoiceChange={setVercelProjectChoice}
                 />
               )}
+            </div>
+          )}
 
-            {showVercelProjectSection && (
-              <SessionStarterVercelSyncSection
-                controlsDisabled={controlsDisabled}
-                isVercelLookupPending={isVercelLookupPending}
-                repoProjects={repoProjects}
-                repoProjectsError={repoProjectsError}
-                requiresVercelChoice={requiresVercelChoice}
-                vercelProjectChoice={vercelProjectChoice}
-                onVercelProjectChoiceChange={setVercelProjectChoice}
-              />
-            )}
-          </div>
-        )}
+          {mode === "empty" && (
+            <p className="text-center text-sm text-muted-foreground">
+              {isTrialUser
+                ? "In the hosted demo, you can start chats without connecting GitHub."
+                : "Start a chat without a repository."}
+            </p>
+          )}
 
-        {mode === "empty" && (
-          <p className="text-center text-sm text-muted-foreground">
-            {isTrialUser
-              ? "In the hosted demo, you can start chats without connecting GitHub."
-              : "Start a chat without a repository."}
-          </p>
-        )}
-
-        {mode === "repo" && !gitSettingsExpanded && (
-          <button
-            type="button"
-            onClick={() => setGitSettingsExpanded(true)}
-            className="flex w-full items-center gap-2.5 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-left transition-colors hover:bg-muted"
-          >
-            <GitCommitHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
-            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-              {effectiveAutoCommitPush ? (
-                <>
-                  Auto commit{" "}
-                  <span className="font-medium text-foreground/80">on</span>
-                  {effectiveAutoCreatePr && (
-                    <>
-                      {" · "}Auto PR{" "}
-                      <span className="font-medium text-foreground/80">on</span>
-                    </>
-                  )}
-                </>
-              ) : (
-                "Auto commit and push disabled"
-              )}
-            </span>
-            <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
-          </button>
-        )}
-
-        {mode === "repo" && gitSettingsExpanded && (
-          <div className="overflow-hidden rounded-lg border border-border bg-muted/40">
+          {mode === "repo" && !gitSettingsExpanded && (
             <button
               type="button"
-              onClick={() => setGitSettingsExpanded(false)}
-              className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition-colors hover:bg-muted/30"
+              onClick={() => setGitSettingsExpanded(true)}
+              className="flex w-full items-center gap-2.5 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-left transition-colors hover:bg-muted"
             >
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Auto commit and push</p>
-                <p className="text-xs text-muted-foreground">
-                  Automatically commit and push after each agent turn.
-                </p>
-              </div>
-              <ChevronUpIcon className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+              <GitCommitHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                {effectiveAutoCommitPush ? (
+                  <>
+                    Auto commit{" "}
+                    <span className="font-medium text-foreground/80">on</span>
+                    {effectiveAutoCreatePr && (
+                      <>
+                        {" · "}Auto PR{" "}
+                        <span className="font-medium text-foreground/80">
+                          on
+                        </span>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  "Auto commit and push disabled"
+                )}
+              </span>
+              <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
             </button>
-            <div className="border-t border-border">
-              <div className="flex items-center justify-between gap-4 px-3 py-2">
-                <p className="text-sm font-medium">Commit and push</p>
-                <Switch
-                  checked={effectiveAutoCommitPush}
-                  onCheckedChange={setAutoCommitPush}
-                  disabled={controlsDisabled}
-                />
-              </div>
-              {effectiveAutoCommitPush && (
-                <div className="flex items-center justify-between gap-4 border-t border-border px-3 py-2 pl-6">
-                  <p className="text-sm text-muted-foreground">
-                    Create pull request
+          )}
+
+          {mode === "repo" && gitSettingsExpanded && (
+            <div className="overflow-hidden rounded-lg border border-border bg-muted/40">
+              <button
+                type="button"
+                onClick={() => setGitSettingsExpanded(false)}
+                className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition-colors hover:bg-muted/30"
+              >
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Auto commit and push</p>
+                  <p className="text-xs text-muted-foreground">
+                    Automatically commit and push after each agent turn.
                   </p>
+                </div>
+                <ChevronUpIcon className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+              </button>
+              <div className="border-t border-border">
+                <div className="flex items-center justify-between gap-4 px-3 py-2">
+                  <p className="text-sm font-medium">Commit and push</p>
                   <Switch
-                    checked={effectiveAutoCreatePr}
-                    onCheckedChange={setAutoCreatePr}
+                    checked={effectiveAutoCommitPush}
+                    onCheckedChange={setAutoCommitPush}
                     disabled={controlsDisabled}
                   />
                 </div>
-              )}
+                {effectiveAutoCommitPush && (
+                  <div className="flex items-center justify-between gap-4 border-t border-border px-3 py-2 pl-6">
+                    <p className="text-sm text-muted-foreground">
+                      Create pull request
+                    </p>
+                    <Switch
+                      checked={effectiveAutoCreatePr}
+                      onCheckedChange={setAutoCreatePr}
+                      disabled={controlsDisabled}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         <button
           type="button"
