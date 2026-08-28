@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-const generateTextCalls: Array<{ prompt: string }> = [];
+const generateTextCalls: Array<{
+  prompt: string;
+  maxOutputTokens: number;
+  maxRetries: number;
+  timeout: number;
+}> = [];
 let generationResult: { output: unknown } | Error;
 
 mock.module("@open-agents/agent", () => ({
@@ -9,7 +14,7 @@ mock.module("@open-agents/agent", () => ({
 
 mock.module("ai", () => ({
   Output: { object: (value: unknown) => value },
-  generateText: async (input: { prompt: string }) => {
+  generateText: async (input: (typeof generateTextCalls)[number]) => {
     generateTextCalls.push(input);
     if (generationResult instanceof Error) throw generationResult;
     return generationResult;
@@ -44,8 +49,6 @@ describe("/api/recommend-stack", () => {
     generateTextCalls.length = 0;
     generationResult = {
       output: {
-        headline: "A practical commerce stack",
-        summary: "A typed web application with managed data and payments.",
         technologyIds: [
           "nextjs",
           "typescript",
@@ -53,7 +56,6 @@ describe("/api/recommend-stack", () => {
           "stripe",
           "vercel",
         ],
-        tradeoff: "This favors speed over infrastructure portability.",
       },
     };
   });
@@ -73,24 +75,28 @@ describe("/api/recommend-stack", () => {
     );
     const body = (await response.json()) as {
       headline: string;
+      summary: string;
       technologyIds: string[];
     };
 
     expect(response.status).toBe(200);
-    expect(body.headline).toBe("A practical commerce stack");
+    expect(body.headline).toBe("A focused full-stack foundation");
+    expect(body.summary).toContain("Next.js, TypeScript, PostgreSQL");
     expect(body.technologyIds).toContain("stripe");
     expect(generateTextCalls[0]?.prompt).toContain(
       "A paid analytics product for agencies",
     );
+    expect(generateTextCalls[0]).toMatchObject({
+      maxOutputTokens: 100,
+      maxRetries: 0,
+      timeout: 8000,
+    });
   });
 
   test("rejects duplicate-heavy model output", async () => {
     generationResult = {
       output: {
-        headline: "A repeated stack",
-        summary: "The model repeated several technology choices.",
-        technologyIds: ["nextjs", "nextjs", "typescript", "typescript"],
-        tradeoff: "The output is incomplete.",
+        technologyIds: ["nextjs", "nextjs"],
       },
     };
     const { POST } = await routeModulePromise;

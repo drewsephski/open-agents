@@ -1,10 +1,8 @@
-import { defaultLanguageModel } from "@open-agents/agent";
-import { generateText, Output } from "ai";
 import { headers } from "next/headers";
 import { z } from "zod";
+import { recommendTechStack } from "@/lib/ai/recommend-tech-stack";
 import { checkBotProtection } from "@/lib/botid";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
-import { technologies, techStackRecommendationSchema } from "@/lib/tech-stack";
 
 const requestSchema = z.object({
   request: z.string().trim().min(12).max(1200),
@@ -43,34 +41,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const catalog = technologies
-    .map(({ id, name, role }) => `${id}: ${name} — ${role}`)
-    .join("\n");
-
   try {
-    const { output } = await generateText({
-      model: defaultLanguageModel(),
-      output: Output.object({ schema: techStackRecommendationSchema }),
-      prompt: `Act as a pragmatic staff engineer. Recommend the smallest production-ready technology stack for the product request below.
-
-Choose 4 to 6 unique technology IDs only from this catalog:
-${catalog}
-
-Prioritize fit, maintainability, time-to-market, and operational simplicity. Do not add technology merely because it is popular. The headline should name the architectural approach, the summary should connect the choices to the request, and the tradeoff should honestly name the main compromise.
-
-Product request:
-${parsedBody.data.request}`,
+    const recommendation = await recommendTechStack({
+      productRequest: parsedBody.data.request,
+      abortSignal: request.signal,
     });
-
-    if (!output) {
-      throw new Error("The model returned no recommendation");
-    }
-
-    const recommendation = techStackRecommendationSchema.parse({
-      ...output,
-      technologyIds: [...new Set(output.technologyIds)],
-    });
-
     return Response.json(recommendation);
   } catch (error) {
     console.error(

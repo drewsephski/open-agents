@@ -91,7 +91,7 @@ export const technologyIdSchema = z.enum(technologyIds);
 export const techStackRecommendationSchema = z.object({
   headline: z.string().min(1).max(80),
   summary: z.string().min(1).max(280),
-  technologyIds: z.array(technologyIdSchema).min(4).max(6),
+  technologyIds: z.array(technologyIdSchema).min(2).max(6),
   tradeoff: z.string().min(1).max(180),
 });
 
