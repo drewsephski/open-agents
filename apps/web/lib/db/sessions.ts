@@ -484,6 +484,7 @@ export async function getChatSummariesBySessionId(
       sessionId: chats.sessionId,
       title: chats.title,
       modelId: chats.modelId,
+      executionBackend: chats.executionBackend,
       activeStreamId: chats.activeStreamId,
       lastAssistantMessageAt: chats.lastAssistantMessageAt,
       createdAt: chats.createdAt,
@@ -635,7 +636,10 @@ type ForkChatThroughMessageInput = {
   userId: string;
   sourceChatId: string;
   throughMessageId: string;
-  forkedChat: Pick<NewChat, "id" | "sessionId" | "title" | "modelId">;
+  forkedChat: Pick<
+    NewChat,
+    "id" | "sessionId" | "title" | "modelId" | "executionBackend"
+  >;
 };
 
 type ForkChatThroughMessageResult =

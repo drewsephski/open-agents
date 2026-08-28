@@ -281,6 +281,13 @@
       "when": 1787930322222,
       "tag": "0039_outgoing_pete_wisdom",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1787957085781,
+      "tag": "0040_mighty_black_bolt",
+      "breakpoints": true
     }
   ]
 }

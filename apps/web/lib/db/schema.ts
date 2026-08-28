@@ -3,10 +3,12 @@ import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import type { ModelVariant } from "@/lib/model-variants";
 import type { GlobalSkillRef } from "@/lib/skills/global-skill-refs";
 import {
+  bigint,
   boolean,
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -50,6 +52,196 @@ export const accounts = pgTable("accounts", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const providerCredentials = pgTable(
+  "provider_credentials",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider", { enum: ["openrouter"] }).notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    nonce: text("nonce").notNull(),
+    authenticationTag: text("authentication_tag").notNull(),
+    encryptionKeyVersion: integer("encryption_key_version").notNull(),
+    label: text("label").notNull(),
+    lastFour: text("last_four").notNull(),
+    validationState: text("validation_state", {
+      enum: ["pending", "valid", "invalid", "revoked"],
+    })
+      .notNull()
+      .default("pending"),
+    validatedAt: timestamp("validated_at"),
+    validationErrorCode: text("validation_error_code"),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("provider_credentials_user_provider_idx").on(
+      table.userId,
+      table.provider,
+    ),
+  ],
+);
+
+export const billingCustomers = pgTable(
+  "billing_customers",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    stripeCustomerId: text("stripe_customer_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("billing_customers_user_id_idx").on(table.userId),
+    uniqueIndex("billing_customers_stripe_customer_id_idx").on(
+      table.stripeCustomerId,
+    ),
+  ],
+);
+
+export const billingSubscriptions = pgTable(
+  "billing_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    stripeCustomerId: text("stripe_customer_id").notNull(),
+    stripeProductId: text("stripe_product_id").notNull(),
+    stripePriceId: text("stripe_price_id").notNull(),
+    status: text("status", {
+      enum: [
+        "incomplete",
+        "incomplete_expired",
+        "trialing",
+        "active",
+        "past_due",
+        "canceled",
+        "unpaid",
+        "paused",
+      ],
+    }).notNull(),
+    financialState: text("financial_state", {
+      enum: ["paid", "partially_refunded", "fully_refunded", "disputed"],
+    })
+      .notNull()
+      .default("paid"),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+    currentPeriodStart: timestamp("current_period_start"),
+    currentPeriodEnd: timestamp("current_period_end"),
+    canceledAt: timestamp("canceled_at"),
+    latestEventCreatedAt: timestamp("latest_event_created_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("billing_subscriptions_user_id_idx").on(table.userId),
+    index("billing_subscriptions_customer_id_idx").on(table.stripeCustomerId),
+  ],
+);
+
+export const billingEntitlements = pgTable(
+  "billing_entitlements",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    subscriptionId: text("subscription_id")
+      .notNull()
+      .references(() => billingSubscriptions.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ["managed_openrouter"] }).notNull(),
+    state: text("state", { enum: ["active", "inactive"] }).notNull(),
+    periodStart: timestamp("period_start"),
+    periodEnd: timestamp("period_end"),
+    latestEventCreatedAt: timestamp("latest_event_created_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("billing_entitlements_user_kind_idx").on(
+      table.userId,
+      table.kind,
+    ),
+    index("billing_entitlements_subscription_id_idx").on(table.subscriptionId),
+  ],
+);
+
+export const billingWebhookReceipts = pgTable(
+  "billing_webhook_receipts",
+  {
+    stripeEventId: text("stripe_event_id").primaryKey(),
+    eventType: text("event_type").notNull(),
+    eventCreatedAt: timestamp("event_created_at").notNull(),
+    processingState: text("processing_state", {
+      enum: ["processing", "processed", "failed"],
+    })
+      .notNull()
+      .default("processing"),
+    processingErrorCode: text("processing_error_code"),
+    receivedAt: timestamp("received_at").defaultNow().notNull(),
+    processedAt: timestamp("processed_at"),
+  },
+  (table) => [
+    index("billing_webhook_receipts_event_created_at_idx").on(
+      table.eventCreatedAt,
+    ),
+  ],
+);
+
+export const managedInferenceKeys = pgTable(
+  "managed_inference_keys",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    entitlementId: text("entitlement_id").references(
+      () => billingEntitlements.id,
+      { onDelete: "set null" },
+    ),
+    provider: text("provider", { enum: ["openrouter"] })
+      .notNull()
+      .default("openrouter"),
+    providerKeyId: text("provider_key_id"),
+    ciphertext: text("ciphertext"),
+    nonce: text("nonce"),
+    authenticationTag: text("authentication_tag"),
+    encryptionKeyVersion: integer("encryption_key_version"),
+    keyHash: text("key_hash"),
+    label: text("label").notNull(),
+    lifecycleState: text("lifecycle_state", {
+      enum: ["provisioning", "active", "failed", "revoking", "revoked"],
+    })
+      .notNull()
+      .default("provisioning"),
+    spendLimitMicros: integer("spend_limit_micros")
+      .notNull()
+      .default(10_000_000),
+    periodStart: timestamp("period_start").notNull(),
+    periodEnd: timestamp("period_end").notNull(),
+    provisioningErrorCode: text("provisioning_error_code"),
+    provisionedAt: timestamp("provisioned_at"),
+    rotatedAt: timestamp("rotated_at"),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("managed_inference_keys_user_id_idx").on(table.userId),
+    index("managed_inference_keys_entitlement_id_idx").on(table.entitlementId),
+    uniqueIndex("managed_inference_keys_provider_key_id_idx").on(
+      table.providerKeyId,
+    ),
+    uniqueIndex("managed_inference_keys_key_hash_idx").on(table.keyHash),
+  ],
+);
 
 // better-auth sessions
 export const authSessions = pgTable("auth_sessions", {
@@ -228,6 +420,40 @@ export const sandboxProviderCircuits = pgTable(
   ],
 );
 
+export const sandboxUsagePeriods = pgTable(
+  "sandbox_usage_periods",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tier: text("tier", { enum: ["byok", "pro"] }).notNull(),
+    periodStart: timestamp("period_start").notNull(),
+    periodEnd: timestamp("period_end").notNull(),
+    allowanceMilliseconds: bigint("allowance_milliseconds", {
+      mode: "number",
+    }).notNull(),
+    consumedMilliseconds: bigint("consumed_milliseconds", {
+      mode: "number",
+    })
+      .notNull()
+      .default(0),
+    runningSandboxCount: integer("running_sandbox_count").notNull().default(0),
+    lastMeteredAt: timestamp("last_metered_at"),
+    revision: integer("revision").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("sandbox_usage_periods_user_tier_start_idx").on(
+      table.userId,
+      table.tier,
+      table.periodStart,
+    ),
+    index("sandbox_usage_periods_period_end_idx").on(table.periodEnd),
+  ],
+);
+
 export const chats = pgTable(
   "chats",
   {
@@ -237,6 +463,11 @@ export const chats = pgTable(
       .references(() => sessions.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     modelId: text("model_id").default(APP_DEFAULT_MODEL_ID),
+    executionBackend: text("execution_backend", {
+      enum: ["launchstack_native", "codex", "opencode"],
+    })
+      .notNull()
+      .default("launchstack_native"),
     activeStreamId: text("active_stream_id"),
     lastAssistantMessageAt: timestamp("last_assistant_message_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -361,6 +592,21 @@ export type WorkflowRunStep = typeof workflowRunSteps.$inferSelect;
 export type NewWorkflowRunStep = typeof workflowRunSteps.$inferInsert;
 export type GitHubInstallation = typeof githubInstallations.$inferSelect;
 export type NewGitHubInstallation = typeof githubInstallations.$inferInsert;
+export type ProviderCredential = typeof providerCredentials.$inferSelect;
+export type NewProviderCredential = typeof providerCredentials.$inferInsert;
+export type BillingCustomer = typeof billingCustomers.$inferSelect;
+export type NewBillingCustomer = typeof billingCustomers.$inferInsert;
+export type BillingSubscription = typeof billingSubscriptions.$inferSelect;
+export type NewBillingSubscription = typeof billingSubscriptions.$inferInsert;
+export type BillingEntitlement = typeof billingEntitlements.$inferSelect;
+export type NewBillingEntitlement = typeof billingEntitlements.$inferInsert;
+export type BillingWebhookReceipt = typeof billingWebhookReceipts.$inferSelect;
+export type NewBillingWebhookReceipt =
+  typeof billingWebhookReceipts.$inferInsert;
+export type ManagedInferenceKey = typeof managedInferenceKeys.$inferSelect;
+export type NewManagedInferenceKey = typeof managedInferenceKeys.$inferInsert;
+export type SandboxUsagePeriod = typeof sandboxUsagePeriods.$inferSelect;
+export type NewSandboxUsagePeriod = typeof sandboxUsagePeriods.$inferInsert;
 
 // User preferences for settings
 export const userPreferences = pgTable("user_preferences", {
@@ -415,6 +661,13 @@ export const usageEvents = pgTable("usage_events", {
     .default("main"),
   provider: text("provider"),
   modelId: text("model_id"),
+  credentialSource: text("credential_source", {
+    enum: ["byok", "managed", "administrative"],
+  }),
+  inferenceCostUsd: numeric("inference_cost_usd", {
+    precision: 18,
+    scale: 12,
+  }),
   inputTokens: integer("input_tokens").notNull().default(0),
   cachedInputTokens: integer("cached_input_tokens").notNull().default(0),
   outputTokens: integer("output_tokens").notNull().default(0),
