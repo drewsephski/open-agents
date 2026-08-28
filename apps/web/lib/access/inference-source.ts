@@ -23,6 +23,7 @@ export const managedKeyStateSchema = z.enum([
   "provisioning",
   "active",
   "failed",
+  "revoking",
   "revoked",
 ]);
 

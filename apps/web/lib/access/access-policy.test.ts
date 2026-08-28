@@ -30,6 +30,7 @@ function inferenceRequest(
     subscription: null,
     managedInference: {
       keyState: "missing",
+      period: null,
       spentMicros: 0,
       reservedMicros: 0,
     },
@@ -56,6 +57,7 @@ describe("access policy inference routing", () => {
           subscription: activeSubscription,
           managedInference: {
             keyState: "active",
+            period: { start: PERIOD_START, end: PERIOD_END },
             spentMicros: 2_500_000,
             reservedMicros: 500_000,
           },
@@ -89,6 +91,7 @@ describe("access policy inference routing", () => {
           subscription: activeSubscription,
           managedInference: {
             keyState: "active",
+            period: { start: PERIOD_START, end: PERIOD_END },
             spentMicros: 0,
             reservedMicros: 0,
           },
@@ -110,6 +113,7 @@ describe("access policy inference routing", () => {
           subscription: activeSubscription,
           managedInference: {
             keyState: "active",
+            period: { start: PERIOD_START, end: PERIOD_END },
             spentMicros: 9_750_000,
             reservedMicros: 250_000,
           },
@@ -130,6 +134,7 @@ describe("access policy inference routing", () => {
           subscription: activeSubscription,
           managedInference: {
             keyState: "active",
+            period: { start: PERIOD_START, end: PERIOD_END },
             spentMicros: 10_000_000,
             reservedMicros: 0,
           },
@@ -145,13 +150,22 @@ describe("access policy inference routing", () => {
     });
   });
 
-  test("never substitutes a shared key when managed key provisioning fails", () => {
+  test("does not roll stale Managed Inference accounting into a renewed paid period", () => {
+    const renewedPeriodStart = new Date("2026-09-01T00:00:00.000Z");
+    const renewedPeriodEnd = new Date("2026-10-01T00:00:00.000Z");
+
     expect(
       evaluateAccessPolicy(
         inferenceRequest({
-          subscription: activeSubscription,
+          now: new Date("2026-09-15T12:00:00.000Z"),
+          subscription: {
+            ...activeSubscription,
+            periodStart: renewedPeriodStart,
+            periodEnd: renewedPeriodEnd,
+          },
           managedInference: {
-            keyState: "failed",
+            keyState: "active",
+            period: { start: PERIOD_START, end: PERIOD_END },
             spentMicros: 0,
             reservedMicros: 0,
           },
@@ -163,6 +177,94 @@ describe("access policy inference routing", () => {
         code: "managed_inference_unavailable",
         remediation: ["add_byok", "retry_later"],
       },
+    });
+  });
+
+  test("treats the old managed period as expired at the renewal boundary", () => {
+    expect(
+      evaluateAccessPolicy(
+        inferenceRequest({
+          now: PERIOD_END,
+          byokCredentialState: "valid",
+          subscription: {
+            ...activeSubscription,
+            periodStart: PERIOD_END,
+            periodEnd: new Date("2026-10-01T00:00:00.000Z"),
+          },
+          managedInference: {
+            keyState: "active",
+            period: { start: PERIOD_START, end: PERIOD_END },
+            spentMicros: 0,
+            reservedMicros: 0,
+          },
+        }),
+      ),
+    ).toEqual({
+      allowed: true,
+      source: "byok",
+      modelId: APP_DEFAULT_MODEL_ID,
+      reason: "managed_fallback",
+    });
+  });
+
+  test("never substitutes a shared key when managed key provisioning fails", () => {
+    expect(
+      evaluateAccessPolicy(
+        inferenceRequest({
+          subscription: activeSubscription,
+          managedInference: {
+            keyState: "failed",
+            period: { start: PERIOD_START, end: PERIOD_END },
+            spentMicros: 0,
+            reservedMicros: 0,
+          },
+        }),
+      ),
+    ).toEqual({
+      allowed: false,
+      failure: {
+        code: "managed_inference_unavailable",
+        remediation: ["add_byok", "retry_later"],
+      },
+    });
+  });
+
+  test("never selects a revoking managed key and uses valid BYOK only", () => {
+    const managedInference = {
+      keyState: "revoking" as const,
+      period: { start: PERIOD_START, end: PERIOD_END },
+      spentMicros: 0,
+      reservedMicros: 0,
+    };
+
+    expect(
+      evaluateAccessPolicy(
+        inferenceRequest({
+          subscription: activeSubscription,
+          managedInference,
+        }),
+      ),
+    ).toEqual({
+      allowed: false,
+      failure: {
+        code: "managed_inference_unavailable",
+        remediation: ["add_byok", "retry_later"],
+      },
+    });
+
+    expect(
+      evaluateAccessPolicy(
+        inferenceRequest({
+          byokCredentialState: "valid",
+          subscription: activeSubscription,
+          managedInference,
+        }),
+      ),
+    ).toEqual({
+      allowed: true,
+      source: "byok",
+      modelId: APP_DEFAULT_MODEL_ID,
+      reason: "managed_fallback",
     });
   });
 
@@ -186,6 +288,7 @@ describe("access policy inference routing", () => {
         subscription: { ...activeSubscription, cancelAtPeriodEnd: true },
         managedInference: {
           keyState: "active",
+          period: { start: PERIOD_START, end: PERIOD_END },
           spentMicros: 0,
           reservedMicros: 0,
         },
@@ -213,6 +316,7 @@ describe("access policy inference routing", () => {
           subscription: { ...activeSubscription, status },
           managedInference: {
             keyState: "active",
+            period: { start: PERIOD_START, end: PERIOD_END },
             spentMicros: 0,
             reservedMicros: 0,
           },
@@ -236,6 +340,7 @@ describe("access policy inference routing", () => {
             subscription: { ...activeSubscription, financialState },
             managedInference: {
               keyState: "active",
+              period: { start: PERIOD_START, end: PERIOD_END },
               spentMicros: 0,
               reservedMicros: 0,
             },

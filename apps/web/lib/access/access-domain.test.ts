@@ -5,6 +5,7 @@ import {
   DEFAULT_EXECUTION_BACKEND,
   executionBackendSchema,
 } from "./execution-backend";
+import { managedKeyStateSchema } from "./inference-source";
 import { hasPaidThroughAccess } from "./subscription-state";
 
 describe("access domain", () => {
@@ -19,6 +20,10 @@ describe("access domain", () => {
 
   test("keeps GLM 5.3 Flash as the application default", () => {
     expect(APP_DEFAULT_MODEL_ID).toBe("z-ai/glm-5.3-flash");
+  });
+
+  test("represents the persisted managed-key revoking lifecycle", () => {
+    expect(managedKeyStateSchema.safeParse("revoking").success).toBe(true);
   });
 
   test("builds free Sandbox Periods as UTC calendar months", () => {

@@ -3,6 +3,7 @@ import {
   BYOK_SANDBOX_ALLOWANCE_MILLISECONDS,
   BYOK_SANDBOX_CONCURRENCY_LIMIT,
   getUtcCalendarMonthPeriod,
+  isWithinAllowancePeriod,
   MANAGED_INFERENCE_ALLOWANCE_MICROS,
   PRO_SANDBOX_ALLOWANCE_MILLISECONDS,
   PRO_SANDBOX_CONCURRENCY_LIMIT,
@@ -27,6 +28,7 @@ export interface InferenceAccessRequest {
   subscription: SubscriptionAccessState | null;
   managedInference: {
     keyState: ManagedKeyState;
+    period: AllowancePeriod | null;
     spentMicros: number;
     reservedMicros: number;
   };
@@ -99,6 +101,13 @@ export function evaluateInferenceAccess(
     ? request.subscription
     : null;
   const hasPaidThrough = paidSubscription !== null;
+  const managedPeriod = request.managedInference.period;
+  const hasCurrentManagedPeriod =
+    paidSubscription !== null &&
+    managedPeriod !== null &&
+    managedPeriod.start.getTime() === paidSubscription.periodStart.getTime() &&
+    managedPeriod.end.getTime() === paidSubscription.periodEnd.getTime() &&
+    isWithinAllowancePeriod(request.now, managedPeriod);
   const hasManagedAllowance =
     request.managedInference.spentMicros >= 0 &&
     request.managedInference.reservedMicros >= 0 &&
@@ -109,6 +118,7 @@ export function evaluateInferenceAccess(
   if (
     managedEligible &&
     hasPaidThrough &&
+    hasCurrentManagedPeriod &&
     request.managedInference.keyState === "active" &&
     hasManagedAllowance
   ) {
@@ -146,6 +156,16 @@ export function evaluateInferenceAccess(
         source: "byok",
         modelId: request.modelId,
         reason: "managed_fallback",
+      };
+    }
+
+    if (!hasCurrentManagedPeriod) {
+      return {
+        allowed: false,
+        failure: {
+          code: "managed_inference_unavailable",
+          remediation: ["add_byok", "retry_later"],
+        },
       };
     }
 
