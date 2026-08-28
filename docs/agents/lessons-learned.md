@@ -21,6 +21,7 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - Node 24's built-in TypeScript support uses native ESM resolution and ignores tsconfig path aliases, so utility-script dependency chains need explicit `.ts` extensions and relative imports.
 - `bunx @vercel/config validate` executes the CLI under Node via its shebang and cannot parse TypeScript-style `vercel.ts` imports; use `bunx --bun @vercel/config validate` (or `bun node_modules/@vercel/config/dist/cli.js validate`) for reliable local validation.
 - Successful Vercel CLI auth (`vercel whoami`, team/project REST APIs, `.vercel` linking) does **not** guarantee Workflow observability access. `workflow inspect ... --backend vercel` can still fail with `401 {"error":{"code":"unauthorized","message":"You are not allowed to access this endpoint."}}` when the user/token lacks the Vercel product permission documented as `Vercel Workflow` (and possibly related Observability access), even if `WORKFLOW_VERCEL_AUTH_TOKEN` is passed explicitly from the Vercel CLI auth file.
+- Workflow SDK `5.0.0-beta.5` is incompatible with Vercel event snapshots that omit `run.input` and `step.input` when those values are stored as remote references; keep the paired `workflow` / `@workflow/ai` beta versions current and retain a real-schema compatibility test for this production boundary.
 
 ## Next.js
 
