@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const generateTextCalls: Array<{
+  model: string;
   prompt: string;
   maxOutputTokens: number;
   maxRetries: number;
@@ -9,7 +10,7 @@ const generateTextCalls: Array<{
 let generationResult: { output: unknown } | Error;
 
 mock.module("@open-agents/agent", () => ({
-  defaultLanguageModel: () => "mock-model",
+  model: (modelId: string) => modelId,
 }));
 
 mock.module("ai", () => ({
@@ -34,6 +35,42 @@ mock.module("@/lib/rate-limit", () => ({
   rateLimitKey: (parts: string[]) => parts.join(":"),
 }));
 
+mock.module("@/lib/svgl", () => ({
+  getSvglCatalog: async () => [
+    {
+      id: "439",
+      name: "Next.js",
+      role: "Framework",
+      logo: "https://svgl.app/library/nextjs_icon_dark.svg",
+    },
+    {
+      id: "112",
+      name: "TypeScript",
+      role: "Language",
+      logo: "https://svgl.app/library/typescript.svg",
+    },
+    {
+      id: "180",
+      name: "PostgreSQL",
+      role: "Database",
+      logo: "https://svgl.app/library/postgresql.svg",
+    },
+    {
+      id: "650",
+      name: "Stripe",
+      role: "Payment",
+      logo: "https://svgl.app/library/stripe.svg",
+    },
+    {
+      id: "556",
+      name: "Vercel",
+      role: "Hosting",
+      logo: "https://svgl.app/library/vercel.svg",
+    },
+  ],
+  selectRelevantSvglTechnologies: (catalog: unknown[]) => catalog,
+}));
+
 const routeModulePromise = import("./route");
 
 function createRequest(body: unknown): Request {
@@ -49,13 +86,17 @@ describe("/api/recommend-stack", () => {
     generateTextCalls.length = 0;
     generationResult = {
       output: {
-        technologyIds: [
-          "nextjs",
-          "typescript",
-          "postgresql",
-          "stripe",
-          "vercel",
+        headline: "A practical commerce stack",
+        summaryMarkdown:
+          "**Next.js** owns the app while **PostgreSQL** stores its data.",
+        technologyNames: [
+          "Next.js",
+          "TypeScript",
+          "PostgreSQL",
+          "Stripe",
+          "Vercel",
         ],
+        tradeoffMarkdown: "This favors delivery speed over portability.",
       },
     };
   });
@@ -75,28 +116,34 @@ describe("/api/recommend-stack", () => {
     );
     const body = (await response.json()) as {
       headline: string;
-      summary: string;
-      technologyIds: string[];
+      summaryMarkdown: string;
+      technologies: Array<{ name: string }>;
     };
 
     expect(response.status).toBe(200);
-    expect(body.headline).toBe("A focused full-stack foundation");
-    expect(body.summary).toContain("Next.js, TypeScript, PostgreSQL");
-    expect(body.technologyIds).toContain("stripe");
+    expect(body.headline).toBe("A practical commerce stack");
+    expect(body.summaryMarkdown).toContain("**Next.js**");
+    expect(body.technologies.map(({ name }) => name)).toContain("Stripe");
     expect(generateTextCalls[0]?.prompt).toContain(
       "A paid analytics product for agencies",
     );
     expect(generateTextCalls[0]).toMatchObject({
-      maxOutputTokens: 100,
+      maxOutputTokens: 480,
       maxRetries: 0,
-      timeout: 8000,
+      timeout: 7000,
+    });
+    expect(generateTextCalls[0]).toMatchObject({
+      model: "openai/gpt-5.6-luna-fast",
     });
   });
 
-  test("rejects duplicate-heavy model output", async () => {
+  test("completes duplicate-heavy model output locally", async () => {
     generationResult = {
       output: {
-        technologyIds: ["nextjs", "nextjs"],
+        headline: "A repeated stack",
+        summaryMarkdown: "The model repeated one choice.",
+        technologyNames: ["Next.js", "Next.js"],
+        tradeoffMarkdown: "The output is incomplete.",
       },
     };
     const { POST } = await routeModulePromise;
@@ -104,6 +151,30 @@ describe("/api/recommend-stack", () => {
       createRequest({ request: "A paid analytics product for agencies" }),
     );
 
-    expect(response.status).toBe(500);
+    const body = (await response.json()) as {
+      technologies: Array<{ name: string }>;
+    };
+    expect(response.status).toBe(200);
+    expect(body.technologies.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(body.technologies.map(({ name }) => name)).size).toBe(
+      body.technologies.length,
+    );
+  });
+
+  test("returns a complete local recommendation when generation fails", async () => {
+    generationResult = new Error("provider timeout");
+    const { POST } = await routeModulePromise;
+    const response = await POST(
+      createRequest({ request: "A paid analytics product for agencies" }),
+    );
+    const body = (await response.json()) as {
+      headline: string;
+      technologies: Array<{ name: string }>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.headline).toBeTruthy();
+    expect(body.technologies.length).toBeGreaterThanOrEqual(4);
+    expect(body.technologies.map(({ name }) => name)).toContain("Stripe");
   });
 });

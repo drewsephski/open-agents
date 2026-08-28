@@ -3,8 +3,8 @@
 import { ArrowRight, LoaderCircle, RotateCcw, Sparkles } from "lucide-react";
 import Image from "next/image";
 import { type FormEvent, useState } from "react";
+import { Streamdown } from "streamdown";
 import {
-  technologies,
   type TechStackRecommendation,
   techStackRecommendationSchema,
 } from "@/lib/tech-stack";
@@ -14,17 +14,47 @@ const starterRequest =
 
 const initialRecommendation: TechStackRecommendation = {
   headline: "A focused SaaS foundation",
-  summary:
-    "A typed full-stack app with a relational data layer, managed billing, and low-friction deployment.",
-  technologyIds: [
-    "nextjs",
-    "typescript",
-    "tailwind",
-    "neon",
-    "stripe",
-    "vercel",
+  summaryMarkdown:
+    "A typed full-stack app connects a responsive interface to managed data, billing, and low-friction deployment.\n\n**How it connects**\n- Next.js owns the product surface and server logic.\n- Neon stores subscription and analytics data.\n- Stripe remains the billing system of record.",
+  technologies: [
+    {
+      id: "439",
+      name: "Next.js",
+      role: "Framework · Vercel",
+      logo: "https://svgl.app/library/nextjs_icon_dark.svg",
+    },
+    {
+      id: "112",
+      name: "TypeScript",
+      role: "Language",
+      logo: "https://svgl.app/library/typescript.svg",
+    },
+    {
+      id: "77",
+      name: "Tailwind CSS",
+      role: "Framework",
+      logo: "https://svgl.app/library/tailwindcss.svg",
+    },
+    {
+      id: "253",
+      name: "Neon",
+      role: "Database",
+      logo: "https://svgl.app/library/neon.svg",
+    },
+    {
+      id: "650",
+      name: "Stripe",
+      role: "Software · Payment",
+      logo: "https://svgl.app/library/stripe.svg",
+    },
+    {
+      id: "556",
+      name: "Vercel",
+      role: "Hosting · Vercel",
+      logo: "https://svgl.app/library/vercel.svg",
+    },
   ],
-  tradeoff:
+  tradeoffMarkdown:
     "Optimized for a small product team; very high event volume may eventually need a separate analytics pipeline.",
 };
 
@@ -33,10 +63,6 @@ export function TechSelector() {
   const [recommendation, setRecommendation] = useState(initialRecommendation);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const selectedTechnologies = recommendation.technologyIds
-    .map((id) => technologies.find((technology) => technology.id === id))
-    .filter((technology) => technology !== undefined);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -88,8 +114,7 @@ export function TechSelector() {
       <div className="mx-auto max-w-[1320px] px-6 py-20 sm:py-28">
         <div className="mb-10 grid gap-5 md:grid-cols-[0.8fr_1.2fr] md:items-end">
           <div>
-            <div className="mb-4 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-(--l-fg-3)">
-              <Sparkles className="size-3.5" />
+            <div className="mb-4 text-xs font-medium uppercase tracking-[0.2em] text-(--l-fg-3)">
               Architecture, on demand
             </div>
             <h2 className="max-w-xl text-balance text-3xl font-semibold tracking-tighter sm:text-5xl">
@@ -146,7 +171,7 @@ export function TechSelector() {
                 {isLoading ? (
                   <LoaderCircle className="size-4 animate-spin" />
                 ) : (
-                  <Sparkles className="size-4" />
+                  <Sparkles className="size-4 transition-transform duration-300 ease-out motion-safe:group-hover:rotate-12 motion-safe:group-hover:scale-125 motion-safe:group-hover:[animation:stack-sparkle_900ms_ease-in-out_infinite]" />
                 )}
                 {isLoading ? "Composing" : "Recommend my stack"}
                 {!isLoading && (
@@ -171,32 +196,36 @@ export function TechSelector() {
                 <h3 className="text-2xl font-medium tracking-tight sm:text-3xl">
                   {recommendation.headline}
                 </h3>
-                <p className="mt-3 max-w-xl leading-relaxed text-white/60">
-                  {recommendation.summary}
-                </p>
+                <div className="mt-3 max-w-xl text-sm leading-relaxed text-white/75 [&_p]:my-2 [&_strong]:font-medium [&_strong]:text-white [&_ul]:mt-2 [&_ul]:space-y-1 [&_ul]:pl-4 [&_li]:list-disc [&_li::marker]:text-emerald-400">
+                  <Streamdown mode="static" isAnimating={false}>
+                    {recommendation.summaryMarkdown}
+                  </Streamdown>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-px overflow-hidden border border-white/10 bg-white/10 sm:grid-cols-3">
-                {selectedTechnologies.map((technology, index) => (
+                {recommendation.technologies.map((technology, index) => (
                   <div
                     key={technology.id}
                     className="group relative min-h-28 bg-[#11110f] p-4 transition-colors hover:bg-white/[0.06]"
                     style={{ animationDelay: `${index * 55}ms` }}
                   >
-                    <Image
-                      src={technology.logo}
-                      alt=""
-                      width={28}
-                      height={28}
-                      className="size-7 object-contain"
-                    />
-                    <p className="mt-4 text-sm font-medium">
+                    <div className="flex size-9 items-center justify-center rounded-md border border-white/15 bg-white shadow-[0_4px_14px_rgba(0,0,0,0.35)]">
+                      <Image
+                        src={technology.logo}
+                        alt=""
+                        width={24}
+                        height={24}
+                        className="size-6 object-contain"
+                      />
+                    </div>
+                    <p className="mt-3 text-sm font-medium text-white">
                       {technology.name}
                     </p>
-                    <p className="mt-0.5 text-xs text-white/40">
+                    <p className="mt-0.5 text-xs text-white/60">
                       {technology.role}
                     </p>
-                    <span className="absolute right-3 top-3 font-mono text-[9px] text-white/20">
+                    <span className="absolute right-3 top-3 font-mono text-[9px] text-white/35">
                       0{index + 1}
                     </span>
                   </div>
@@ -207,9 +236,11 @@ export function TechSelector() {
                 <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-amber-300/70">
                   Main tradeoff
                 </p>
-                <p className="mt-2 text-sm leading-relaxed text-white/50">
-                  {recommendation.tradeoff}
-                </p>
+                <div className="mt-2 text-sm leading-relaxed text-white/65 [&_strong]:font-medium [&_strong]:text-white">
+                  <Streamdown mode="static" isAnimating={false}>
+                    {recommendation.tradeoffMarkdown}
+                  </Streamdown>
+                </div>
               </div>
             </div>
           </div>

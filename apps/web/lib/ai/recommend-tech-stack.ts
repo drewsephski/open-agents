@@ -1,48 +1,15 @@
-import { defaultLanguageModel } from "@open-agents/agent";
+import { model } from "@open-agents/agent";
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { technologies, techStackRecommendationSchema } from "@/lib/tech-stack";
+import {
+  completeTechnologySelection,
+  createFallbackTechStack,
+} from "@/lib/ai/tech-stack-fallback";
+import { getSvglCatalog, selectRelevantSvglTechnologies } from "@/lib/svgl";
+import { techStackRecommendationSchema } from "@/lib/tech-stack";
 
-const STACK_RECOMMENDATION_TIMEOUT_MS = 8000;
-
-const compactRecommendationSchema = z.object({
-  technologyIds: techStackRecommendationSchema.shape.technologyIds,
-});
-
-const catalog = technologies
-  .map(({ id, name, role }) => `${id}=${name} (${role})`)
-  .join("; ");
-
-function getHeadline(technologyIds: readonly string[]): string {
-  if (technologyIds.includes("expo")) return "A focused native foundation";
-  if (technologyIds.includes("fastapi")) return "A focused Python foundation";
-  if (technologyIds.includes("cloudflare")) return "A focused edge foundation";
-  return "A focused full-stack foundation";
-}
-
-function getSummary(technologyIds: readonly string[]): string {
-  const names = technologyIds
-    .map((id) => technologies.find((technology) => technology.id === id)?.name)
-    .filter((name) => name !== undefined);
-  const stackLabel = new Intl.ListFormat("en", {
-    style: "long",
-    type: "conjunction",
-  }).format(names);
-  return `${stackLabel} form a lean, production-ready foundation for this product.`;
-}
-
-function getTradeoff(technologyIds: readonly string[]): string {
-  if (technologyIds.includes("expo")) {
-    return "Optimized for one cross-platform native codebase rather than fully bespoke platform code.";
-  }
-  if (technologyIds.includes("cloudflare")) {
-    return "Optimized for edge performance, with more runtime constraints than a traditional server.";
-  }
-  if (technologyIds.includes("supabase")) {
-    return "Managed backend speed comes with greater platform coupling as the product grows.";
-  }
-  return "Optimized for fast delivery; unusually complex scale may eventually require specialized services.";
-}
+const STACK_RECOMMENDATION_MODEL = "openai/gpt-5.6-luna-fast";
+const STACK_RECOMMENDATION_TIMEOUT_MS = 7000;
 
 export async function recommendTechStack({
   productRequest,
@@ -51,30 +18,64 @@ export async function recommendTechStack({
   productRequest: string;
   abortSignal?: AbortSignal;
 }) {
-  const { output } = await generateText({
-    model: defaultLanguageModel({
-      providerOptionsOverrides: {
-        openrouter: { provider: { sort: "latency" } },
-      },
-    }),
-    output: Output.object({ schema: compactRecommendationSchema }),
-    maxOutputTokens: 100,
-    maxRetries: 0,
-    temperature: 0.1,
-    timeout: STACK_RECOMMENDATION_TIMEOUT_MS,
-    abortSignal,
-    system:
-      "Select only the smallest sufficient production stack. Return 2-6 unique IDs from the catalog. Never add databases, payments, hosting, or web frameworks unless the request needs them.",
-    prompt: `Catalog: ${catalog}\nProduct: ${productRequest}`,
+  const catalog = await getSvglCatalog();
+  const candidates = selectRelevantSvglTechnologies(catalog, productRequest);
+  const modelOutputSchema = z.object({
+    headline: z.string().min(1).max(70),
+    summaryMarkdown: z.string().min(1).max(500),
+    technologyNames: z.array(z.string()).min(2).max(8),
+    tradeoffMarkdown: z.string().min(1).max(220),
   });
+  const compactCatalog = candidates
+    .map(({ name, role }) => `${name} [${role}]`)
+    .join("; ");
 
-  if (!output) throw new Error("The model returned no recommendation");
+  try {
+    const { output } = await generateText({
+      model: model(STACK_RECOMMENDATION_MODEL, {
+        providerOptionsOverrides: {
+          openai: { reasoningEffort: "minimal" },
+          openrouter: { provider: { sort: "latency" } },
+        },
+      }),
+      output: Output.object({ schema: modelOutputSchema }),
+      maxOutputTokens: 480,
+      maxRetries: 0,
+      temperature: 0.1,
+      timeout: STACK_RECOMMENDATION_TIMEOUT_MS,
+      abortSignal,
+      system: `Act as a pragmatic staff engineer. Select the smallest sufficient production stack from the supplied SVGL catalog.
 
-  const technologyIds = [...new Set(output.technologyIds)];
-  return techStackRecommendationSchema.parse({
-    headline: getHeadline(technologyIds),
-    summary: getSummary(technologyIds),
-    technologyIds,
-    tradeoff: getTradeoff(technologyIds),
-  });
+Return 2-8 unique technology names exactly as written in the catalog. Never add databases, payments, hosting, or frameworks unless the request needs them. The headline must be plain text and no more than 7 words. summaryMarkdown must explain how the pieces connect in 2-3 short sentences, using bold only for technology names. tradeoffMarkdown must be one candid sentence. Do not include headings or repeat field labels inside field values.`,
+      prompt: `SVGL catalog: ${compactCatalog}\n\nProduct request: ${productRequest}`,
+    });
+
+    const selectedTechnologies = completeTechnologySelection({
+      candidates,
+      productRequest,
+      requestedNames: output.technologyNames,
+    });
+
+    const recommendation = techStackRecommendationSchema.safeParse({
+      headline: output.headline,
+      summaryMarkdown: output.summaryMarkdown,
+      technologies: selectedTechnologies,
+      tradeoffMarkdown: output.tradeoffMarkdown,
+    });
+    if (recommendation.success) return recommendation.data;
+
+    console.warn(
+      "[recommend-stack] Completed an invalid model recommendation locally:",
+      recommendation.error,
+    );
+    return createFallbackTechStack(
+      candidates,
+      productRequest,
+      output.technologyNames,
+    );
+  } catch (error) {
+    if (abortSignal?.aborted) throw error;
+    console.warn("[recommend-stack] Using a local recommendation:", error);
+    return createFallbackTechStack(candidates, productRequest);
+  }
 }

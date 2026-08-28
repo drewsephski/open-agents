@@ -67,8 +67,8 @@ export function SignedOutHero() {
           </div>
         </section>
 
-        <TechSelector />
         <LandingFeatures />
+        <TechSelector />
         <LandingBento />
         <LandingFooter />
       </div>
