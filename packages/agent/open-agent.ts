@@ -4,6 +4,7 @@ import { z } from "zod";
 import { addCacheControl } from "./context-management";
 import {
   type ModelId,
+  type OpenRouterConfig,
   constructorPlaceholderModel,
   model,
   resolveDefaultModelId,
@@ -40,13 +41,25 @@ export interface AgentSandboxContext {
   environmentDetails?: string;
 }
 
-const callOptionsSchema = z.object({
-  sandbox: z.custom<AgentSandboxContext>(),
-  model: z.custom<OpenAgentModelInput>().optional(),
-  subagentModel: z.custom<OpenAgentModelInput>().optional(),
-  customInstructions: z.string().optional(),
-  skills: z.custom<SkillMetadata[]>().optional(),
+const openRouterConfigSchema: z.ZodType<OpenRouterConfig> = z.object({
+  apiKey: z.string().trim().min(1),
+  baseURL: z.string().optional(),
 });
+
+const callOptionsSchema = z
+  .object({
+    sandbox: z.custom<AgentSandboxContext>(),
+    openRouter: openRouterConfigSchema,
+    subagentOpenRouter: openRouterConfigSchema.optional(),
+    model: z.custom<OpenAgentModelInput>().optional(),
+    subagentModel: z.custom<OpenAgentModelInput>().optional(),
+    customInstructions: z.string().optional(),
+    skills: z.custom<SkillMetadata[]>().optional(),
+  })
+  .refine(
+    (options) => !options.subagentModel || options.subagentOpenRouter,
+    "A subagent model requires explicit OpenRouter configuration.",
+  );
 
 export type OpenAgentCallOptions = z.infer<typeof callOptionsSchema>;
 
@@ -107,10 +120,12 @@ export const openAgent = new ToolLoopAgent({
       : undefined;
 
     const callModel = model(mainSelection.id, {
+      config: options.openRouter,
       providerOptionsOverrides: mainSelection.providerOptionsOverrides,
     });
     const subagentModel = subagentSelection
       ? model(subagentSelection.id, {
+          config: options.subagentOpenRouter as OpenRouterConfig,
           providerOptionsOverrides: subagentSelection.providerOptionsOverrides,
         })
       : undefined;

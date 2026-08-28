@@ -7,6 +7,7 @@ import {
 } from "ai";
 import {
   OPENROUTER_APP_NAME,
+  MissingOpenRouterApiKeyError,
   requireOpenRouterApiKey,
   resolveCanonicalAppUrl,
   resolveDefaultModelId,
@@ -40,7 +41,7 @@ export interface OpenRouterConfig {
 }
 
 export interface ModelFactoryOptions {
-  config?: OpenRouterConfig;
+  config: OpenRouterConfig;
   providerOptionsOverrides?: ProviderOptionsByProvider;
   appName?: string;
   appUrl?: string;
@@ -60,12 +61,15 @@ function getProviderCacheKey(parts: {
 function getOpenRouterProvider(
   options: ModelFactoryOptions,
 ): ReturnType<typeof createOpenRouter> {
-  const apiKey = requireOpenRouterApiKey(options.config?.apiKey);
+  if (!options.config) {
+    throw new MissingOpenRouterApiKeyError();
+  }
+  const apiKey = requireOpenRouterApiKey(options.config.apiKey);
   const appName = options.appName ?? OPENROUTER_APP_NAME;
   const appUrl = resolveCanonicalAppUrl(options.appUrl);
   const cacheKey = getProviderCacheKey({
     apiKey,
-    baseURL: options.config?.baseURL,
+    baseURL: options.config.baseURL,
     appName,
     appUrl,
   });
@@ -77,7 +81,7 @@ function getOpenRouterProvider(
 
   const provider = createOpenRouter({
     apiKey,
-    ...(options.config?.baseURL ? { baseURL: options.config.baseURL } : {}),
+    ...(options.config.baseURL ? { baseURL: options.config.baseURL } : {}),
     compatibility: "strict",
     appName,
     ...(appUrl ? { appUrl } : {}),
@@ -95,7 +99,7 @@ function getOpenRouterProvider(
  */
 export function model(
   modelId: ModelId,
-  options: ModelFactoryOptions = {},
+  options: ModelFactoryOptions,
 ): LanguageModel {
   const provider = getOpenRouterProvider(options);
   let languageModel: LanguageModel = provider.chat(modelId, {
@@ -120,7 +124,7 @@ export function model(
 }
 
 export function defaultLanguageModel(
-  options: ModelFactoryOptions = {},
+  options: ModelFactoryOptions,
 ): LanguageModel {
   return model(resolveDefaultModelId(), options);
 }

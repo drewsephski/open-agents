@@ -33,9 +33,6 @@ let currentAuthSession: {
     email?: string;
   };
 } | null;
-let existingUserMessageCount = 0;
-let existingChatMessage: { id: string } | null = null;
-let existingScopedChatMessage: { id: string } | null = null;
 let isSandboxActive = true;
 let existingRunStatus: string = "completed";
 let getRunShouldThrow = false;
@@ -60,6 +57,20 @@ let preferencesState: {
 };
 let cachedSkillsState: unknown = null;
 let discoverSkillDirsCalls: string[][] = [];
+let inferenceAccessDecision:
+  | {
+      allowed: true;
+      source: "byok";
+      modelId: string;
+      openRouter: { apiKey: string };
+    }
+  | {
+      allowed: false;
+      failure: {
+        code: "inference_source_required";
+        remediation: ["add_byok", "upgrade_to_pro"];
+      };
+    };
 
 const claimChatActiveStreamIdSpy = mock(
   async () => claimActiveStreamDefaultResult,
@@ -152,6 +163,15 @@ mock.module("@/lib/chat/create-cancelable-readable-stream", () => ({
   createCancelableReadableStream: (stream: ReadableStream) => stream,
 }));
 
+mock.module("@/lib/access/model-credential-resolver", () => ({
+  resolveModelCredential: async () => inferenceAccessDecision,
+  toInferenceAccessErrorResponse: (failure: {
+    code: string;
+    remediation: string[];
+  }) =>
+    Response.json({ error: { ...failure, resetAt: null } }, { status: 403 }),
+}));
+
 mock.module("@open-agents/agent", () => ({
   discoverSkills: async (_sandbox: unknown, skillDirs: string[]) => {
     discoverSkillDirsCalls.push(skillDirs);
@@ -175,11 +195,8 @@ mock.module("@open-agents/sandbox", () => ({
 mock.module("@/lib/db/sessions", () => ({
   claimChatActiveStreamId: claimChatActiveStreamIdSpy,
   compareAndSetChatActiveStreamId: compareAndSetChatActiveStreamIdSpy,
-  countUserMessagesByUserId: async () => existingUserMessageCount,
   createChatMessageIfNotExists: createChatMessageIfNotExistsSpy,
   getChatById: async () => chatRecord,
-  getChatMessageById: async () => existingChatMessage,
-  getChatMessageByIdForChat: async () => existingScopedChatMessage,
   getSessionById: async () => sessionRecord,
   isFirstChatMessage: isFirstChatMessageSpy,
   touchChat: touchChatSpy,
@@ -265,9 +282,12 @@ describe("/api/chat route", () => {
     routeEvents = [];
     cachedSkillsState = null;
     discoverSkillDirsCalls = [];
-    existingUserMessageCount = 0;
-    existingChatMessage = null;
-    existingScopedChatMessage = null;
+    inferenceAccessDecision = {
+      allowed: true,
+      source: "byok",
+      modelId: "z-ai/glm-5.3-flash",
+      openRouter: { apiKey: "test-user-key" },
+    };
     preferencesState = {
       autoCommitPush: true,
       autoCreatePr: false,
@@ -314,6 +334,31 @@ describe("/api/chat route", () => {
     const response = await POST(createValidRequest());
 
     expect(response.ok).toBe(true);
+    expect(JSON.stringify(startCalls)).not.toContain("test-user-key");
+  });
+
+  test("denies chat admission before persistence or workflow creation when inference access is missing", async () => {
+    inferenceAccessDecision = {
+      allowed: false,
+      failure: {
+        code: "inference_source_required",
+        remediation: ["add_byok", "upgrade_to_pro"],
+      },
+    };
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(createValidRequest());
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "inference_source_required",
+        remediation: ["add_byok", "upgrade_to_pro"],
+        resetAt: null,
+      },
+    });
+    expect(createChatMessageIfNotExistsSpy).not.toHaveBeenCalled();
+    expect(startCalls).toHaveLength(0);
   });
 
   test("returns 400 for archived sessions without starting a workflow", async () => {
@@ -349,76 +394,6 @@ describe("/api/chat route", () => {
     expect(routeEvents.indexOf("start-workflow")).toBeGreaterThan(
       routeEvents.indexOf("persist-user"),
     );
-  });
-
-  test("blocks a sixth message for managed template trial users", async () => {
-    const { POST } = await routeModulePromise;
-    currentAuthSession = {
-      authProvider: "vercel",
-      user: {
-        id: "user-1",
-        email: "person@example.com",
-      },
-    };
-    existingUserMessageCount = 5;
-
-    const response = await POST(
-      createRequest(
-        JSON.stringify({
-          sessionId: "session-1",
-          chatId: "chat-1",
-          messages: [
-            {
-              id: "user-6",
-              role: "user",
-              parts: [{ type: "text", text: "One more thing" }],
-            },
-          ],
-        }),
-        "https://open-agents.dev/api/chat",
-      ),
-    );
-    const body = (await response.json()) as { error: string };
-
-    expect(response.status).toBe(403);
-    expect(body.error).toBe(
-      "This hosted demo has a 5 message limit. Deploy your own copy to unlock the full Launchstack template.",
-    );
-    expect(startCalls).toHaveLength(0);
-  });
-
-  test("does not let trial users replay a message id from another chat", async () => {
-    const { POST } = await routeModulePromise;
-    currentAuthSession = {
-      authProvider: "vercel",
-      user: {
-        id: "user-1",
-        email: "person@example.com",
-      },
-    };
-    existingUserMessageCount = 5;
-    existingChatMessage = { id: "user-1" };
-    existingScopedChatMessage = null;
-
-    const response = await POST(
-      createRequest(
-        JSON.stringify({
-          sessionId: "session-1",
-          chatId: "chat-1",
-          messages: [
-            {
-              id: "user-1",
-              role: "user",
-              parts: [{ type: "text", text: "Replay this" }],
-            },
-          ],
-        }),
-        "https://open-agents.dev/api/chat",
-      ),
-    );
-
-    expect(response.status).toBe(403);
-    expect(startCalls).toHaveLength(0);
   });
 
   test("passes the 500 maxSteps limit to the workflow", async () => {

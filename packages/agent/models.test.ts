@@ -203,14 +203,16 @@ describe("mergeProviderOptions", () => {
 });
 
 describe("model factory", () => {
-  test("throws when OPENROUTER_API_KEY is missing", () => {
+  test("requires explicit OpenRouter configuration even when a deployment key exists", () => {
     const previous = process.env.OPENROUTER_API_KEY;
-    delete process.env.OPENROUTER_API_KEY;
+    process.env.OPENROUTER_API_KEY = "deployment-key-must-not-be-used";
 
     try {
-      expect(() => model("z-ai/glm-5.3-flash")).toThrow(
-        MissingOpenRouterApiKeyError,
-      );
+      expect(() =>
+        model("z-ai/glm-5.3-flash", {
+          config: undefined as never,
+        }),
+      ).toThrow(MissingOpenRouterApiKeyError);
     } finally {
       process.env.OPENROUTER_API_KEY = previous;
     }
@@ -220,7 +222,7 @@ describe("model factory", () => {
     createOpenRouterCalls.length = 0;
     chatCalls.length = 0;
 
-    defaultLanguageModel();
+    defaultLanguageModel({ config: { apiKey: "test-openrouter-key" } });
 
     expect(chatCalls).toEqual([
       {
@@ -239,6 +241,7 @@ describe("model factory", () => {
   test("passes canonical app URL when available", () => {
     createOpenRouterCalls.length = 0;
     model("z-ai/glm-5.3-flash", {
+      config: { apiKey: "test-openrouter-key" },
       appUrl: "https://launchstack.example",
     });
 

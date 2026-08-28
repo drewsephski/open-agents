@@ -98,7 +98,7 @@ describe("/api/settings/model-variants", () => {
     expect(response.status).toBe(401);
   });
 
-  test("GET hides Opus-backed variants for managed trial users", async () => {
+  test("GET preserves BYOK variants on the hosted deployment", async () => {
     preferences.modelVariants = [
       {
         id: "variant:user-opus",
@@ -124,6 +124,8 @@ describe("/api/settings/model-variants", () => {
 
     expect(body.modelVariants.map((variant) => variant.id)).toEqual([
       "variant:builtin:gpt-5.6-luna-xhigh",
+      "variant:builtin:claude-fable-5-high",
+      "variant:user-opus",
     ]);
   });
 
@@ -166,7 +168,7 @@ describe("/api/settings/model-variants", () => {
     expect(body.modelVariants[2]?.name).toBe("OpenAI Medium");
   });
 
-  test("POST rejects Opus-backed variants for managed trial users", async () => {
+  test("POST allows Opus-backed BYOK variants on the hosted deployment", async () => {
     currentSession = {
       authProvider: "vercel",
       user: {
@@ -189,10 +191,10 @@ describe("/api/settings/model-variants", () => {
       }),
     );
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(200);
   });
 
-  test("POST rejects Fable-backed variants for managed trial users", async () => {
+  test("POST allows Fable-backed BYOK variants on the hosted deployment", async () => {
     currentSession = {
       authProvider: "vercel",
       user: {
@@ -215,7 +217,7 @@ describe("/api/settings/model-variants", () => {
       }),
     );
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(200);
   });
 
   test("POST accepts provider options exactly at 16KB", async () => {

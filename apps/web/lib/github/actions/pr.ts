@@ -218,6 +218,7 @@ export async function generatePrContent(params: {
 
   const prContentResult = await generatePullRequestContentFromSandbox({
     sandbox,
+    userId: session.user.id,
     sessionId,
     sessionTitle,
     baseBranch,

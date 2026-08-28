@@ -1,16 +1,12 @@
 import type { Session } from "@/lib/session/types";
 
-const ALLOWED_VERCEL_EMAIL_DOMAIN = "vercel.com";
 const MANAGED_TEMPLATE_HOSTS = new Set([
   "open-agents.dev",
   "www.open-agents.dev",
 ]);
 const LOCAL_DEVELOPMENT_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
-export const MANAGED_TEMPLATE_TRIAL_MESSAGE_LIMIT = 5;
 export const MANAGED_TEMPLATE_TRIAL_SESSION_LIMIT = 1;
-export const MANAGED_TEMPLATE_TRIAL_MESSAGE_LIMIT_ERROR =
-  "This hosted demo has a 5 message limit. Deploy your own copy to unlock the full Launchstack template.";
 export const MANAGED_TEMPLATE_TRIAL_SESSION_LIMIT_ERROR =
   "This hosted demo includes 1 trial session. Deploy your own copy to unlock the full Launchstack template.";
 export const MANAGED_TEMPLATE_TRIAL_DELETE_MESSAGE_ERROR =
@@ -62,16 +58,6 @@ export function isManagedTemplateDeployment(url: string | URL) {
     .some((host) => host !== null && MANAGED_TEMPLATE_HOSTS.has(host));
 }
 
-export function hasAllowedManagedTemplateEmail(email?: string) {
-  const normalizedEmail = email?.trim().toLowerCase();
-  if (!normalizedEmail) {
-    return false;
-  }
-
-  const emailDomain = normalizedEmail.split("@")[1];
-  return emailDomain === ALLOWED_VERCEL_EMAIL_DOMAIN;
-}
-
 export function isManagedTemplateTrialUser(
   session: Pick<Session, "user"> | null | undefined,
   url: string | URL,
@@ -80,8 +66,5 @@ export function isManagedTemplateTrialUser(
     return false;
   }
 
-  return (
-    isManagedTemplateDeployment(url) &&
-    !hasAllowedManagedTemplateEmail(session.user.email)
-  );
+  return isManagedTemplateDeployment(url);
 }

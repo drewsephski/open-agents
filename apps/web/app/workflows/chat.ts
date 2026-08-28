@@ -58,6 +58,10 @@ import { resolveChatModelSelection } from "../api/chat/_lib/model-selection";
 import { resolveChatSandboxRuntime } from "./chat-sandbox-runtime";
 
 type AuthSessionContext = Pick<AuthSession, "authProvider" | "user"> | null;
+type UnresolvedOpenAgentCallOptions = Omit<
+  OpenAgentCallOptions,
+  "openRouter" | "subagentOpenRouter"
+>;
 
 type Options = {
   messages: WebAgentUIMessage[];
@@ -68,7 +72,7 @@ type Options = {
   authSession: AuthSessionContext;
   selectedModelId?: string;
   modelId?: string;
-  agentOptions?: Omit<OpenAgentCallOptions, "sandbox" | "skills">;
+  agentOptions?: Omit<UnresolvedOpenAgentCallOptions, "sandbox" | "skills">;
   assistantId?: string;
   inputMessagesPersisted?: boolean;
   maxSteps?: number;
@@ -79,7 +83,7 @@ type Options = {
 type ChatModelRuntime = {
   selectedModelId: string;
   modelId: string;
-  agentOptions: Omit<OpenAgentCallOptions, "sandbox" | "skills">;
+  agentOptions: Omit<UnresolvedOpenAgentCallOptions, "sandbox" | "skills">;
   autoCommitEnabled: boolean;
   autoCreatePrEnabled: boolean;
 };
@@ -707,7 +711,7 @@ export async function runAgentWorkflow(options: Options) {
       ),
     };
 
-    const agentOptions: OpenAgentCallOptions = {
+    const agentOptions: UnresolvedOpenAgentCallOptions = {
       ...modelRuntime.agentOptions,
       ...options.agentOptions,
       sandbox: {
@@ -736,6 +740,7 @@ export async function runAgentWorkflow(options: Options) {
           workflowRunId,
           options.chatId,
           options.sessionId,
+          options.userId,
           selectedModelId,
           modelId,
           agentOptions,
@@ -1006,9 +1011,10 @@ const runAgentStep = async (
   workflowRunId: string,
   chatId: string,
   sessionId: string,
+  userId: string,
   selectedModelId: string,
   modelId: string,
-  agentOptions: OpenAgentCallOptions,
+  agentOptions: UnresolvedOpenAgentCallOptions,
   stepNumber: number,
 ) => {
   "use step";
@@ -1040,9 +1046,30 @@ const runAgentStep = async (
     let totalMessageUsage = existingTotalMessageUsage;
     let totalMessageCost = existingTotalMessageCost;
 
+    const { requireModelCredential } =
+      await import("@/lib/access/model-credential-resolver");
+    const mainModelId = getAgentModelId(agentOptions.model, modelId);
+    const mainCredential = await requireModelCredential({
+      userId,
+      modelId: mainModelId,
+    });
+    const subagentModelId = agentOptions.subagentModel
+      ? getAgentModelId(agentOptions.subagentModel, mainModelId)
+      : null;
+    const subagentCredential = subagentModelId
+      ? await requireModelCredential({ userId, modelId: subagentModelId })
+      : null;
+    const authorizedAgentOptions: OpenAgentCallOptions = {
+      ...agentOptions,
+      openRouter: mainCredential.openRouter,
+      ...(subagentCredential
+        ? { subagentOpenRouter: subagentCredential.openRouter }
+        : {}),
+    };
+
     const result = await webAgent.stream({
       messages,
-      options: agentOptions,
+      options: authorizedAgentOptions,
       abortSignal: abortController.signal,
     });
 
@@ -1264,6 +1291,16 @@ const runAgentStep = async (
     await stopMonitor.done;
   }
 };
+
+function getAgentModelId(
+  selection: UnresolvedOpenAgentCallOptions["model"],
+  fallbackModelId: string,
+): string {
+  if (!selection) {
+    return fallbackModelId;
+  }
+  return typeof selection === "string" ? selection : selection.id;
+}
 
 function startStopMonitor(runId: string, abortController: AbortController) {
   let shouldStop = false;

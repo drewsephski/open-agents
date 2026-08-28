@@ -47,8 +47,10 @@ mock.module("ai", () => ({
   generateText: async () => generateTextResult,
 }));
 
-mock.module("@open-agents/agent", () => ({
-  defaultLanguageModel: () => "mock-model",
+mock.module("@open-agents/agent", () => ({}));
+
+mock.module("@/lib/ai/authenticated-model", () => ({
+  getAuthenticatedLanguageModel: async () => "mock-model",
 }));
 
 mock.module("@open-agents/sandbox", () => ({

@@ -6,8 +6,12 @@ import type { CheckRun } from "@/lib/github/pulls";
 import { getUserGitHubToken } from "@/lib/github/token";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { Octokit } from "@octokit/rest";
-import { defaultLanguageModel } from "@open-agents/agent";
 import { generateText } from "ai";
+import { getAuthenticatedLanguageModel } from "@/lib/ai/authenticated-model";
+import {
+  isInferenceAccessDeniedError,
+  toInferenceAccessErrorResponse,
+} from "@/lib/access/model-credential-resolver";
 
 type RouteContext = {
   params: Promise<{ sessionId: string }>;
@@ -140,7 +144,7 @@ function formatFixResponse(
 
 // ── Log compaction via LLM ──────────────────────────────────────────────
 
-async function compactLog(rawLog: string): Promise<string> {
+async function compactLog(rawLog: string, userId: string): Promise<string> {
   // For short logs, no point running through an LLM — they're already small
   // enough to include in full.
   if (rawLog.length <= 4000) {
@@ -158,7 +162,7 @@ async function compactLog(rawLog: string): Promise<string> {
   }
 
   const result = await generateText({
-    model: defaultLanguageModel(),
+    model: await getAuthenticatedLanguageModel({ userId }),
     system: LOG_SUMMARIZATION_PROMPT,
     prompt: logInput,
   });
@@ -254,52 +258,65 @@ export async function POST(req: Request, context: RouteContext) {
     const owner = sessionRecord.repoOwner;
     const repo = sessionRecord.repoName;
 
-    await Promise.all(
-      runsWithIds.map(async (run) => {
-        const runId = String(run.id);
+    try {
+      await Promise.all(
+        runsWithIds.map(async (run) => {
+          const runId = String(run.id);
 
-        // Fetch annotations and raw logs in parallel
-        const [annotations, rawLog] = await Promise.all([
-          octokit.rest.checks
-            .listAnnotations({
-              owner,
-              repo,
-              check_run_id: run.id,
-              per_page: 50,
-            })
-            .then((res) => res.data as CheckAnnotation[])
-            .catch(() => [] as CheckAnnotation[]),
+          // Fetch annotations and raw logs in parallel
+          const [annotations, rawLog] = await Promise.all([
+            octokit.rest.checks
+              .listAnnotations({
+                owner,
+                repo,
+                check_run_id: run.id,
+                per_page: 50,
+              })
+              .then((res) => res.data as CheckAnnotation[])
+              .catch(() => [] as CheckAnnotation[]),
 
-          octokit.rest.actions
-            .downloadJobLogsForWorkflowRun({
-              owner,
-              repo,
-              job_id: run.id,
-            })
-            .then((res) =>
-              typeof res.data === "string" ? res.data : String(res.data),
-            )
-            .catch(() => UNABLE_TO_FETCH_LOGS),
-        ]);
+            octokit.rest.actions
+              .downloadJobLogsForWorkflowRun({
+                owner,
+                repo,
+                job_id: run.id,
+              })
+              .then((res) =>
+                typeof res.data === "string" ? res.data : String(res.data),
+              )
+              .catch(() => UNABLE_TO_FETCH_LOGS),
+          ]);
 
-        allAnnotations[runId] = annotations;
+          allAnnotations[runId] = annotations;
 
-        // Compact the log via LLM (or pass through if short / unavailable)
-        if (rawLog === UNABLE_TO_FETCH_LOGS) {
-          compactedLogs[runId] = rawLog;
-        } else {
-          try {
-            compactedLogs[runId] = await compactLog(rawLog);
-          } catch {
-            // If the LLM call fails, fall back to raw log with basic truncation
-            compactedLogs[runId] =
-              rawLog.length > 16_000
-                ? `${rawLog.slice(0, 8000)}\n\n... (${rawLog.length - 16_000} characters omitted) ...\n\n${rawLog.slice(-8000)}`
-                : rawLog;
+          // Compact the log via LLM (or pass through if short / unavailable)
+          if (rawLog === UNABLE_TO_FETCH_LOGS) {
+            compactedLogs[runId] = rawLog;
+          } else {
+            try {
+              compactedLogs[runId] = await compactLog(
+                rawLog,
+                authResult.userId,
+              );
+            } catch (error) {
+              if (isInferenceAccessDeniedError(error)) {
+                throw error;
+              }
+              // If the LLM call fails, fall back to raw log with basic truncation
+              compactedLogs[runId] =
+                rawLog.length > 16_000
+                  ? `${rawLog.slice(0, 8000)}\n\n... (${rawLog.length - 16_000} characters omitted) ...\n\n${rawLog.slice(-8000)}`
+                  : rawLog;
+            }
           }
-        }
-      }),
-    );
+        }),
+      );
+    } catch (error) {
+      if (isInferenceAccessDeniedError(error)) {
+        return toInferenceAccessErrorResponse(error.failure);
+      }
+      throw error;
+    }
   }
 
   return Response.json(

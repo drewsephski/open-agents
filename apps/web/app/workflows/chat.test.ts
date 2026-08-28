@@ -155,6 +155,8 @@ let agentResponseHeaders: Record<string, string> | undefined;
 let agentResponseBody: unknown;
 let agentProviderMetadata: Record<string, unknown> | undefined;
 let agentInputMessages: unknown;
+let agentCallOptions: Record<string, unknown> | undefined;
+const modelCredentialCalls: Array<{ userId: string; modelId: string }> = [];
 
 function buildAgentSteps() {
   return [
@@ -221,8 +223,15 @@ mock.module("./chat-post-finish", () => spies);
 mock.module("@/app/config", () => ({
   webAgent: {
     tools: {},
-    stream: async ({ messages }: { messages: unknown }) => {
+    stream: async ({
+      messages,
+      options,
+    }: {
+      messages: unknown;
+      options: Record<string, unknown>;
+    }) => {
       agentInputMessages = messages;
+      agentCallOptions = options;
       return {
         toUIMessageStream: (opts: {
           sendStart?: boolean;
@@ -339,6 +348,21 @@ mock.module("ai", () => ({
 
 mock.module("@open-agents/agent", () => ({}));
 
+mock.module("@/lib/access/model-credential-resolver", () => ({
+  requireModelCredential: async (params: {
+    userId: string;
+    modelId: string;
+  }) => {
+    modelCredentialCalls.push(params);
+    return {
+      allowed: true,
+      source: "byok",
+      modelId: params.modelId,
+      openRouter: { apiKey: `credential-for-${params.modelId}` },
+    };
+  },
+}));
+
 mock.module("@/lib/db/sessions", () => ({
   getChatById: async () => testChatRecord,
   getSessionById: async () => testSessionRecord,
@@ -404,6 +428,8 @@ beforeEach(() => {
   agentResponseBody = undefined;
   agentProviderMetadata = undefined;
   agentInputMessages = undefined;
+  agentCallOptions = undefined;
+  modelCredentialCalls.length = 0;
   streamOnFinishCallback = undefined;
   testSessionRecord = {
     id: "session-1",
@@ -749,6 +775,34 @@ describe("runAgentWorkflow", () => {
         finishReason: "tool-calls",
       }),
     ]);
+  });
+
+  test("re-authorizes model credentials inside each agent step and passes them explicitly", async () => {
+    await runAgentWorkflow(makeOptions());
+
+    expect(modelCredentialCalls).toEqual([
+      { userId: "user-1", modelId: APP_DEFAULT_MODEL_ID },
+    ]);
+    expect(agentCallOptions).toMatchObject({
+      openRouter: { apiKey: `credential-for-${APP_DEFAULT_MODEL_ID}` },
+    });
+  });
+
+  test("resolves a separate explicit credential for the selected subagent model", async () => {
+    testPreferences.defaultSubagentModelId = "openai/gpt-5.6-luna";
+
+    await runAgentWorkflow(makeOptions());
+
+    expect(modelCredentialCalls).toEqual([
+      { userId: "user-1", modelId: APP_DEFAULT_MODEL_ID },
+      { userId: "user-1", modelId: "openai/gpt-5.6-luna" },
+    ]);
+    expect(agentCallOptions).toMatchObject({
+      openRouter: { apiKey: `credential-for-${APP_DEFAULT_MODEL_ID}` },
+      subagentOpenRouter: {
+        apiKey: "credential-for-openai/gpt-5.6-luna",
+      },
+    });
   });
 
   test("logs full step diagnostics when the agent finishes with reason other", async () => {
