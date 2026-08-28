@@ -1,73 +1,38 @@
 "use client";
 
-import { ArrowRight, LoaderCircle, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowRight, LoaderCircle, RotateCcw } from "lucide-react";
 import Image from "next/image";
-import { type FormEvent, useState } from "react";
+import { useReducedMotion } from "motion/react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { Streamdown } from "streamdown";
+import {
+  type SparklesIconHandle,
+  SparklesIcon,
+} from "@/components/ui/sparkles";
 import {
   type TechStackRecommendation,
   techStackRecommendationSchema,
 } from "@/lib/tech-stack";
 
-const starterRequest =
-  "A subscription analytics dashboard for small SaaS teams with billing, live metrics, and weekly email reports.";
-
-const initialRecommendation: TechStackRecommendation = {
-  headline: "A focused SaaS foundation",
-  summaryMarkdown:
-    "A typed full-stack app connects a responsive interface to managed data, billing, and low-friction deployment.\n\n**How it connects**\n- Next.js owns the product surface and server logic.\n- Neon stores subscription and analytics data.\n- Stripe remains the billing system of record.",
-  technologies: [
-    {
-      id: "439",
-      name: "Next.js",
-      role: "Framework · Vercel",
-      logo: "https://svgl.app/library/nextjs_icon_dark.svg",
-    },
-    {
-      id: "112",
-      name: "TypeScript",
-      role: "Language",
-      logo: "https://svgl.app/library/typescript.svg",
-    },
-    {
-      id: "77",
-      name: "Tailwind CSS",
-      role: "Framework",
-      logo: "https://svgl.app/library/tailwindcss.svg",
-    },
-    {
-      id: "253",
-      name: "Neon",
-      role: "Database",
-      logo: "https://svgl.app/library/neon.svg",
-    },
-    {
-      id: "650",
-      name: "Stripe",
-      role: "Software · Payment",
-      logo: "https://svgl.app/library/stripe.svg",
-    },
-    {
-      id: "556",
-      name: "Vercel",
-      role: "Hosting · Vercel",
-      logo: "https://svgl.app/library/vercel.svg",
-    },
-  ],
-  tradeoffMarkdown:
-    "Optimized for a small product team; very high event volume may eventually need a separate analytics pipeline.",
-};
+const starterRequest = `LaunchStack is an AI architecture recommender. A visitor writes a product brief and receives a product-specific stack with a clear explanation of what every technology handles. Build the responsive application with Next.js, TypeScript, and Tailwind CSS; use Better Auth for sign-in, Neon and PostgreSQL for durable data, Drizzle ORM for typed database access, OpenAI for recommendations, and Vercel for deployment. Technology marks come from the live SVGL catalog. Prioritize fast recommendations, accessible interactions, strong light/dark logo contrast, bot protection, and maintainable server-side validation.`;
 
 export function TechSelector() {
   const [request, setRequest] = useState(starterRequest);
-  const [recommendation, setRecommendation] = useState(initialRecommendation);
+  const [recommendation, setRecommendation] =
+    useState<TechStackRecommendation | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const sparklesRef = useRef<SparklesIconHandle>(null);
+  const prefersReducedMotion = useReducedMotion();
+  const hasRequestedInitialStack = useRef(false);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (request.trim().length < 12 || isLoading) return;
-
+  const requestStack = useCallback(async (productRequest: string) => {
     setIsLoading(true);
     setError(null);
 
@@ -75,7 +40,7 @@ export function TechSelector() {
       const response = await fetch("/api/recommend-stack", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ request }),
+        body: JSON.stringify({ request: productRequest }),
       });
       const payload: unknown = await response.json();
 
@@ -107,6 +72,18 @@ export function TechSelector() {
     } finally {
       setIsLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (hasRequestedInitialStack.current) return;
+    hasRequestedInitialStack.current = true;
+    void requestStack(starterRequest);
+  }, [requestStack]);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (request.trim().length < 12 || isLoading) return;
+    void requestStack(request);
   }
 
   return (
@@ -167,11 +144,20 @@ export function TechSelector() {
                 type="submit"
                 disabled={isLoading || request.trim().length < 12}
                 className="group flex h-11 items-center gap-3 bg-(--l-btn-bg) px-5 text-sm font-medium text-(--l-btn-fg) transition-all hover:bg-(--l-btn-hover) disabled:cursor-not-allowed disabled:opacity-40"
+                onMouseEnter={() => {
+                  if (!prefersReducedMotion)
+                    sparklesRef.current?.startAnimation();
+                }}
+                onMouseLeave={() => sparklesRef.current?.stopAnimation()}
               >
                 {isLoading ? (
                   <LoaderCircle className="size-4 animate-spin" />
                 ) : (
-                  <Sparkles className="size-4 transition-transform duration-300 ease-out motion-safe:group-hover:rotate-12 motion-safe:group-hover:scale-125 motion-safe:group-hover:[animation:stack-sparkle_900ms_ease-in-out_infinite]" />
+                  <SparklesIcon
+                    ref={sparklesRef}
+                    className="size-4"
+                    size={16}
+                  />
                 )}
                 {isLoading ? "Composing" : "Recommend my stack"}
                 {!isLoading && (
@@ -194,36 +180,38 @@ export function TechSelector() {
 
               <div className="py-7">
                 <h3 className="text-2xl font-medium tracking-tight sm:text-3xl">
-                  {recommendation.headline}
+                  {recommendation?.headline ??
+                    "Composing the LaunchStack system"}
                 </h3>
                 <div className="mt-3 max-w-xl text-sm leading-relaxed text-white/75 [&_p]:my-2 [&_strong]:font-medium [&_strong]:text-white [&_ul]:mt-2 [&_ul]:space-y-1 [&_ul]:pl-4 [&_li]:list-disc [&_li::marker]:text-emerald-400">
                   <Streamdown mode="static" isAnimating={false}>
-                    {recommendation.summaryMarkdown}
+                    {recommendation?.summaryMarkdown ??
+                      "Reading the product brief and matching its responsibilities to the live technology catalog…"}
                   </Streamdown>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-px overflow-hidden border border-white/10 bg-white/10 sm:grid-cols-3">
-                {recommendation.technologies.map((technology, index) => (
+                {recommendation?.technologies.map((technology, index) => (
                   <div
                     key={technology.id}
                     className="group relative min-h-28 bg-[#11110f] p-4 transition-colors hover:bg-white/[0.06]"
                     style={{ animationDelay: `${index * 55}ms` }}
                   >
-                    <div className="flex size-9 items-center justify-center rounded-md border border-white/15 bg-white shadow-[0_4px_14px_rgba(0,0,0,0.35)]">
+                    <div className="flex size-9 items-center justify-center rounded-md border border-white/15 bg-[#f7f7f5] shadow-[0_4px_14px_rgba(0,0,0,0.35)]">
                       <Image
                         src={technology.logo}
                         alt=""
                         width={24}
                         height={24}
-                        className="size-6 object-contain"
+                        className="size-6 object-contain [filter:drop-shadow(0_0_0.6px_rgba(0,0,0,0.9))]"
                       />
                     </div>
                     <p className="mt-3 text-sm font-medium text-white">
                       {technology.name}
                     </p>
                     <p className="mt-0.5 text-xs text-white/60">
-                      {technology.role}
+                      {technology.responsibility ?? technology.role}
                     </p>
                     <span className="absolute right-3 top-3 font-mono text-[9px] text-white/35">
                       0{index + 1}
@@ -238,7 +226,8 @@ export function TechSelector() {
                 </p>
                 <div className="mt-2 text-sm leading-relaxed text-white/65 [&_strong]:font-medium [&_strong]:text-white">
                   <Streamdown mode="static" isAnimating={false}>
-                    {recommendation.tradeoffMarkdown}
+                    {recommendation?.tradeoffMarkdown ??
+                      "The architecture tradeoff will appear with the recommendation."}
                   </Streamdown>
                 </div>
               </div>

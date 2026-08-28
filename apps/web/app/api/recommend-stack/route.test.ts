@@ -96,6 +96,28 @@ describe("/api/recommend-stack", () => {
           "Stripe",
           "Vercel",
         ],
+        responsibilities: [
+          {
+            technologyName: "Next.js",
+            responsibility: "Runs the analytics dashboard and server routes",
+          },
+          {
+            technologyName: "TypeScript",
+            responsibility: "Keeps billing and reporting data type-safe",
+          },
+          {
+            technologyName: "PostgreSQL",
+            responsibility: "Stores accounts and analytics events",
+          },
+          {
+            technologyName: "Stripe",
+            responsibility: "Owns subscriptions and billing state",
+          },
+          {
+            technologyName: "Vercel",
+            responsibility: "Deploys the app and server functions",
+          },
+        ],
         tradeoffMarkdown: "This favors delivery speed over portability.",
       },
     };
@@ -123,26 +145,31 @@ describe("/api/recommend-stack", () => {
     expect(response.status).toBe(200);
     expect(body.headline).toBe("A practical commerce stack");
     expect(body.summaryMarkdown).toContain("**Next.js**");
+    expect(body.summaryMarkdown).toContain("**What handles what**");
     expect(body.technologies.map(({ name }) => name)).toContain("Stripe");
     expect(generateTextCalls[0]?.prompt).toContain(
       "A paid analytics product for agencies",
     );
     expect(generateTextCalls[0]).toMatchObject({
-      maxOutputTokens: 480,
+      maxOutputTokens: 1200,
       maxRetries: 0,
-      timeout: 7000,
+      timeout: 12_000,
     });
     expect(generateTextCalls[0]).toMatchObject({
       model: "openai/gpt-5.6-luna-fast",
     });
   });
 
-  test("completes duplicate-heavy model output locally", async () => {
+  test("rejects an incomplete model selection instead of returning mock data", async () => {
     generationResult = {
       output: {
         headline: "A repeated stack",
         summaryMarkdown: "The model repeated one choice.",
         technologyNames: ["Next.js", "Next.js"],
+        responsibilities: [
+          { technologyName: "Next.js", responsibility: "Runs the app" },
+          { technologyName: "Next.js", responsibility: "Runs the app" },
+        ],
         tradeoffMarkdown: "The output is incomplete.",
       },
     };
@@ -151,30 +178,15 @@ describe("/api/recommend-stack", () => {
       createRequest({ request: "A paid analytics product for agencies" }),
     );
 
-    const body = (await response.json()) as {
-      technologies: Array<{ name: string }>;
-    };
-    expect(response.status).toBe(200);
-    expect(body.technologies.length).toBeGreaterThanOrEqual(4);
-    expect(new Set(body.technologies.map(({ name }) => name)).size).toBe(
-      body.technologies.length,
-    );
+    expect(response.status).toBe(500);
   });
 
-  test("returns a complete local recommendation when generation fails", async () => {
+  test("returns an error instead of mock data when generation fails", async () => {
     generationResult = new Error("provider timeout");
     const { POST } = await routeModulePromise;
     const response = await POST(
       createRequest({ request: "A paid analytics product for agencies" }),
     );
-    const body = (await response.json()) as {
-      headline: string;
-      technologies: Array<{ name: string }>;
-    };
-
-    expect(response.status).toBe(200);
-    expect(body.headline).toBeTruthy();
-    expect(body.technologies.length).toBeGreaterThanOrEqual(4);
-    expect(body.technologies.map(({ name }) => name)).toContain("Stripe");
+    expect(response.status).toBe(500);
   });
 });
