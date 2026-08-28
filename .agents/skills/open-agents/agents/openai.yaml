@@ -1,0 +1,6 @@
+interface:
+  display_name: "Open Agents"
+  short_description: "Repo-specific patterns and workflows for open-agents"
+  default_prompt: "Use the open-agents repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
