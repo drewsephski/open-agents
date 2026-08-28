@@ -349,6 +349,67 @@ describe("/api/sandbox/snapshot", () => {
     );
   });
 
+  test("PUT restores a legacy snapshot after its named sandbox is missing", async () => {
+    const { PUT } = await routeModulePromise;
+
+    sessionRecord = makeSessionRecord({
+      sandboxState: {
+        type: "vercel",
+        sandboxName: "session_session-1",
+      },
+      snapshotUrl: "snap-legacy-1",
+      snapshotCreatedAt: new Date("2026-08-28T12:00:00.000Z"),
+      lifecycleState: "hibernated",
+      sandboxExpiresAt: null,
+      hibernateAfter: null,
+    });
+    connectSandboxResumeError = Object.assign(
+      new Error("Status code 404 is not ok"),
+      { errorClass: "resource_not_found" },
+    );
+
+    const response = await PUT(
+      new Request("http://localhost/api/sandbox/snapshot", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: "session-1" }),
+      }),
+    );
+    const payload = (await response.json()) as {
+      success: boolean;
+      provider: string;
+      restoredFrom: string;
+    };
+
+    expect(response.ok).toBe(true);
+    expect(payload).toEqual({
+      success: true,
+      provider: "vercel",
+      restoredFrom: "snap-legacy-1",
+    });
+    expect(connectCalls).toHaveLength(2);
+    expect(connectCalls[1]).toMatchObject({
+      state: {
+        type: "vercel",
+        sandboxName: "session_session-1",
+        snapshotId: "snap-legacy-1",
+        restore: { kind: "snapshot", snapshotId: "snap-legacy-1" },
+      },
+      options: {
+        resume: true,
+        createIfMissing: true,
+        persistent: true,
+      },
+    });
+    expect(updateCalls[0]).toEqual(
+      expect.objectContaining({
+        snapshotUrl: null,
+        snapshotCreatedAt: null,
+        lifecycleVersion: 3,
+      }),
+    );
+  });
+
   test("PUT lazily migrates a legacy snapshot-backed session on first resume", async () => {
     const { PUT } = await routeModulePromise;
 

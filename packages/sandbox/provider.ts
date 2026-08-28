@@ -55,6 +55,12 @@ export type SandboxTelemetryEvent =
       failureCount: number;
     }
   | {
+      name: "sandbox.provider.circuit.bookkeeping";
+      provider: SandboxProvider;
+      operation: "record_success";
+      success: false;
+    }
+  | {
       name: "sandbox.provider.fallback";
       from: SandboxProvider;
       to: SandboxProvider;

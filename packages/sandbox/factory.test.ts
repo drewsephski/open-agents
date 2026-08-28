@@ -121,6 +121,47 @@ describe("provider selection", () => {
     expect(attempts).toEqual(["vercel"]);
   });
 
+  test("returns an allocated sandbox when circuit success bookkeeping fails", async () => {
+    const selected = createSandbox("vercel");
+    let fallbackAttempts = 0;
+    const events: Array<{ name: string; [key: string]: unknown }> = [];
+
+    const result = await provisionSandbox(
+      {},
+      options(
+        adapter("vercel", async () => selected),
+        adapter("codesandbox", async () => {
+          fallbackAttempts += 1;
+          return createSandbox("codesandbox");
+        }),
+        {
+          circuitBreaker: {
+            async getState() {
+              return { isOpen: false, failureCount: 0 };
+            },
+            async recordSuccess() {
+              throw new Error("circuit database unavailable");
+            },
+            async recordFailure() {
+              return { isOpen: false, failureCount: 0 };
+            },
+          },
+          telemetry: (event) => events.push(event),
+        },
+      ),
+    );
+
+    expect(result.sandbox).toBe(selected);
+    expect(result.provider).toBe("vercel");
+    expect(fallbackAttempts).toBe(0);
+    expect(events).toContainEqual({
+      name: "sandbox.provider.circuit.bookkeeping",
+      provider: "vercel",
+      operation: "record_success",
+      success: false,
+    });
+  });
+
   test("falls back on an explicitly classified exhausted quota", async () => {
     const attempts: SandboxProvider[] = [];
     const result = await provisionSandbox(

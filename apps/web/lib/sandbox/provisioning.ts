@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   connectSandbox,
+  isSandboxProviderError,
   provisionSandbox,
   type Sandbox,
   type SandboxState,
@@ -206,7 +207,7 @@ export async function provisionSessionSandbox(params: {
   }
 
   const isPinnedRestore = hasResumableSandboxState(session.sandboxState);
-  const didSetupWorkspace = !isPinnedRestore;
+  let didSetupWorkspace = !isPinnedRestore;
   const user = await getUserById(session.userId);
   if (!user) {
     throw new Error("User not found");
@@ -241,12 +242,37 @@ export async function provisionSessionSandbox(params: {
   let selectionReason: SandboxSelectionReason | "restore";
   try {
     if (isPinnedRestore && isSandboxState(session.sandboxState)) {
-      sandbox = await connectSandbox({
-        state: session.sandboxState,
-        options: sharedOptions,
-      });
-      provider = session.sandboxState.type;
-      selectionReason = "restore";
+      try {
+        sandbox = await connectSandbox({
+          state: session.sandboxState,
+          options: { ...sharedOptions, createIfMissing: false },
+        });
+        provider = session.sandboxState.type;
+        selectionReason = "restore";
+      } catch (error) {
+        const shouldRebuildPinnedVercel =
+          session.sandboxState.type === "vercel" &&
+          isSandboxProviderError(error) &&
+          error.errorClass === "resource_not_found";
+        if (!shouldRebuildPinnedVercel) {
+          throw error;
+        }
+
+        const provisioned = await provisionSandbox(
+          {
+            source: buildSandboxSource(session),
+            persistenceKey: getSessionSandboxName(session.id),
+          },
+          {
+            ...sharedOptions,
+            providerOrder: ["vercel"],
+          },
+        );
+        sandbox = provisioned.sandbox;
+        provider = provisioned.provider;
+        selectionReason = provisioned.reason;
+        didSetupWorkspace = true;
+      }
     } else {
       const provisioned = await provisionSandbox(
         {

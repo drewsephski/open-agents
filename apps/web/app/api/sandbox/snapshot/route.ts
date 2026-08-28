@@ -1,4 +1,8 @@
-import { isSandboxProviderError } from "@open-agents/sandbox";
+import {
+  isSandboxProviderError,
+  type Sandbox,
+  type SandboxState,
+} from "@open-agents/sandbox";
 import {
   requireAuthenticatedUser,
   requireOwnedSession,
@@ -41,6 +45,52 @@ function getConnectOptions() {
     ports: DEFAULT_SANDBOX_PORTS,
     resume: true,
   };
+}
+
+function buildLegacySnapshotRestoreState(
+  sessionId: string,
+  snapshotId: string,
+): SandboxState {
+  return {
+    type: "vercel",
+    sandboxName: getSessionSandboxName(sessionId),
+    snapshotId,
+    restore: { kind: "snapshot", snapshotId },
+  };
+}
+
+function getRestoreConnectOptions(state: SandboxState) {
+  return {
+    ...getConnectOptions(),
+    createIfMissing:
+      state.type === "vercel" && state.restore?.kind === "snapshot",
+    persistent: true,
+  };
+}
+
+function shouldRestoreLegacySnapshot(params: {
+  error: unknown;
+  legacySnapshotId: string | null;
+  restoreState: SandboxState;
+}): params is {
+  error: unknown;
+  legacySnapshotId: string;
+  restoreState: SandboxState;
+} {
+  return (
+    params.legacySnapshotId !== null &&
+    params.restoreState.type === "vercel" &&
+    params.restoreState.restore?.kind !== "snapshot" &&
+    isSandboxProviderError(params.error) &&
+    params.error.errorClass === "resource_not_found"
+  );
+}
+
+function getRestoredFrom(state: SandboxState): string | undefined {
+  if (state.type === "vercel" && state.restore?.kind === "snapshot") {
+    return state.restore.snapshotId;
+  }
+  return getProviderSandboxId(state) ?? undefined;
 }
 
 /** Pause the exact current provider and persist its durable restore metadata. */
@@ -140,35 +190,50 @@ export async function PUT(req: Request) {
     : undefined;
   const hasProviderRestore = hasResumableSandboxState(persistedState);
   const legacySnapshotId = sessionRecord.snapshotUrl;
-  if (!hasProviderRestore && !legacySnapshotId) {
+  const restoreState: SandboxState | undefined =
+    hasProviderRestore && persistedState
+      ? persistedState
+      : legacySnapshotId
+        ? buildLegacySnapshotRestoreState(body.sessionId, legacySnapshotId)
+        : undefined;
+  if (!restoreState) {
     return Response.json(
       { error: "No sandbox available for resume" },
       { status: 404 },
     );
   }
 
-  const restoreState =
-    hasProviderRestore && persistedState
-      ? persistedState
-      : {
-          type: "vercel" as const,
-          sandboxName: getSessionSandboxName(body.sessionId),
-          snapshotId: legacySnapshotId ?? undefined,
-          restore: legacySnapshotId
-            ? { kind: "snapshot" as const, snapshotId: legacySnapshotId }
-            : undefined,
-        };
-
   try {
-    const sandbox = await connectConfiguredSandbox(restoreState, {
-      ...getConnectOptions(),
-      createIfMissing:
-        restoreState.type === "vercel" &&
-        restoreState.restore?.kind === "snapshot",
-      persistent: true,
-    });
+    let attemptedRestoreState = restoreState;
+    let sandbox: Sandbox;
+    try {
+      sandbox = await connectConfiguredSandbox(
+        attemptedRestoreState,
+        getRestoreConnectOptions(attemptedRestoreState),
+      );
+    } catch (error) {
+      const fallback = {
+        error,
+        legacySnapshotId,
+        restoreState: attemptedRestoreState,
+      };
+      if (!shouldRestoreLegacySnapshot(fallback)) {
+        throw error;
+      }
+
+      attemptedRestoreState = buildLegacySnapshotRestoreState(
+        body.sessionId,
+        fallback.legacySnapshotId,
+      );
+      sandbox = await connectConfiguredSandbox(
+        attemptedRestoreState,
+        getRestoreConnectOptions(attemptedRestoreState),
+      );
+    }
     const nextState = sandbox.getState?.();
-    const restoredState = isSandboxState(nextState) ? nextState : restoreState;
+    const restoredState = isSandboxState(nextState)
+      ? nextState
+      : attemptedRestoreState;
 
     await updateSession(body.sessionId, {
       sandboxState: restoredState,
@@ -185,8 +250,7 @@ export async function PUT(req: Request) {
     return Response.json({
       success: true,
       provider: restoredState.type,
-      restoredFrom:
-        getProviderSandboxId(restoreState) ?? legacySnapshotId ?? undefined,
+      restoredFrom: getRestoredFrom(attemptedRestoreState),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

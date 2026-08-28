@@ -118,6 +118,22 @@ function emit(
   }
 }
 
+async function recordCircuitSuccess(
+  provider: SandboxProvider,
+  options?: ConnectOptions,
+): Promise<void> {
+  try {
+    await options?.circuitBreaker?.recordSuccess(provider);
+  } catch {
+    emit(options, {
+      name: "sandbox.provider.circuit.bookkeeping",
+      provider,
+      operation: "record_success",
+      success: false,
+    });
+  }
+}
+
 function normalizeError(
   adapter: SandboxProviderAdapter,
   error: unknown,
@@ -264,7 +280,7 @@ export async function provisionSandbox(
         state as SandboxStateByProvider<typeof provider>,
         options,
       );
-      await options?.circuitBreaker?.recordSuccess(provider);
+      await recordCircuitSuccess(provider, options);
       emit(options, {
         name: "sandbox.provider.selected",
         provider,

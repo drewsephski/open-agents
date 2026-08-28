@@ -6,9 +6,14 @@ const connectCalls: unknown[][] = [];
 const provisionCalls: unknown[][] = [];
 const revokeCalls: string[] = [];
 const updateCalls: unknown[][] = [];
+const installCalls: unknown[] = [];
 let updateResult: Record<string, unknown> | null;
 let stopCalls = 0;
 let sessionState: Record<string, unknown>;
+let connectError: Error | null;
+let provisionProvider: "vercel" | "codesandbox";
+let provisionReason: "primary" | "fallback";
+let globalSkillRefs: Array<{ source: string; skillName: string }>;
 
 function sandbox(provider: "vercel" | "codesandbox") {
   const state =
@@ -44,16 +49,21 @@ function sandbox(provider: "vercel" | "codesandbox") {
 }
 
 mock.module("@open-agents/sandbox", () => ({
+  isSandboxProviderError: (error: unknown) =>
+    error instanceof Error && "errorClass" in error,
   connectSandbox: async (...args: unknown[]) => {
     connectCalls.push(args);
-    return sandbox("codesandbox");
+    if (connectError) {
+      throw connectError;
+    }
+    return sandbox(provisionProvider);
   },
   provisionSandbox: async (...args: unknown[]) => {
     provisionCalls.push(args);
     return {
-      sandbox: sandbox("codesandbox"),
-      provider: "codesandbox",
-      reason: "fallback",
+      sandbox: sandbox(provisionProvider),
+      provider: provisionProvider,
+      reason: provisionReason,
     };
   },
 }));
@@ -70,7 +80,7 @@ mock.module("@/lib/db/sessions", () => ({
     branch: "main",
     prNumber: null,
     isNewBranch: false,
-    globalSkillRefs: [],
+    globalSkillRefs,
   }),
   updateSessionIfNotArchived: async (...args: unknown[]) => {
     updateCalls.push(args);
@@ -145,7 +155,9 @@ mock.module("@/lib/sandbox/lifecycle-kick", () => ({
   kickSandboxLifecycleWorkflow: () => {},
 }));
 mock.module("@/lib/skills/global-skill-installer", () => ({
-  installGlobalSkills: async () => {},
+  installGlobalSkills: async (input: unknown) => {
+    installCalls.push(input);
+  },
 }));
 
 const provisioningModulePromise = import("./provisioning");
@@ -156,8 +168,13 @@ describe("session sandbox provisioning", () => {
     provisionCalls.length = 0;
     revokeCalls.length = 0;
     updateCalls.length = 0;
+    installCalls.length = 0;
     stopCalls = 0;
     sessionState = { type: "vercel" };
+    connectError = null;
+    provisionProvider = "codesandbox";
+    provisionReason = "fallback";
+    globalSkillRefs = [];
     updateResult = { id: "session-1" };
   });
 
@@ -212,6 +229,47 @@ describe("session sandbox provisioning", () => {
     });
     expect(result.selectionReason).toBe("restore");
     expect(result.didSetupWorkspace).toBe(false);
+  });
+
+  test("rebuilds a missing pinned Vercel sandbox from source as a fresh workspace", async () => {
+    sessionState = {
+      type: "vercel",
+      providerSandboxId: "session_session-1",
+      sandboxName: "session_session-1",
+      restore: {
+        kind: "named",
+        sandboxName: "session_session-1",
+      },
+    };
+    connectError = Object.assign(new Error("Status code 404 is not ok"), {
+      errorClass: "resource_not_found",
+    });
+    provisionProvider = "vercel";
+    provisionReason = "primary";
+    globalSkillRefs = [{ source: "vercel/ai", skillName: "ai-sdk" }];
+
+    const { provisionSessionSandbox } = await provisioningModulePromise;
+    const result = await provisionSessionSandbox({ sessionId: "session-1" });
+
+    expect(connectCalls[0]?.[0]).toMatchObject({
+      options: { createIfMissing: false },
+    });
+    expect(provisionCalls[0]?.[0]).toEqual({
+      source: {
+        repo: "https://github.com/acme/repo.git",
+        branch: "main",
+      },
+      persistenceKey: "session_session-1",
+    });
+    expect(provisionCalls[0]?.[1]).toMatchObject({
+      providerOrder: ["vercel"],
+    });
+    expect(installCalls).toHaveLength(1);
+    expect(result).toMatchObject({
+      provider: "vercel",
+      selectionReason: "primary",
+      didSetupWorkspace: true,
+    });
   });
 
   test("stops the selected provider if archiving wins the persistence race", async () => {
