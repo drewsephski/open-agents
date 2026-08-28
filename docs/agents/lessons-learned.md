@@ -8,6 +8,7 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - The system prompt should list all model-invocable skills (including non-user-invocable ones), and reserve user-invocable filtering for the slash-command UI.
 - Glob patterns ending in `**` (for example `"**"` or `"src/**"`) should be treated as recursive, even when `**` is the final segment.
 - In shell tools, avoid piping primary command output directly to `head` when exit-code handling matters; pipeline semantics can mask real failures from the primary command.
+- In zsh, do not use `path` as a loop or task variable; it is tied to `PATH`, so assigning it can make commands such as `git` and `rg` disappear for the rest of the shell invocation.
 - Bash approval heuristics should reserve prompts for clearly destructive commands (for example `rm -rf`, `sudo`, or mutating git/package-manager operations); treating pipes/chaining and common filesystem reads as dangerous creates too many false-positive approvals for normal inspection commands.
 - Verification instructions must tell the agent to consult AGENTS.md / `package.json` scripts **before** listing generic steps like "typecheck -> lint -> build"; otherwise models default to raw commands (`npx tsc`, `eslint .`) which bypass project-specific tool config (turbo pipelines, tsconfig references, ultracite, etc.) and produce incorrect or incomplete results.
 - Tool renderer `part.output` values may be `unknown`; when accessing fields like `files` or `matches`, add runtime narrowing/type guards first (in both TUI and web renderers) to satisfy strict typecheck.
@@ -20,6 +21,8 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - Node 24's built-in TypeScript support uses native ESM resolution and ignores tsconfig path aliases, so utility-script dependency chains need explicit `.ts` extensions and relative imports.
 - `bunx @vercel/config validate` executes the CLI under Node via its shebang and cannot parse TypeScript-style `vercel.ts` imports; use `bunx --bun @vercel/config validate` (or `bun node_modules/@vercel/config/dist/cli.js validate`) for reliable local validation.
 - Successful Vercel CLI auth (`vercel whoami`, team/project REST APIs, `.vercel` linking) does **not** guarantee Workflow observability access. `workflow inspect ... --backend vercel` can still fail with `401 {"error":{"code":"unauthorized","message":"You are not allowed to access this endpoint."}}` when the user/token lacks the Vercel product permission documented as `Vercel Workflow` (and possibly related Observability access), even if `WORKFLOW_VERCEL_AUTH_TOKEN` is passed explicitly from the Vercel CLI auth file.
+- Workflow SDK `5.0.0-beta.5` is incompatible with Vercel event snapshots that omit `run.input` and `step.input` when those values are stored as remote references; keep the paired `workflow` / `@workflow/ai` beta versions current and retain a real-schema compatibility test for this production boundary.
+- A missing named Vercel restore must never let `createIfMissing` produce an uninitialized workspace: reconnect without implicit creation, then re-provision only the pinned provider with the repository source and rerun fresh-workspace setup. After allocation succeeds, circuit-breaker success bookkeeping is best-effort so a database error cannot leak and invalidate a live sandbox; legacy rows that still have a snapshot should retry it in the same resume request after a named 404.
 
 ## Next.js
 
@@ -43,6 +46,17 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 
 ## Sandbox Lifecycle
 
+- CodeSandbox SDK 2.4 command completion does not expose separate stdout,
+  stderr, and exit status in the Vercel contract shape; capture them into
+  per-command temporary files and always clean those files after completion,
+  abort, timeout, or provider failure.
+- CodeSandbox control, preview HTTP, and preview WebSocket connections can
+  otherwise keep or wake a VM; disable both automatic wake channels and call
+  `keepActiveWhileConnected(false)` so durable server activity remains
+  authoritative.
+- Persist the concrete provider and restore key at provisioning time. Provider
+  fallback is safe only before a workspace exists; reconnect, lifecycle, and
+  mutating commands must remain pinned to the original provider.
 - Detached/background bash results may have `exitCode: null` for both successful starts and explicit tool failures; bash renderer error state must also honor `output.success === false` (not only numeric non-zero exit codes), and detached quick-failure probing should prefer a timer-vs-wait race branch over matching SDK-specific error names.
 - Creating a sandbox snapshot automatically shuts down that sandbox; lifecycle plans and implementations must treat snapshotting as a stop/hibernate transition, not a non-disruptive backup.
 - Vercel `sdk.domain(port)` throws when a sandbox has no route for that port (common on some restored/reconnected sandboxes); environment/prompt metadata should guard per-port URL generation instead of assuming every configured port is routable.

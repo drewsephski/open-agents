@@ -133,11 +133,16 @@ export async function refreshBaseSnapshot(
     log("Creating snapshot from prepared sandbox.");
     const snapshot = await sandbox.snapshot();
     snapshotCreated = true;
-    log(`Created snapshot ${snapshot.snapshotId}.`);
+    if (snapshot.snapshot.provider !== "vercel") {
+      throw new Error(
+        "Vercel base snapshot refresh returned another provider.",
+      );
+    }
+    log(`Created snapshot ${snapshot.snapshot.id}.`);
 
     return {
       sourceSnapshotId: options.baseSnapshotId,
-      snapshotId: snapshot.snapshotId,
+      snapshotId: snapshot.snapshot.id,
       commandResults,
     };
   } finally {

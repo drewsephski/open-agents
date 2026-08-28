@@ -20,20 +20,28 @@ describe("skills cache", () => {
         sandboxName: "session_session-1",
         snapshotId: "snap-123",
       }),
-    ).toBe("skills:v1:session-1:session_session-1");
+    ).toBe("skills:v1:session-1:vercel:session_session-1");
 
     expect(
       getSkillsCacheKey("session-1", {
         type: "vercel",
         snapshotId: "snap-123",
       }),
-    ).toBe("skills:v1:session-1:snap-123");
+    ).toBe("skills:v1:session-1:vercel:snap-123");
 
     expect(
       getSkillsCacheKey("session-1", {
         type: "vercel",
       }),
-    ).toBe("skills:v1:session-1:local");
+    ).toBe("skills:v1:session-1:vercel:local");
+
+    expect(
+      getSkillsCacheKey("session-1", {
+        type: "codesandbox",
+        providerSandboxId: "csb-1",
+        restore: { kind: "hibernate", sandboxId: "csb-1" },
+      }),
+    ).toBe("skills:v1:session-1:codesandbox:csb-1");
   });
 
   test("caches empty skill arrays in the in-memory fallback until TTL expires", async () => {

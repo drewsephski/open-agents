@@ -179,6 +179,7 @@ function truncateCommandOutput(output: string): {
  */
 export class VercelSandbox implements Sandbox {
   readonly type = "cloud" as const;
+  readonly provider = "vercel" as const;
   /** Durable persistent sandbox name. */
   readonly name: string;
   /** Current runtime session identifier. */
@@ -798,6 +799,14 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
     ]);
   }
 
+  async writeFileBuffer(path: string, content: Buffer): Promise<void> {
+    const parentDir = path.substring(0, path.lastIndexOf("/"));
+    if (parentDir) {
+      await this.mkdir(parentDir, { recursive: true });
+    }
+    await this.session.writeFiles([{ path, content }]);
+  }
+
   async stat(path: string): Promise<SandboxStats> {
     // Use stat command to get file info
     // Use tab delimiter to avoid issues with file types containing spaces (e.g., "regular file")
@@ -1025,6 +1034,18 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
     await syncGitHubCredentialBrokering(this.sdk, token);
   }
 
+  async withGitHubAuth<T>(
+    token: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    await this.setGitHubAuthToken(token);
+    try {
+      return await operation();
+    } finally {
+      await this.setGitHubAuthToken(undefined);
+    }
+  }
+
   /**
    * Create a native Vercel snapshot of the sandbox filesystem.
    * IMPORTANT: This automatically stops the sandbox after snapshot creation.
@@ -1044,7 +1065,11 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
     }
 
     return {
-      snapshotId: snapshot.snapshotId,
+      snapshot: {
+        provider: "vercel",
+        id: snapshot.snapshotId,
+        kind: "native",
+      },
     };
   }
 
@@ -1097,7 +1122,9 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
     this.refreshStateFromCurrentSession();
     return {
       type: "vercel",
+      providerSandboxId: this.name,
       sandboxName: this.name,
+      restore: { kind: "named", sandboxName: this.name },
       ...(this.expiresAt !== undefined ? { expiresAt: this.expiresAt } : {}),
     };
   }

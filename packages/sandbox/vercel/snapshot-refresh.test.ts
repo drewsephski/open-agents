@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { SandboxConnectConfig } from "../factory";
-import type { ExecResult } from "../interface";
+import type { ExecResult, SnapshotResult } from "../interface";
 import {
   DEFAULT_BASE_SNAPSHOT_COMMAND_TIMEOUT_MS,
   refreshBaseSnapshot,
@@ -14,7 +14,7 @@ interface MockSnapshotSandbox {
     timeoutMs: number,
   ) => Promise<ExecResult>;
   stop: () => Promise<void>;
-  snapshot?: () => Promise<{ snapshotId: string }>;
+  snapshot?: () => Promise<SnapshotResult>;
 }
 
 function createExecResult(overrides: Partial<ExecResult> = {}): ExecResult {
@@ -35,7 +35,9 @@ function createSandbox(
     workingDirectory: "/vercel/sandbox",
     exec: async () => createExecResult(),
     stop: async () => {},
-    snapshot: async () => ({ snapshotId: "snap-next" }),
+    snapshot: async () => ({
+      snapshot: { provider: "vercel", id: "snap-next", kind: "native" },
+    }),
     ...overrides,
   };
 }
@@ -50,7 +52,13 @@ describe("refreshBaseSnapshot", () => {
     }> = [];
     const logs: string[] = [];
     const stop = mock(async () => {});
-    const snapshot = mock(async () => ({ snapshotId: "snap-next" }));
+    const snapshot = mock(async () => ({
+      snapshot: {
+        provider: "vercel" as const,
+        id: "snap-next",
+        kind: "native" as const,
+      },
+    }));
 
     const result = await refreshBaseSnapshot(
       {
@@ -133,7 +141,13 @@ describe("refreshBaseSnapshot", () => {
 
   test("stops the sandbox and surfaces command output when setup fails", async () => {
     const stop = mock(async () => {});
-    const snapshot = mock(async () => ({ snapshotId: "snap-next" }));
+    const snapshot = mock(async () => ({
+      snapshot: {
+        provider: "vercel" as const,
+        id: "snap-next",
+        kind: "native" as const,
+      },
+    }));
 
     const refreshPromise = refreshBaseSnapshot(
       {

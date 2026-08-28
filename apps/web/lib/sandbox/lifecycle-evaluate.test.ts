@@ -13,11 +13,18 @@ interface TestSessionRecord {
     | "restoring"
     | "archived"
     | "failed";
-  sandboxState: {
-    type: "vercel";
-    sandboxName: string;
-    expiresAt: number;
-  };
+  sandboxState:
+    | {
+        type: "vercel";
+        sandboxName: string;
+        expiresAt: number;
+      }
+    | {
+        type: "codesandbox";
+        providerSandboxId: string;
+        restore: { kind: "hibernate"; sandboxId: string };
+        expiresAt: number;
+      };
   hibernateAfter: Date | null;
   lastActivityAt: Date | null;
   sandboxExpiresAt: Date | null;
@@ -191,9 +198,48 @@ describe("evaluateSandboxLifecycle", () => {
         snapshotCreatedAt: null,
         sandboxState: {
           type: "vercel",
+          providerSandboxId: "session_session-1",
           sandboxName: "session_session-1",
+          restore: {
+            kind: "named",
+            sandboxName: "session_session-1",
+          },
         },
       }),
     );
+  });
+
+  test("hibernates CodeSandbox and retains its original restore handle", async () => {
+    const nowMs = Date.now();
+    sessionRecord = {
+      ...makeDueSession(),
+      sandboxState: {
+        type: "codesandbox",
+        providerSandboxId: "csb-1",
+        restore: { kind: "hibernate", sandboxId: "csb-1" },
+        expiresAt: nowMs + 60_000,
+      },
+    };
+    spies.connectSandbox.mockImplementationOnce(async () => ({
+      stop: stopSpy,
+      getState: () => ({
+        type: "codesandbox",
+        providerSandboxId: "csb-1",
+        restore: { kind: "hibernate", sandboxId: "csb-1" },
+      }),
+    }));
+
+    expect(
+      await evaluateSandboxLifecycle("session-1", "status-check-overdue"),
+    ).toEqual({ action: "hibernated" });
+    const updateCalls = spies.updateSession.mock.calls as unknown[][];
+    expect(updateCalls.at(-1)?.[1]).toMatchObject({
+      lifecycleState: "hibernated",
+      sandboxState: {
+        type: "codesandbox",
+        providerSandboxId: "csb-1",
+        restore: { kind: "hibernate", sandboxId: "csb-1" },
+      },
+    });
   });
 });
