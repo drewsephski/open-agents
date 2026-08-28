@@ -20,6 +20,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { ModelCombobox } from "@/components/model-combobox";
+import { ProviderIcon } from "@/components/provider-icons";
 import { useModelOptions } from "@/hooks/use-model-options";
 import { useSession } from "@/hooks/use-session";
 import {
@@ -35,6 +36,10 @@ import {
   getDefaultModelOptionId,
   withMissingModelOption,
 } from "@/lib/model-options";
+import {
+  getRecommendedModelBadge,
+  getRecommendedModels,
+} from "@/lib/recommended-models";
 
 const SANDBOX_OPTIONS: Array<{ id: SandboxType; name: string }> = [
   { id: "vercel", name: "Vercel" },
@@ -923,6 +928,11 @@ function EnabledModelsSection({
     [modelOptions, enabledModelIds],
   );
 
+  const recommendedOptions = useMemo(
+    () => getRecommendedModels(modelOptions),
+    [modelOptions],
+  );
+
   const availableOptions = useMemo(() => {
     const opts = modelOptions.filter(
       (option) => !enabledModelIds.has(option.id),
@@ -1009,6 +1019,53 @@ function EnabledModelsSection({
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {recommendedOptions.length > 0 && (
+        <div className="space-y-2 pt-1">
+          <p className="text-xs font-medium text-foreground">
+            Recommended for coding
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {recommendedOptions.map((option) => {
+              const isEnabled = enabledModelIds.has(option.id);
+              const recommendationBadge = getRecommendedModelBadge(option.id);
+
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  disabled={disabled || isEnabled}
+                  onClick={() => onAddModel(option.id)}
+                  className="flex min-w-0 items-center gap-3 rounded-lg border border-border/70 px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-muted/40 disabled:pointer-events-none disabled:opacity-60"
+                >
+                  <ProviderIcon
+                    provider={option.provider}
+                    className="size-4 shrink-0"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium">
+                        {option.label}
+                      </span>
+                      {recommendationBadge && (
+                        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
+                          {recommendationBadge}
+                        </span>
+                      )}
+                    </span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {option.id}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {isEnabled ? "Added" : "Add"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 

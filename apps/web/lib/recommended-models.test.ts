@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { getRecommendedModels } from "./recommended-models";
+import {
+  getRecommendedModelBadge,
+  getRecommendedModels,
+} from "./recommended-models";
 
 describe("getRecommendedModels", () => {
   test("picks the first available id for each role", () => {
@@ -23,5 +26,18 @@ describe("getRecommendedModels", () => {
     expect(getRecommendedModels(options)).toEqual([
       { id: "z-ai/glm-5.3-flash" },
     ]);
+  });
+
+  test("returns the concise recommendation badge for each curated model", () => {
+    expect(getRecommendedModelBadge("z-ai/glm-5.3-flash")).toBe("Best value");
+    expect(getRecommendedModelBadge("openai/gpt-5.6-luna")).toBe(
+      "Best overall",
+    );
+    expect(getRecommendedModelBadge("anthropic/claude-fable-5")).toBe(
+      "Max performance",
+    );
+    expect(getRecommendedModelBadge("deepseek/deepseek-v4-flash")).toBe(
+      undefined,
+    );
   });
 });

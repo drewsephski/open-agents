@@ -7,19 +7,28 @@
  */
 export interface RecommendedModelSpec {
   ids: readonly string[];
+  badge: string;
 }
 
 export const RECOMMENDED_MODEL_SPECS: readonly RecommendedModelSpec[] = [
   {
     ids: ["z-ai/glm-5.3-flash"],
+    badge: "Best value",
   },
   {
     ids: ["openai/gpt-5.6-luna"],
+    badge: "Best overall",
   },
   {
     ids: ["anthropic/claude-fable-5"],
+    badge: "Max performance",
   },
 ];
+
+export function getRecommendedModelBadge(modelId: string): string | undefined {
+  return RECOMMENDED_MODEL_SPECS.find((spec) => spec.ids.includes(modelId))
+    ?.badge;
+}
 
 export function getRecommendedModels<T extends { id: string }>(
   options: T[],
