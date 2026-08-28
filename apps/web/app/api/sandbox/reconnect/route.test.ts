@@ -60,11 +60,24 @@ mock.module("@/lib/sandbox/lifecycle", () => ({
 }));
 
 mock.module("@open-agents/sandbox", () => ({
+  isSandboxProviderError: (error: unknown) =>
+    Boolean(
+      error && typeof error === "object" && "isSandboxProviderError" in error,
+    ),
   connectSandbox: async (state: {
     type: "vercel";
     sandboxName?: string;
     expiresAt?: number;
   }) => {
+    if (
+      !probeResult.success &&
+      /status code (404|410)/i.test(probeResult.stderr)
+    ) {
+      throw Object.assign(new Error(probeResult.stderr), {
+        isSandboxProviderError: true,
+        errorClass: "resource_not_found",
+      });
+    }
     const expiresAt = Date.now() + 2 * 60_000;
     return {
       workingDirectory: "/vercel/sandbox",
@@ -158,10 +171,7 @@ describe("/api/sandbox/reconnect", () => {
     expect(updateCalls[0]?.sessionId).toBe("session-1");
     expect(updateCalls[0]?.patch.lifecycleState).toBe("hibernated");
     expect(updateCalls[0]?.patch.lifecycleError).toBeNull();
-    expect(updateCalls[0]?.patch.sandboxState).toEqual({
-      type: "vercel",
-      sandboxName: "session_session-1",
-    });
+    expect(updateCalls[0]?.patch.sandboxState).toEqual({ type: "vercel" });
   });
 
   test("drops a missing sandbox resume handle when the reconnect probe hits a 404", async () => {

@@ -270,9 +270,14 @@ const IDLE_STATE: ToolRenderState = {
  * Render a completed subagent tool call using the real renderers.
  * This is a local dispatch to avoid circular imports with tool-call.tsx.
  */
-function SubagentToolCall({ part }: { part: WebAgentUIToolPart }) {
+function SubagentToolCall({
+  part,
+  cwd,
+}: {
+  part: WebAgentUIToolPart;
+  cwd: string;
+}) {
   const state = extractRenderState(part, null, false);
-  const cwd = DEFAULT_WORKING_DIRECTORY;
 
   switch (part.type) {
     case "tool-bash":
@@ -341,9 +346,10 @@ function PendingMiniToolCall({
 export function TaskRenderer({
   part,
   state,
+  cwd = DEFAULT_WORKING_DIRECTORY,
   onApprove,
   onDeny,
-}: ToolRendererProps<"tool-task">) {
+}: ToolRendererProps<"tool-task"> & { cwd?: string }) {
   const input = part.input;
   const desc = input?.task ?? "Spawning subagent";
   const subagentType = input?.subagentType;
@@ -401,7 +407,11 @@ export function TaskRenderer({
       {/* Complete: render real tool call components */}
       {isComplete &&
         completedParts.map((toolPart) => (
-          <SubagentToolCall key={toolPart.toolCallId} part={toolPart} />
+          <SubagentToolCall
+            key={toolPart.toolCallId}
+            part={toolPart}
+            cwd={cwd}
+          />
         ))}
     </div>
   ) : undefined;

@@ -55,6 +55,7 @@ async function createLocalSandbox(): Promise<{
   const sandbox: LocalSandbox = {
     sandboxId,
     type: "cloud",
+    provider: "vercel",
     workingDirectory,
     async readFile(filePath: string, encoding: "utf-8") {
       return await readFile(filePath, { encoding });

@@ -45,7 +45,7 @@ import {
   useSessionChatRuntime,
 } from "./hooks/use-session-chat-runtime";
 
-const KNOWN_SANDBOX_TYPES = ["vercel"] as const;
+const KNOWN_SANDBOX_TYPES = ["vercel", "codesandbox"] as const;
 type KnownSandboxType = (typeof KNOWN_SANDBOX_TYPES)[number];
 
 function asKnownSandboxType(value: unknown): KnownSandboxType | null {
@@ -59,6 +59,7 @@ export type SandboxInfo = {
   createdAt: number;
   timeout: number | null;
   currentBranch?: string;
+  workingDirectory?: string;
 };
 
 export type ReconnectionStatus =
@@ -481,6 +482,7 @@ export function SessionChatProvider({
           const nextSandboxInfo = {
             createdAt: now,
             timeout,
+            workingDirectory: data.workingDirectory,
           };
           setSandboxInfoState(nextSandboxInfo);
           sandboxInfoCache.set(sessionId, nextSandboxInfo);
@@ -758,22 +760,18 @@ export function SessionChatProvider({
       }
       return {
         ...prev,
-        sandboxState: {
-          ...prev.sandboxState,
-          type: sandboxType,
-        } as SandboxState,
+        sandboxState:
+          prev.sandboxState.type === sandboxType
+            ? prev.sandboxState
+            : ({ type: sandboxType } as SandboxState),
       };
     });
   }, []);
 
   const preferredSandboxType =
     asKnownSandboxType(sessionRecord.sandboxState?.type) ?? "vercel";
-  const supportsDiff =
-    sessionRecord.sandboxState?.type === undefined ||
-    sessionRecord.sandboxState.type === "vercel";
-  const supportsRepoCreation =
-    sessionRecord.sandboxState?.type === undefined ||
-    sessionRecord.sandboxState.type === "vercel";
+  const supportsDiff = true;
+  const supportsRepoCreation = true;
   const hasRuntimeSandboxState = hasRuntimeSandboxStateValue(
     sessionRecord.sandboxState,
   );

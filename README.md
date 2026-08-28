@@ -35,7 +35,8 @@ That separation is the main point of the project:
 
 - chat-driven coding agent with file, search, shell, task, skill, and web tools
 - durable multi-step execution with Workflow SDK-backed runs, streaming, and cancellation
-- isolated Vercel sandboxes with snapshot-based resume
+- isolated cloud sandboxes with Vercel primary, CodeSandbox fallback, and
+  provider-pinned resume
 - repo cloning and branch work inside the sandbox
 - optional auto-commit, push, and PR creation after a successful run
 - session sharing via read-only links
@@ -89,6 +90,9 @@ OPEN_AGENTS_RESOURCE_PROFILE=
 VERCEL_PROJECT_PRODUCTION_URL=
 NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL=
 VERCEL_SANDBOX_BASE_SNAPSHOT_ID=
+SANDBOX_PROVIDER_ORDER=vercel,codesandbox
+CSB_API_KEY=
+CODESANDBOX_ENABLED=
 ELEVENLABS_API_KEY=
 ```
 
@@ -96,6 +100,9 @@ ELEVENLABS_API_KEY=
 - `OPEN_AGENTS_RESOURCE_PROFILE`: optional deployment resource profile. Unset defaults to Hobby-compatible chat and sandbox resources; set to `standard` for longer-running sandboxes on paid Vercel plans.
 - `VERCEL_PROJECT_PRODUCTION_URL` / `NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL`: canonical production URL for metadata and some callback behavior.
 - `VERCEL_SANDBOX_BASE_SNAPSHOT_ID`: optional base snapshot for fresh sandboxes. If unset, sandboxes start from Vercel's standard Sandbox runtime. Use a snapshot created in/accessible to your own Vercel scope.
+- `CSB_API_KEY`: optional CodeSandbox fallback credential. Missing credentials
+  preserve Vercel-only behavior. See
+  [sandbox provider fallback operations](docs/sandbox-provider-fallback.md).
 - `ELEVENLABS_API_KEY`: voice transcription.
 
 ## Deploy your own copy on Vercel
@@ -226,6 +233,7 @@ pnpm fix                    # lint + format fix
 pnpm typecheck              # typecheck all packages
 pnpm run ci                 # full CI: check, typecheck, tests, migration check
 pnpm sandbox:snapshot-base  # refresh sandbox base snapshot
+pnpm sandbox:probe:codesandbox # opt-in live CodeSandbox compatibility probe
 ```
 
 ## Repo layout
@@ -233,6 +241,6 @@ pnpm sandbox:snapshot-base  # refresh sandbox base snapshot
 ```text
 apps/web         Next.js app, workflows, auth, chat UI
 packages/agent   agent implementation, tools, subagents, skills
-packages/sandbox sandbox abstraction and Vercel sandbox integration
+packages/sandbox provider-neutral abstraction, Vercel, and CodeSandbox adapters
 packages/shared  shared utilities
 ```

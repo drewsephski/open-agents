@@ -13,10 +13,13 @@ import {
   hasPausedSandboxState,
   hasRuntimeSandboxState,
 } from "@/lib/sandbox/utils";
+import type { SandboxProvider } from "@open-agents/sandbox";
 
 export type SandboxStatusResponse = {
   status: "active" | "no_sandbox";
   hasSnapshot: boolean;
+  hasRestore: boolean;
+  provider?: SandboxProvider;
   lifecycleVersion: number;
   lifecycle: {
     serverTime: number;
@@ -97,6 +100,8 @@ export async function GET(req: Request): Promise<Response> {
   return Response.json({
     status: isActive ? "active" : "no_sandbox",
     hasSnapshot: hasPausedState,
+    hasRestore: hasPausedState,
+    provider: effectiveSessionRecord.sandboxState?.type,
     lifecycleVersion: effectiveSessionRecord.lifecycleVersion,
     lifecycle: {
       serverTime: Date.now(),

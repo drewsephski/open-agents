@@ -127,8 +127,8 @@ export async function createSandbox(
   }
 
   const data = (await response.json()) as {
-    mode: string;
+    provider: string;
   } & SandboxInfo;
 
-  return { ...data, type: data.mode };
+  return { ...data, type: data.provider };
 }

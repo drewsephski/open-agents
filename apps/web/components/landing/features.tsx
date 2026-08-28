@@ -87,7 +87,7 @@ export function LandingFeatures() {
           <Spotlight
             tone="ash"
             title="Keep agent work off your machine."
-            description="Every session gets an isolated Vercel sandbox and its own Git branch. Agents can install dependencies, start development servers, and test changes without competing for your local files or compute."
+            description="Every session gets an isolated cloud sandbox and its own Git branch. Agents can install dependencies, start development servers, and test changes without competing for your local files or compute."
             bullets={[
               "Run several tasks on separate branches",
               "Preview changes before they reach your codebase",

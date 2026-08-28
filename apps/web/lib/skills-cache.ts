@@ -41,21 +41,33 @@ function getSharedRedisClient(): SkillsCacheRedisClient | null {
 }
 
 function getSandboxScope(state: SandboxState | null | undefined): string {
+  const provider = state?.type ?? "none";
+  if (state && "providerSandboxId" in state) {
+    const providerSandboxId = state.providerSandboxId;
+    if (typeof providerSandboxId === "string" && providerSandboxId.length > 0) {
+      return `${provider}:${providerSandboxId}`;
+    }
+  }
+
   if (state && "sandboxName" in state) {
     const sandboxName = state.sandboxName;
     if (typeof sandboxName === "string" && sandboxName.length > 0) {
-      return sandboxName;
+      return `${provider}:${sandboxName}`;
     }
   }
 
   if (state && "snapshotId" in state) {
     const snapshotId = state.snapshotId;
     if (typeof snapshotId === "string" && snapshotId.length > 0) {
-      return snapshotId;
+      return `${provider}:${snapshotId}`;
     }
   }
 
-  return "local";
+  if (state?.type === "codesandbox" && state.restore?.kind === "hibernate") {
+    return `codesandbox:${state.restore.sandboxId}`;
+  }
+
+  return `${provider}:local`;
 }
 
 export function getSkillsCacheKey(

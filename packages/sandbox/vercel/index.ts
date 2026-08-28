@@ -5,6 +5,7 @@ export type {
 } from "./config.ts";
 export type { VercelState } from "./state.ts";
 export { connectVercel } from "./connect.ts";
+export { classifyVercelSandboxError } from "./errors.ts";
 export {
   DEFAULT_BASE_SNAPSHOT_COMMAND_TIMEOUT_MS,
   refreshBaseSnapshot,

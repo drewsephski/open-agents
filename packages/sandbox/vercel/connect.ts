@@ -31,8 +31,18 @@ function getRemainingTimeout(
 }
 
 function getSandboxName(state: VercelState): string | undefined {
+  if (state.restore?.kind === "named") {
+    return state.restore.sandboxName;
+  }
   if (typeof state.sandboxName === "string" && state.sandboxName.length > 0) {
     return state.sandboxName;
+  }
+
+  if (
+    typeof state.providerSandboxId === "string" &&
+    state.providerSandboxId.length > 0
+  ) {
+    return state.providerSandboxId;
   }
 
   if (typeof state.sandboxId === "string" && state.sandboxId.length > 0) {
@@ -72,7 +82,11 @@ function buildCreateConfig(
           },
         }
       : {}),
-    ...(state.snapshotId ? { restoreSnapshotId: state.snapshotId } : {}),
+    ...(state.restore?.kind === "snapshot"
+      ? { restoreSnapshotId: state.restore.snapshotId }
+      : state.snapshotId
+        ? { restoreSnapshotId: state.snapshotId }
+        : {}),
     env: options?.env,
     githubToken: options?.githubToken,
     gitUser: options?.gitUser,

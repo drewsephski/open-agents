@@ -14,7 +14,9 @@ interface TestSessionRecord {
   prStatus: "open" | "merged" | "closed" | null;
   sandboxState: {
     type: "vercel";
+    providerSandboxId?: string;
     sandboxName?: string;
+    restore?: { kind: "named"; sandboxName: string };
     expiresAt?: number;
   } | null;
   snapshotUrl: string | null;
@@ -228,7 +230,12 @@ describe("archiveSession", () => {
 
     expect(sessionRecord?.sandboxState).toEqual({
       type: "vercel",
+      providerSandboxId: "session_session-1",
       sandboxName: "session_session-1",
+      restore: {
+        kind: "named",
+        sandboxName: "session_session-1",
+      },
     });
   });
 

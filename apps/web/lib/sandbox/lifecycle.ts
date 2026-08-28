@@ -1,6 +1,6 @@
 import "server-only";
 
-import { connectSandbox, type SandboxState } from "@open-agents/sandbox";
+import type { SandboxState } from "@open-agents/sandbox";
 import {
   getChatsBySessionId,
   getSessionById,
@@ -13,8 +13,10 @@ import {
 import {
   canOperateOnSandbox,
   clearSandboxState,
-  getPersistentSandboxName,
+  getProviderSandboxId,
+  isSandboxState,
 } from "./utils";
+import { connectConfiguredSandbox } from "./connect";
 
 export type SandboxLifecycleState =
   | "provisioning"
@@ -184,10 +186,6 @@ export async function evaluateSandboxLifecycle(
   if (!canOperateOnSandbox(sandboxState)) {
     return { action: "skipped", reason: "sandbox-not-operable" };
   }
-  if (sandboxState.type !== "vercel") {
-    return { action: "skipped", reason: "unsupported-sandbox-type" };
-  }
-
   const nowMs = Date.now();
   const dueAtMs = getLifecycleDueAtMs(session);
   const isInactive = nowMs >= dueAtMs;
@@ -206,7 +204,9 @@ export async function evaluateSandboxLifecycle(
       lifecycleError: null,
     });
 
-    const sandbox = await connectSandbox(sandboxState);
+    const sandbox = await connectConfiguredSandbox(sandboxState, {
+      hibernationTimeoutMs: SANDBOX_INACTIVITY_TIMEOUT_MS,
+    });
 
     if (await hasActiveStreamForSession(sessionId)) {
       await restoreActiveLifecycleState(sessionId, sandboxState);
@@ -240,7 +240,10 @@ export async function evaluateSandboxLifecycle(
 
     await sandbox.stop();
 
-    const clearedState = clearSandboxState(sandboxState);
+    const stoppedState = sandbox.getState?.();
+    const clearedState = clearSandboxState(
+      isSandboxState(stoppedState) ? stoppedState : sandboxState,
+    );
     await updateSession(sessionId, {
       snapshotUrl: null,
       snapshotCreatedAt: null,
@@ -248,7 +251,7 @@ export async function evaluateSandboxLifecycle(
       ...buildHibernatedLifecycleUpdate(),
     });
     console.log(
-      `[Lifecycle] Hibernated sandbox for session ${sessionId} (reason=${reason}, sandboxName=${getPersistentSandboxName(clearedState) ?? "none"}).`,
+      `[Lifecycle] Hibernated sandbox for session ${sessionId} (reason=${reason}, provider=${clearedState?.type ?? "none"}, providerSandboxId=${getProviderSandboxId(clearedState) ? "present" : "none"}).`,
     );
     return { action: "hibernated" };
   } catch (error) {

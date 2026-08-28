@@ -83,8 +83,13 @@ describe("normalizeLegacySandboxState", () => {
 
     expect(result).toEqual({
       type: "vercel",
+      providerSandboxId: "sbx-legacy-1",
       sandboxName: "sbx-legacy-1",
       snapshotId: "snap-legacy-1",
+      restore: {
+        kind: "named",
+        sandboxName: "sbx-legacy-1",
+      },
       expiresAt: 123,
     });
   });
@@ -100,12 +105,17 @@ describe("normalizeLegacySandboxState", () => {
       }),
     ).toEqual({
       type: "vercel",
+      providerSandboxId: "session_123",
       sandboxName: "session_123",
+      restore: {
+        kind: "named",
+        sandboxName: "session_123",
+      },
       expiresAt: 456,
     });
   });
 
-  test("leaves supported sandbox states unchanged", async () => {
+  test("enriches supported Vercel states with provider restore metadata", async () => {
     const { normalizeLegacySandboxState } = await sessionsModulePromise;
 
     const state = {
@@ -114,7 +124,31 @@ describe("normalizeLegacySandboxState", () => {
       expiresAt: 456,
     } as const;
 
-    expect(normalizeLegacySandboxState(state)).toEqual(state);
+    expect(normalizeLegacySandboxState(state)).toEqual({
+      ...state,
+      providerSandboxId: "session_current-1",
+      restore: {
+        kind: "named",
+        sandboxName: "session_current-1",
+      },
+    });
+  });
+
+  test("normalizes CodeSandbox compatibility state", async () => {
+    const { normalizeLegacySandboxState } = await sessionsModulePromise;
+    expect(
+      normalizeLegacySandboxState({
+        type: "codesandbox",
+        sandboxId: "csb-1",
+        expiresAt: 123,
+      }),
+    ).toEqual({
+      type: "codesandbox",
+      providerSandboxId: "csb-1",
+      sandboxId: "csb-1",
+      restore: { kind: "hibernate", sandboxId: "csb-1" },
+      expiresAt: 123,
+    });
   });
 });
 

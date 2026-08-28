@@ -1,4 +1,8 @@
-import { connectSandbox, type SandboxState } from "@open-agents/sandbox";
+import {
+  isSandboxProviderError,
+  type SandboxState,
+  type SandboxProvider,
+} from "@open-agents/sandbox";
 import {
   requireAuthenticatedUser,
   requireOwnedSession,
@@ -10,12 +14,12 @@ import {
   getSandboxExpiresAtDate,
 } from "@/lib/sandbox/lifecycle";
 import {
-  clearUnavailableSandboxState,
+  clearSandboxResumeState,
   hasPausedSandboxState,
   hasResumableSandboxState,
   hasRuntimeSandboxState,
-  isSandboxUnavailableError,
 } from "@/lib/sandbox/utils";
+import { connectConfiguredSandbox } from "@/lib/sandbox/connect";
 
 export type ReconnectStatus =
   | "connected"
@@ -26,6 +30,10 @@ export type ReconnectStatus =
 export type ReconnectResponse = {
   status: ReconnectStatus;
   hasSnapshot: boolean;
+  hasRestore: boolean;
+  provider?: SandboxProvider;
+  /** Provider-specific workspace root used to render tool file paths. */
+  workingDirectory?: string;
   /** Timestamp (ms) when sandbox expires. Only present when status is "connected". */
   expiresAt?: number;
   lifecycle: {
@@ -90,6 +98,8 @@ export async function GET(req: Request): Promise<Response> {
     return Response.json({
       status: "no_sandbox",
       hasSnapshot: hasPausedState,
+      hasRestore: hasPausedState,
+      provider: sessionRecord.sandboxState?.type,
       lifecycle: buildLifecyclePayload(sessionRecord),
     } satisfies ReconnectResponse);
   }
@@ -102,20 +112,19 @@ export async function GET(req: Request): Promise<Response> {
     return Response.json({
       status: "no_sandbox",
       hasSnapshot: hasPausedState,
+      hasRestore: hasPausedState,
+      provider: sessionRecord.sandboxState?.type,
       lifecycle: buildLifecyclePayload(sessionRecord),
     } satisfies ReconnectResponse);
   }
 
   // Connect and probe the persisted runtime sandbox state.
   try {
-    const sandbox = await connectSandbox(state as SandboxState);
+    const sandbox = await connectConfiguredSandbox(state as SandboxState);
     const probe = await sandbox.exec("pwd", sandbox.workingDirectory, 15_000);
     if (!probe.success) {
       const probeError =
         probe.stderr?.trim() || probe.stdout?.trim() || "sandbox probe failed";
-      if (isSandboxUnavailableError(probeError)) {
-        throw new Error(probeError);
-      }
       console.warn(
         `[Reconnect] session=${sessionId} non-fatal probe failure while reconnecting: ${probeError}`,
       );
@@ -149,12 +158,18 @@ export async function GET(req: Request): Promise<Response> {
     return Response.json({
       status: "connected",
       hasSnapshot: hasPausedState,
+      hasRestore: hasPausedState,
+      provider: refreshedState.type,
+      workingDirectory: sandbox.workingDirectory,
       expiresAt: sandbox.expiresAt,
       lifecycle: buildLifecyclePayload(updatedSession ?? sessionRecord),
     } satisfies ReconnectResponse);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (!isSandboxUnavailableError(message)) {
+    if (
+      !isSandboxProviderError(error) ||
+      error.errorClass !== "resource_not_found"
+    ) {
       console.warn(
         `[Reconnect] session=${sessionId} transient reconnect error, preserving runtime state: ${message}`,
       );
@@ -168,15 +183,14 @@ export async function GET(req: Request): Promise<Response> {
       return Response.json({
         status: "connected",
         hasSnapshot: hasPausedState,
+        hasRestore: hasPausedState,
+        provider: state.type,
         expiresAt: safeExpiresAt,
         lifecycle: buildLifecyclePayload(sessionRecord),
       } satisfies ReconnectResponse);
     }
 
-    const clearedState = clearUnavailableSandboxState(
-      sessionRecord.sandboxState,
-      message,
-    );
+    const clearedState = clearSandboxResumeState(sessionRecord.sandboxState);
     const hasResumeStateAfterFailure =
       hasResumableSandboxState(clearedState) || !!sessionRecord.snapshotUrl;
 
@@ -190,6 +204,8 @@ export async function GET(req: Request): Promise<Response> {
     return Response.json({
       status: "expired",
       hasSnapshot: hasResumeStateAfterFailure,
+      hasRestore: hasResumeStateAfterFailure,
+      provider: state.type,
       lifecycle: {
         serverTime: Date.now(),
         state: "hibernated",
