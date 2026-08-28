@@ -109,7 +109,42 @@ describe("GET /api/github/app/install", () => {
     expect(location).toBeTruthy();
     const redirectUrl = new URL(location as string);
     expect(redirectUrl.origin).toBe("https://github.com");
-    expect(redirectUrl.pathname).toContain("open-agents");
+    expect(redirectUrl.pathname).toBe("/apps/open-agents/installations/new");
+    expect(redirectUrl.searchParams.get("state")).toBe("state-123");
+  });
+
+  test("uses the standard install URL for a specific GitHub account", async () => {
+    const { GET } = await routeModulePromise;
+
+    const response = await GET(
+      createRequest(
+        "http://localhost/api/github/app/install?next=/sessions&target_id=12345",
+      ),
+    );
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).toBeTruthy();
+    const redirectUrl = new URL(location as string);
+    expect(redirectUrl.pathname).toBe("/apps/open-agents/installations/new");
+    expect(redirectUrl.searchParams.get("target_id")).toBe("12345");
+  });
+
+  test("uses the standard install URL when reconnecting GitHub", async () => {
+    const { GET } = await routeModulePromise;
+
+    const response = await GET(
+      createRequest(
+        "http://localhost/api/github/app/install?next=/sessions&reconnect=1",
+      ),
+    );
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).toBeTruthy();
+    const redirectUrl = new URL(location as string);
+    expect(redirectUrl.pathname).toBe("/apps/open-agents/installations/new");
+    expect(redirectUrl.searchParams.get("target_id")).toBe("12345");
   });
 
   test("blocks managed template trial users", async () => {
