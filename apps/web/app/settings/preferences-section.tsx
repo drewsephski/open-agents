@@ -648,7 +648,7 @@ export function PreferencesSection() {
             />
             {(preferences?.publicUsageEnabled ?? false) &&
               publicProfilePath && (
-                <div className="grid gap-2 pl-4">
+                <div className="grid gap-2 pl-4 pt-3">
                   <Label htmlFor="public-usage-url">Public profile URL</Label>
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <Input
