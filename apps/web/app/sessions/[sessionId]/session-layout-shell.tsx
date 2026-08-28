@@ -67,7 +67,7 @@ function SessionLayoutInner({
       {/* Portal target for the git panel — slideover on mobile, sidebar on larger screens */}
       <div
         ref={panelPortalRef}
-        className={`absolute right-0 top-0 z-30 flex h-full w-72 flex-col overflow-hidden border-l border-border bg-background shadow-lg transition-transform duration-200 ease-in-out sm:relative sm:right-auto sm:top-auto sm:z-0 sm:shrink-0 sm:translate-x-0 sm:shadow-none sm:transition-[width] ${
+        className={`absolute right-0 top-0 z-30 flex h-full w-72 flex-col overflow-hidden border-l border-border bg-sidebar transition-transform duration-200 ease-in-out sm:relative sm:right-auto sm:top-auto sm:z-0 sm:shrink-0 sm:translate-x-0 sm:shadow-none sm:transition-[width] ${
           gitPanelOpen
             ? "translate-x-0 sm:w-72 sm:border-l xl:w-80"
             : "translate-x-full sm:w-0 sm:border-l-0"

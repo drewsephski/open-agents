@@ -18,7 +18,7 @@ export function SessionsIndexShell() {
 
   return (
     <>
-      <header className="border-b border-border px-3 py-2 lg:px-4 lg:py-3">
+      <header className="px-3 py-2 lg:px-4 lg:py-3">
         <div className="flex min-h-8 items-center gap-2">
           <SidebarTrigger className="shrink-0" />
         </div>
@@ -29,9 +29,9 @@ export function SessionsIndexShell() {
             <EmptyMedia variant="icon">
               <MessageSquare />
             </EmptyMedia>
-            <EmptyTitle>Select a Session</EmptyTitle>
+            <EmptyTitle>Select a session</EmptyTitle>
             <EmptyDescription>
-              Choose a session from the sidebar to continue, or start a new one.
+              Pick one from the sidebar, or start a new session.
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>

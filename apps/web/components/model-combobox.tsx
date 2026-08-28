@@ -148,7 +148,7 @@ export function ModelCombobox({
             <CommandEmpty>{emptyText}</CommandEmpty>
             {showRecommended ? (
               <CommandGroup heading="Recommended">
-                {recommended.map(({ option, label }) => {
+                {recommended.map((option) => {
                   const provider =
                     option.provider ?? getProviderFromModelId(option.id);
                   const shortLabel = stripProviderPrefix(
@@ -158,7 +158,7 @@ export function ModelCombobox({
                   return (
                     <CommandItem
                       key={`recommended:${option.id}`}
-                      value={`recommended ${option.label} ${option.id} ${label}`}
+                      value={`recommended ${option.label} ${option.id}`}
                       onSelect={() => {
                         onChange(option.id);
                         setSearch("");
@@ -171,12 +171,9 @@ export function ModelCombobox({
                         className="mr-1.5 size-3.5 shrink-0 opacity-70"
                       />
                       <span className="min-w-0 truncate">{shortLabel}</span>
-                      <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                        {label}
-                      </span>
                       <CheckIcon
                         className={cn(
-                          "ml-1.5 size-4 shrink-0",
+                          "ml-auto size-4 shrink-0",
                           value === option.id ? "opacity-100" : "opacity-0",
                         )}
                       />

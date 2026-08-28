@@ -1824,7 +1824,7 @@ export function GitPanel(props: GitPanelProps) {
   ];
 
   return (
-    <div className="flex h-full flex-col bg-background">
+    <div className="flex h-full flex-col bg-sidebar">
       {/* Panel top bar: PR link or branch name — matches session header height */}
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
         {/* Left: PR link or repo info */}
@@ -1900,7 +1900,7 @@ export function GitPanel(props: GitPanelProps) {
       </div>
 
       {/* Tab bar — matches chat tabs sub-header height */}
-      <div className="flex items-center gap-0.5 border-b border-border bg-muted/30 px-2 py-[7px]">
+      <div className="flex items-center gap-0.5 border-b border-border px-2 py-[7px]">
         {gitPanelTabs.map((tab) => (
           <button
             key={tab}

@@ -18,7 +18,7 @@ export function AuthScreen({ mode, callbackUrl }: AuthScreenProps) {
     <div className="relative flex min-h-dvh flex-col bg-background text-foreground">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,oklch(0.35_0.02_260/0.35),transparent_55%)] dark:bg-[radial-gradient(ellipse_at_50%_0%,oklch(1_0_0/0.04),transparent_55%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,oklch(0.72_0.04_70/0.18),transparent_55%)] dark:bg-[radial-gradient(ellipse_at_50%_0%,oklch(0.55_0.03_70/0.12),transparent_55%)]"
       />
 
       <header className="relative z-10 px-5 py-4">

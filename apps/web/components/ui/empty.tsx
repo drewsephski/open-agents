@@ -38,7 +38,7 @@ function EmptyMedia({
       className={cn(
         "flex items-center justify-center [&_svg]:size-6",
         variant === "icon" &&
-          "mb-2 rounded-lg border bg-card p-3 text-muted-foreground shadow-xs",
+          "mb-2 rounded-lg bg-muted p-3 text-muted-foreground",
         className,
       )}
       {...props}

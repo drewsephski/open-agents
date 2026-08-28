@@ -21,6 +21,7 @@ import type { CSSProperties } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BranchPickerDialog } from "@/components/branch-picker-dialog";
 import { getValidRenameTitle } from "@/components/inbox-sidebar-rename";
+import { InboxSidebarStatusTabs } from "@/components/inbox-sidebar-status-tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -540,8 +541,8 @@ const SessionRow = memo(function SessionRow({
   const sessionButton = (
     <button
       type="button"
-      className={`group relative flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left outline-none transition-[background-color,opacity] cursor-pointer ${
-        isActive ? "bg-sidebar-active" : "hover:bg-muted/50"
+      className={`group relative flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-left outline-none transition-[background-color,opacity] ${
+        isActive ? "bg-sidebar-active" : "hover:bg-sidebar-accent"
       } ${isPending ? "opacity-80" : "opacity-100"} ${actionButtons ? "pr-12" : ""}`}
       onClick={() => onSessionClick(session)}
       onFocus={() => onSessionPrefetch(session)}
@@ -574,8 +575,8 @@ const SessionRow = memo(function SessionRow({
 
   const rowButton = isRenaming ? (
     <div
-      className={`group relative flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left outline-none transition-[background-color,opacity] ${
-        isActive ? "bg-sidebar-active" : "bg-muted/50"
+      className={`group relative flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left outline-none transition-[background-color,opacity] ${
+        isActive ? "bg-sidebar-active" : "bg-sidebar-accent"
       } ${renamePending ? "opacity-80" : "opacity-100"}`}
       style={sessionRowPerformanceStyle}
       onMouseEnter={handleMouseEnter}
@@ -964,11 +965,11 @@ export function InboxSidebar({
 
   return (
     <>
-      <div className="border-b border-border p-3">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center px-2 py-1.5 text-sm text-primary">
-            <span>Sessions</span>
-          </div>
+      <div className="border-b border-sidebar-border px-3 py-3">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <p className="px-1 text-[13px] font-medium text-sidebar-foreground">
+            Sessions
+          </p>
           <Button
             type="button"
             variant="ghost"
@@ -979,47 +980,19 @@ export function InboxSidebar({
               }
               onOpenNewSession();
             }}
-            className="h-7 w-7"
+            className="h-7 w-7 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+            aria-label="New session"
           >
             <Plus className="h-4 w-4" />
           </Button>
         </div>
 
-        <div className="flex gap-1">
-          <button
-            type="button"
-            onClick={() => setShowArchived(false)}
-            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-              !showArchived
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Active
-            {activeSessions.length > 0 && (
-              <span className="ml-1.5 text-muted-foreground">
-                {activeSessions.length}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowArchived(true)}
-            className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-              showArchived
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Archive className="h-3 w-3" />
-            Archive
-            {archivedCount > 0 && (
-              <span className="ml-1 text-muted-foreground">
-                {archivedCount}
-              </span>
-            )}
-          </button>
-        </div>
+        <InboxSidebarStatusTabs
+          showArchived={showArchived}
+          activeCount={activeSessions.length}
+          archivedCount={archivedCount}
+          onShowArchivedChange={setShowArchived}
+        />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -1036,7 +1009,7 @@ export function InboxSidebar({
           <div className="px-4 py-12 text-center text-sm text-muted-foreground">
             {showArchived
               ? (archivedSessionsError ?? "No archived sessions")
-              : "No sessions yet"}
+              : "No sessions yet. Start one to begin."}
             {showArchived && archivedSessionsError ? (
               <div className="mt-3">
                 <Button
@@ -1155,7 +1128,7 @@ export function InboxSidebar({
                       }`}
                     >
                       <div className="overflow-hidden">
-                        <div className="ml-4 space-y-1 border-l border-border/40 pl-1.5">
+                        <div className="ml-4 space-y-0.5 border-l border-sidebar-border pl-1.5">
                           {group.sessions.map((session) => (
                             <SessionRow
                               key={session.id}
@@ -1204,8 +1177,8 @@ export function InboxSidebar({
       </div>
 
       {sidebarUser ? (
-        <div className="border-t border-border p-3">
-          <div className="flex items-center gap-2 rounded-lg p-2">
+        <div className="border-t border-sidebar-border p-2">
+          <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
             <Avatar className="h-9 w-9 shrink-0">
               {sidebarUser.avatar ? (
                 <AvatarImage

@@ -257,8 +257,11 @@ export function SessionsRouteShell({
           } as CSSProperties
         }
       >
-        <Sidebar collapsible="offcanvas" className="border-r border-border">
-          <SidebarContent className="bg-muted/20">
+        <Sidebar
+          collapsible="offcanvas"
+          className="border-r border-sidebar-border"
+        >
+          <SidebarContent>
             <InboxSidebar
               sessions={sessions}
               archivedCount={archivedCount}

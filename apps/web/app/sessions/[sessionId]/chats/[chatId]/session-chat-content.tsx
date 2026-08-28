@@ -3419,7 +3419,7 @@ export function SessionChatContent({
                                     >
                                       {m.role === "user" ? (
                                         <div className="group relative w-fit min-w-0 max-w-[80%]">
-                                          <div className="rounded-3xl bg-secondary px-4 py-2">
+                                          <div className="rounded-2xl bg-muted px-4 py-2">
                                             <p className="whitespace-pre-wrap break-words">
                                               {p.text}
                                             </p>
@@ -3850,7 +3850,7 @@ export function SessionChatContent({
                     <PinnedTodoPanel todos={latestTodos} />
                     {/* Input form */}
                     <div
-                      className={`overflow-hidden rounded-2xl bg-muted transition-colors ${isDragging ? "ring-2 ring-blue-500/50" : ""}`}
+                      className={`overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_2px_rgba(40,32,20,0.04),0_8px_24px_rgba(40,32,20,0.06)] transition-colors dark:shadow-[0_1px_2px_rgba(0,0,0,0.24),0_8px_24px_rgba(0,0,0,0.28)] ${isDragging ? "ring-2 ring-ring/50" : ""}`}
                     >
                       <form
                         onSubmit={async (e) => {

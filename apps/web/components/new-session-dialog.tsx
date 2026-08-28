@@ -66,7 +66,7 @@ export function NewSessionDialog({
             Choose a repository or start an empty session.
           </DialogDescription>
         </DialogHeader>
-        <div className="min-w-0 rounded-2xl sm:rounded-[28px] border border-border/60 bg-card shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
+        <div className="min-w-0">
           <SessionStarter
             onSubmit={handleCreateSession}
             isLoading={isCreating}

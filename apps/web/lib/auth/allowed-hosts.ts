@@ -34,7 +34,19 @@ function getWildcardHostPattern(host: string): string | null {
   return `*.${host}`;
 }
 
-export function getAllowedAuthHosts(env: AuthHostEnv = process.env): string[] {
+function readAuthHostEnv(): AuthHostEnv {
+  return {
+    BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
+    VERCEL_URL: process.env.VERCEL_URL,
+    VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL:
+      process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL,
+  };
+}
+
+export function getAllowedAuthHosts(
+  env: AuthHostEnv = readAuthHostEnv(),
+): string[] {
   // Next.js binds 3001+ when 3000 is taken. Better Auth matches `host:port`.
   const hosts = new Set<string>(["localhost:*", "127.0.0.1:*"]);
 

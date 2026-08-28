@@ -234,42 +234,37 @@ export function SessionStarter({
       : "Start session";
 
   return (
-    <div
-      className={cn(
-        "w-full min-w-0 max-w-2xl overflow-hidden rounded-xl border border-border/70 bg-card/80 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/75 dark:border-white/10 dark:bg-neutral-900/60 dark:shadow-none sm:p-5",
-        "transition-all duration-200",
-      )}
-    >
+    <div className="w-full min-w-0 max-w-2xl overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(40,32,20,0.04),0_12px_32px_rgba(40,32,20,0.06)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_16px_40px_rgba(0,0,0,0.4)] sm:p-5">
       <div className="flex flex-col gap-4">
-        <div className="flex rounded-lg bg-muted/70 p-1 dark:bg-white/[0.04]">
+        <div className="flex rounded-lg bg-muted p-1">
           <button
             type="button"
             onClick={() => handleModeChange("empty")}
             className={cn(
-              "flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all",
+              "flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
               mode === "empty"
-                ? "border border-border/70 bg-background text-foreground shadow-sm dark:border-transparent dark:bg-white/10 dark:text-neutral-100"
-                : "text-muted-foreground hover:text-foreground dark:text-neutral-400 dark:hover:text-neutral-300",
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             <MessageSquare className="h-3.5 w-3.5" />
-            New Chat
+            Chat
           </button>
           <button
             type="button"
             onClick={() => handleModeChange("repo")}
             disabled={isRepoModeDisabled}
             className={cn(
-              "flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all",
+              "flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
               isRepoModeDisabled
-                ? "cursor-not-allowed text-muted-foreground/50 dark:text-neutral-600"
+                ? "cursor-not-allowed text-muted-foreground/50"
                 : mode === "repo"
-                  ? "border border-border/70 bg-background text-foreground shadow-sm dark:border-transparent dark:bg-white/10 dark:text-neutral-100"
-                  : "text-muted-foreground hover:text-foreground dark:text-neutral-400 dark:hover:text-neutral-300",
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
             )}
           >
             <GitBranch className="h-3.5 w-3.5" />
-            Start Session
+            Repository
           </button>
         </div>
 
@@ -308,10 +303,10 @@ export function SessionStarter({
         )}
 
         {mode === "empty" && (
-          <p className="text-center text-sm text-muted-foreground dark:text-neutral-500">
+          <p className="text-center text-sm text-muted-foreground">
             {isTrialUser
               ? "In the hosted demo, you can start chats without connecting GitHub."
-              : "Start a new chat -- no repository required."}
+              : "Start a chat without a repository."}
           </p>
         )}
 
@@ -319,7 +314,7 @@ export function SessionStarter({
           <button
             type="button"
             onClick={() => setGitSettingsExpanded(true)}
-            className="flex w-full items-center gap-2.5 rounded-lg border border-border/70 bg-muted/20 px-3.5 py-2.5 text-left transition-colors hover:bg-muted/40 dark:border-white/10 dark:bg-white/[0.02] dark:hover:bg-white/[0.04]"
+            className="flex w-full items-center gap-2.5 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-left transition-colors hover:bg-muted"
           >
             <GitCommitHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
             <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
@@ -343,7 +338,7 @@ export function SessionStarter({
         )}
 
         {mode === "repo" && gitSettingsExpanded && (
-          <div className="overflow-hidden rounded-lg border border-border/70 bg-muted/20 dark:border-white/10 dark:bg-white/[0.02]">
+          <div className="overflow-hidden rounded-lg border border-border bg-muted/40">
             <button
               type="button"
               onClick={() => setGitSettingsExpanded(false)}
@@ -357,7 +352,7 @@ export function SessionStarter({
               </div>
               <ChevronUpIcon className="h-4 w-4 shrink-0 text-muted-foreground/50" />
             </button>
-            <div className="border-t border-border/50 dark:border-white/[0.06]">
+            <div className="border-t border-border">
               <div className="flex items-center justify-between gap-4 px-3 py-2">
                 <p className="text-sm font-medium">Commit and push</p>
                 <Switch
@@ -367,7 +362,7 @@ export function SessionStarter({
                 />
               </div>
               {effectiveAutoCommitPush && (
-                <div className="flex items-center justify-between gap-4 border-t border-border/30 px-3 py-2 pl-6 dark:border-white/[0.04]">
+                <div className="flex items-center justify-between gap-4 border-t border-border px-3 py-2 pl-6">
                   <p className="text-sm text-muted-foreground">
                     Create pull request
                   </p>

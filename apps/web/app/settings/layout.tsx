@@ -129,10 +129,10 @@ function SettingsLayout({
               href={item.href}
               onClick={() => setMobileSidebarOpen(false)}
               className={cn(
-                "flex w-full items-center gap-3 rounded-md px-4 py-2 text-left text-sm transition-colors",
+                "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors",
                 isActive
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  ? "bg-sidebar-active text-sidebar-active-foreground"
+                  : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",
               )}
             >
               <item.icon className="h-4 w-4" />
@@ -146,28 +146,28 @@ function SettingsLayout({
 
   return (
     <div className="flex h-screen bg-background text-foreground">
-      <aside className="hidden w-64 shrink-0 border-r border-border md:flex">
+      <aside className="hidden w-64 shrink-0 border-r border-sidebar-border bg-sidebar md:flex">
         <div className="flex h-full w-full flex-col overflow-y-auto">
-          <div className="flex items-center gap-4 px-6 py-4">
+          <div className="flex items-center gap-4 px-4 py-4">
             <Link
               href="/sessions"
               className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft className="h-4 w-4" />
-              Back
+              Sessions
             </Link>
           </div>
-          <nav className="flex-1 px-2 py-2">
-            <div className="mb-2 px-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <nav className="flex-1 px-2 py-1">
+            <p className="mb-2 px-3 text-[13px] font-medium text-sidebar-foreground">
               Settings
-            </div>
+            </p>
             {navItems}
           </nav>
-          <div className="border-t border-border px-2 py-3">
+          <div className="border-t border-sidebar-border px-2 py-3">
             <button
               type="button"
               onClick={signOut}
-              className="flex w-full items-center gap-3 rounded-md px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
             >
               <LogOut className="h-4 w-4" />
               Sign out
@@ -181,27 +181,27 @@ function SettingsLayout({
           <SheetHeader className="sr-only">
             <SheetTitle>Settings navigation</SheetTitle>
           </SheetHeader>
-          <div className="flex items-center gap-4 px-6 py-4">
+          <div className="flex items-center gap-4 px-4 py-4">
             <Link
               href="/sessions"
               onClick={() => setMobileSidebarOpen(false)}
               className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft className="h-4 w-4" />
-              Back
+              Sessions
             </Link>
           </div>
-          <nav className="flex-1 px-2 py-2">
-            <div className="mb-2 px-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <nav className="flex-1 px-2 py-1">
+            <p className="mb-2 px-3 text-[13px] font-medium text-sidebar-foreground">
               Settings
-            </div>
+            </p>
             {navItems}
           </nav>
-          <div className="border-t border-border px-2 py-3">
+          <div className="border-t border-sidebar-border px-2 py-3">
             <button
               type="button"
               onClick={signOut}
-              className="flex w-full items-center gap-3 rounded-md px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
             >
               <LogOut className="h-4 w-4" />
               Sign out

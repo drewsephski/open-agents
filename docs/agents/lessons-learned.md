@@ -32,6 +32,7 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - Server-side optimistic chat route lookup must allow realistic persistence latency (multi-second retry window), otherwise `/sessions/[sessionId]/chats/[chatId]` can redirect away before chat creation finishes.
 - React 19 warns on `<script>` tags inside component trees ("never executed when rendering on the client"). For a blocking theme FOUC script, use a client helper that is `text/javascript` on the server and `text/plain` on the client, with `suppressHydrationWarning`, and place it in `<head>`.
 - Better Auth `baseURL.allowedHosts` matches `host:port`. Next.js may bind `localhost:3001+` when 3000 is taken, so allow `localhost:*` and `127.0.0.1:*` instead of hardcoding `:3000`.
+- Do not default a function parameter of a weak type (all-optional interface) to `process.env`. TypeScript's weak-type check rejects `ProcessEnv` (`Type 'ProcessEnv' has no properties in common with type 'AuthHostEnv'`). Pick the named keys into the interface instead.
 
 ## Auth
 

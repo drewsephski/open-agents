@@ -114,11 +114,11 @@ export function ChatSidebar({
 
   return (
     <>
-      <div className="border-b border-border p-3">
+      <div className="border-b border-sidebar-border p-3">
         <button
           type="button"
           onClick={() => router.push("/")}
-          className="mb-3 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="mb-3 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
           Sessions
@@ -162,7 +162,7 @@ export function ChatSidebar({
               setEditedTitle(sessionTitle);
               setIsEditingTitle(true);
             }}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-sidebar-accent"
           >
             <span className="truncate text-sm font-medium">{sessionTitle}</span>
             <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
@@ -208,7 +208,9 @@ export function ChatSidebar({
             <div
               key={c.id}
               className={`group relative flex items-center rounded-md ${
-                c.id === activeChatId ? "bg-sidebar-active" : "hover:bg-muted"
+                c.id === activeChatId
+                  ? "bg-sidebar-active"
+                  : "hover:bg-sidebar-accent"
               }`}
             >
               {editingChatId === c.id ? (

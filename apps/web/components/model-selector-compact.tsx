@@ -156,10 +156,10 @@ export function ModelSelectorCompact({
             <CommandEmpty>No models found.</CommandEmpty>
             {showRecommended ? (
               <CommandGroup heading="Recommended">
-                {recommended.map(({ option, label }) => (
+                {recommended.map((option) => (
                   <CommandItem
                     key={`recommended:${option.id}`}
-                    value={`recommended ${option.label} ${option.id} ${label}`}
+                    value={`recommended ${option.label} ${option.id}`}
                     onSelect={() => handleSelect(option.id)}
                     className="flex items-center"
                   >
@@ -170,12 +170,9 @@ export function ModelSelectorCompact({
                     <span className="min-w-0 truncate">
                       {option.shortLabel}
                     </span>
-                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                      {label}
-                    </span>
                     <CheckIcon
                       className={cn(
-                        "ml-1.5 size-4 shrink-0",
+                        "ml-auto size-4 shrink-0",
                         value === option.id ? "opacity-100" : "opacity-0",
                       )}
                     />

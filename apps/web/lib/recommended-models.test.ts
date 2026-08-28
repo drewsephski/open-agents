@@ -11,12 +11,9 @@ describe("getRecommendedModels", () => {
     ];
 
     expect(getRecommendedModels(options)).toEqual([
-      { option: { id: "z-ai/glm-5.3-flash" }, label: "Most cost-effective" },
-      { option: { id: "openai/gpt-5.6-luna" }, label: "Best for code" },
-      {
-        option: { id: "anthropic/claude-fable-5" },
-        label: "Best performance",
-      },
+      { id: "z-ai/glm-5.3-flash" },
+      { id: "openai/gpt-5.6-luna" },
+      { id: "anthropic/claude-fable-5" },
     ]);
   });
 
@@ -24,7 +21,7 @@ describe("getRecommendedModels", () => {
     const options = [{ id: "z-ai/glm-5.3-flash" }, { id: "openai/gpt-4o" }];
 
     expect(getRecommendedModels(options)).toEqual([
-      { option: { id: "z-ai/glm-5.3-flash" }, label: "Most cost-effective" },
+      { id: "z-ai/glm-5.3-flash" },
     ]);
   });
 });

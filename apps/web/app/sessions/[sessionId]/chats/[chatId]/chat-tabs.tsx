@@ -27,6 +27,11 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  SlidingTabIndicator,
+  slidingTabProps,
+  useSlidingTabBox,
+} from "@/components/ui/sliding-tab-indicator";
 import { useGitPanel } from "./git-panel-context";
 
 type ChatTabsProps = {
@@ -59,6 +64,7 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const tabListRef = useRef<HTMLDivElement>(null);
   const activeChatTabRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -214,17 +220,25 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
     : null;
   const fileTabFileName =
     focusedFilePath?.split("/").pop() ?? focusedFilePath ?? "";
+  const activeTabKey =
+    activeView === "diff" && showChangesTab
+      ? "__changes__"
+      : activeView === "file" && showFileTab
+        ? "__file__"
+        : `chat:${activeChatId}`;
+  const activeTabBox = useSlidingTabBox(tabListRef, activeTabKey);
 
   const tabElements = useMemo(() => {
     const changesTabEl = showChangesTab ? (
       <div
         key="__changes__"
         className={cn(
-          "group relative flex shrink-0 items-center border-b-2 transition-colors",
+          "group relative flex shrink-0 items-center transition-colors duration-500 ease-out",
           activeView === "diff"
-            ? "border-foreground text-foreground"
-            : "border-transparent text-muted-foreground hover:text-foreground",
+            ? "text-foreground"
+            : "text-muted-foreground hover:text-foreground",
         )}
+        {...slidingTabProps(activeView === "diff")}
       >
         <button
           type="button"
@@ -251,11 +265,12 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
       <div
         key="__file__"
         className={cn(
-          "group relative flex shrink-0 items-center border-b-2 transition-colors",
+          "group relative flex shrink-0 items-center transition-colors duration-500 ease-out",
           activeView === "file"
-            ? "border-foreground text-foreground"
-            : "border-transparent text-muted-foreground hover:text-foreground",
+            ? "text-foreground"
+            : "text-muted-foreground hover:text-foreground",
         )}
+        {...slidingTabProps(activeView === "file")}
       >
         <button
           type="button"
@@ -296,11 +311,12 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
           key={chat.id}
           ref={isActive ? activeChatTabRef : undefined}
           className={cn(
-            "group relative flex shrink-0 items-center border-b-2 transition-colors",
+            "group relative flex shrink-0 items-center transition-colors duration-500 ease-out",
             isActive
-              ? "border-foreground text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground",
+              ? "text-foreground"
+              : "text-muted-foreground hover:text-foreground",
           )}
+          {...slidingTabProps(isActive)}
         >
           {isRenaming ? (
             <div className="flex items-center px-2 py-[7px]">
@@ -413,25 +429,28 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
 
   return (
     <>
-      <div className="flex items-center gap-0 border-b border-border bg-muted/30 px-1">
+      <div className="flex items-center gap-0 border-b border-border px-1">
         <div
           ref={scrollContainerRef}
-          className="flex min-w-0 flex-1 items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          {tabElements}
+          <div ref={tabListRef} className="relative flex items-center">
+            <SlidingTabIndicator box={activeTabBox} variant="underline" />
+            {tabElements}
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={handleNewChat}
-                className="ml-1 flex shrink-0 items-center justify-center rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">New chat</TooltipContent>
-          </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleNewChat}
+                  className="ml-1 flex shrink-0 items-center justify-center rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">New chat</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
       </div>
 
