@@ -5,6 +5,9 @@ import { CodeSandboxSandbox } from "./sandbox";
 class MemoryFs {
   readonly files = new Map<string, Uint8Array>();
   readonly directories = new Set<string>(["/workspace", "/tmp"]);
+  hangCredentialCleanup = false;
+  hangExecReads = false;
+  hangExecRemoves = false;
 
   async mkdir(path: string, _recursive: boolean) {
     this.directories.add(path);
@@ -19,6 +22,9 @@ class MemoryFs {
   }
 
   async readTextFile(path: string) {
+    if (this.hangExecReads && path.startsWith("/tmp/launchstack-exec-")) {
+      return new Promise<string>(() => {});
+    }
     const value = this.files.get(path);
     if (!value) throw new Error("not found");
     return Buffer.from(value).toString("utf8");
@@ -31,6 +37,12 @@ class MemoryFs {
   }
 
   async stat(path: string) {
+    if (
+      this.hangCredentialCleanup &&
+      path.startsWith("/tmp/launchstack-git-auth-")
+    ) {
+      return new Promise<never>(() => {});
+    }
     const file = this.files.get(path);
     if (file) return { type: "file" as const, size: file.length, mtime: 1 };
     if (this.directories.has(path)) {
@@ -40,6 +52,13 @@ class MemoryFs {
   }
 
   async remove(path: string, _recursive: boolean) {
+    if (
+      (this.hangExecRemoves && path.startsWith("/tmp/launchstack-exec-")) ||
+      (this.hangCredentialCleanup &&
+        path.startsWith("/tmp/launchstack-git-auth-"))
+    ) {
+      return new Promise<void>(() => {});
+    }
     for (const file of this.files.keys()) {
       if (file === path || file.startsWith(`${path}/`)) this.files.delete(file);
     }
@@ -50,8 +69,17 @@ class MemoryFs {
     }
   }
 
-  async readdir(_path: string) {
-    return [];
+  async readdir(path: string) {
+    const prefix = `${path}/`;
+    return [...this.files.keys()]
+      .filter((filePath) => filePath.startsWith(prefix))
+      .map((filePath) => filePath.slice(prefix.length).split("/")[0])
+      .filter((name, index, names) => name && names.indexOf(name) === index)
+      .map((name) => ({
+        name,
+        type: "file" as const,
+        isSymlink: false,
+      }));
   }
 }
 
@@ -62,9 +90,17 @@ function createSdkFake(
     failConnect?: boolean;
     failHibernationUpdate?: boolean;
     hangCommand?: boolean;
+    hangKill?: boolean;
+    hangWaitAfterExit?: boolean;
+    omitCompletionOutput?: boolean;
+    omitExitMarker?: boolean;
+    packageJson?: string;
   } = {},
 ) {
   const fs = new MemoryFs();
+  if (options.packageJson) {
+    fs.files.set("/workspace/package.json", Buffer.from(options.packageJson));
+  }
   const calls = {
     create: [] as unknown[],
     background: [] as Array<{ command: string; options: unknown }>,
@@ -90,19 +126,55 @@ function createSdkFake(
         /\/tmp\/launchstack-exec-[a-f0-9-]+/,
       )?.[0];
       if (outputDirectory) {
-        await fs.writeTextFile(`${outputDirectory}/stdout`, "stdout");
+        const stdout = command.includes("__LAUNCHSTACK_NODE_BIN__")
+          ? "__LAUNCHSTACK_NODE_BIN__=/nvm/node/v24/bin\n"
+          : command.includes("PATH")
+            ? "/root/.bun/bin:/usr/local/bin:/usr/bin:/bin"
+            : "stdout";
+        await fs.writeTextFile(`${outputDirectory}/stdout`, stdout);
         await fs.writeTextFile(`${outputDirectory}/stderr`, "stderr");
-        await fs.writeTextFile(`${outputDirectory}/exit`, "0");
       }
       const shouldFail = options.failCommand && backgroundCount > 1;
       const shouldHang = options.hangCommand && backgroundCount > 1;
+      const omitCompletionOutput =
+        options.omitCompletionOutput && backgroundCount > 1;
+      const omitExitMarker = options.omitExitMarker && backgroundCount > 1;
+      const completionMarker = command.match(
+        /__LAUNCHSTACK_EXEC_COMPLETE_[a-f0-9-]+__/,
+      )?.[0];
+      const outputListeners = new Set<(output: string) => void>();
+      let commandOutput = "";
+      let status = "RUNNING";
       return {
+        get status() {
+          return status;
+        },
         async waitUntilComplete() {
           if (shouldFail) throw new Error("provider command failure");
           if (shouldHang) return new Promise(() => {});
+          if (outputDirectory && !omitExitMarker) {
+            await fs.writeTextFile(`${outputDirectory}/exit`, "0");
+          }
+          if (completionMarker && !omitCompletionOutput) {
+            commandOutput = completionMarker;
+            for (const listener of outputListeners) listener(commandOutput);
+          }
+          status = "FINISHED";
+          if (options.hangWaitAfterExit && backgroundCount > 1) {
+            return new Promise(() => {});
+          }
         },
         async kill() {
           calls.killed += 1;
+          if (options.hangKill) return new Promise(() => {});
+          status = "KILLED";
+        },
+        onOutput(listener: (output: string) => void) {
+          outputListeners.add(listener);
+          return { dispose: () => outputListeners.delete(listener) };
+        },
+        async open() {
+          return commandOutput;
         },
       };
     },
@@ -239,6 +311,41 @@ describe("CodeSandbox adapter", () => {
     expect(commandOptions.env?.AUTHOR_NAME).toBe("'First Last'");
   });
 
+  test("honors exact repository runtime pins and persists the command path", async () => {
+    const fake = createSdkFake({
+      packageJson: JSON.stringify({
+        engines: { node: "24.x" },
+        packageManager: "pnpm@11.5.1+sha512.abc",
+      }),
+    });
+    const sandbox = await CodeSandboxSandbox.createWithSdk(
+      createOptions,
+      fake.sdk,
+    );
+
+    expect(
+      fake.calls.background.some((call) =>
+        call.command.includes("nvm install 24"),
+      ),
+    ).toBe(true);
+    expect(
+      fake.calls.background.some((call) =>
+        call.command.includes("pnpm@11.5.1"),
+      ),
+    ).toBe(true);
+    expect(sandbox.getState().runtime?.commandPath).toBe(
+      "/nvm/node/v24/bin:/root/.bun/bin:/usr/local/bin:/usr/bin:/bin",
+    );
+
+    await sandbox.exec("node --version", sandbox.workingDirectory, 1_000);
+    const commandOptions = fake.calls.background.at(-1)?.options as {
+      env?: Record<string, string>;
+    };
+    expect(commandOptions.env?.PATH).toBe(
+      "'/nvm/node/v24/bin:/root/.bun/bin:/usr/local/bin:/usr/bin:/bin'",
+    );
+  });
+
   test("scopes GitHub auth to one command and guarantees cleanup", async () => {
     const fake = createSdkFake();
     const sandbox = await CodeSandboxSandbox.createWithSdk(
@@ -312,6 +419,106 @@ describe("CodeSandbox adapter", () => {
     expect(fake.calls.disconnected).toBe(1);
     expect(fake.calls.disposed).toBe(1);
     expect(fake.calls.hibernate).toEqual(["csb-1"]);
+  });
+
+  test("uses the exit marker when the provider completion promise hangs", async () => {
+    const fake = createSdkFake({
+      hangWaitAfterExit: true,
+      omitCompletionOutput: true,
+    });
+    const sandbox = await CodeSandboxSandbox.createWithSdk(
+      createOptions,
+      fake.sdk,
+    );
+
+    const result = await sandbox.exec(
+      "pnpm install",
+      sandbox.workingDirectory,
+      5_000,
+    );
+
+    expect(result).toMatchObject({ success: true, exitCode: 0 });
+    expect(fake.calls.killed).toBe(0);
+    await sandbox.stop();
+  });
+
+  test("uses the command marker when completion and filesystem events hang", async () => {
+    const fake = createSdkFake({
+      hangWaitAfterExit: true,
+      omitExitMarker: true,
+    });
+    const sandbox = await CodeSandboxSandbox.createWithSdk(
+      createOptions,
+      fake.sdk,
+    );
+
+    const result = await sandbox.exec(
+      "pnpm install",
+      sandbox.workingDirectory,
+      5_000,
+    );
+
+    expect(result).toMatchObject({ success: false, exitCode: null });
+    expect(fake.calls.killed).toBe(0);
+    await sandbox.stop();
+  });
+
+  test("returns after the kill grace period when a timed-out provider kill hangs", async () => {
+    const fake = createSdkFake({ hangCommand: true, hangKill: true });
+    const sandbox = await CodeSandboxSandbox.createWithSdk(
+      createOptions,
+      fake.sdk,
+    );
+
+    const startedAt = Date.now();
+    const result = await sandbox.exec(
+      "sleep forever",
+      sandbox.workingDirectory,
+      1,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.exitCode).toBeNull();
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    expect(fake.calls.killed).toBe(1);
+    await sandbox.stop();
+  });
+
+  test("bounds provider filesystem calls after a command timeout", async () => {
+    const fake = createSdkFake({ hangCommand: true });
+    const sandbox = await CodeSandboxSandbox.createWithSdk(
+      createOptions,
+      fake.sdk,
+    );
+    fake.fs.hangExecReads = true;
+    fake.fs.hangExecRemoves = true;
+
+    const startedAt = Date.now();
+    const result = await sandbox.exec(
+      "sleep forever",
+      sandbox.workingDirectory,
+      1,
+    );
+
+    expect(result).toMatchObject({ success: false, exitCode: null });
+    expect(Date.now() - startedAt).toBeLessThan(3_000);
+    await sandbox.stop();
+  });
+
+  test("fails closed when scoped credential cleanup cannot be verified", async () => {
+    const fake = createSdkFake();
+    const sandbox = await CodeSandboxSandbox.createWithSdk(
+      createOptions,
+      fake.sdk,
+    );
+    fake.fs.hangCredentialCleanup = true;
+
+    await expect(
+      sandbox.withGitHubAuth("secret-token", () =>
+        sandbox.exec("git fetch", sandbox.workingDirectory, 1_000),
+      ),
+    ).rejects.toThrow("credential cleanup could not be verified");
+    await sandbox.stop();
   });
 
   test("shuts down a new sandbox when the SDK client cannot connect", async () => {

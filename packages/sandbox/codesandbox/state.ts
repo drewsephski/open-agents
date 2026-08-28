@@ -14,4 +14,6 @@ export interface CodeSandboxState {
   expiresAt?: number;
   /** Branch prepared during initial repository setup. */
   currentBranch?: string;
+  /** Runtime PATH captured after honoring exact repository toolchain pins. */
+  runtime?: { commandPath: string };
 }
