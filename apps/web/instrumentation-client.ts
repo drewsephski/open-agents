@@ -5,6 +5,7 @@ export const botIdProtectedRoutes = [
   { path: "/api/chat", method: "POST" },
   { path: "/api/generate-pr", method: "POST" },
   { path: "/api/generate-title", method: "POST" },
+  { path: "/api/recommend-stack", method: "POST" },
   { path: "/api/sessions/*/generate-commit-message", method: "POST" },
 
   // Resource-intensive endpoints
