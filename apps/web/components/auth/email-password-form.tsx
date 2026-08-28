@@ -100,12 +100,15 @@ export function EmailPasswordForm({
 
   return (
     <form onSubmit={handleSubmit} noValidate>
-      <FieldGroup className="gap-3">
+      <FieldGroup className="gap-4">
         <Field
-          className="gap-1.5"
+          className="gap-2"
           data-invalid={fieldErrors.email ? true : undefined}
         >
-          <FieldLabel htmlFor="email" className="text-[13px]">
+          <FieldLabel
+            htmlFor="email"
+            className="font-mono text-[11px] font-normal text-(--l-fg-2)"
+          >
             Email
           </FieldLabel>
           <Input
@@ -120,7 +123,7 @@ export function EmailPasswordForm({
             aria-invalid={Boolean(fieldErrors.email)}
             aria-describedby={fieldErrors.email ? "email-error" : undefined}
             disabled={isSubmitting}
-            className="h-9 text-sm"
+            className="h-11 rounded-md border-(--l-border) bg-(--l-surface) px-3.5 text-[13px] shadow-none transition-colors placeholder:text-(--l-fg-4) focus-visible:border-(--l-fg-3) focus-visible:ring-0 dark:bg-(--l-surface)"
           />
           <FieldError
             id="email-error"
@@ -131,10 +134,13 @@ export function EmailPasswordForm({
         </Field>
 
         <Field
-          className="gap-1.5"
+          className="gap-2"
           data-invalid={fieldErrors.password ? true : undefined}
         >
-          <FieldLabel htmlFor="password" className="text-[13px]">
+          <FieldLabel
+            htmlFor="password"
+            className="font-mono text-[11px] font-normal text-(--l-fg-2)"
+          >
             Password
           </FieldLabel>
           <Input
@@ -150,7 +156,7 @@ export function EmailPasswordForm({
               fieldErrors.password ? "password-error" : undefined
             }
             disabled={isSubmitting}
-            className="h-9 text-sm"
+            className="h-11 rounded-md border-(--l-border) bg-(--l-surface) px-3.5 text-[13px] shadow-none transition-colors placeholder:text-(--l-fg-4) focus-visible:border-(--l-fg-3) focus-visible:ring-0 dark:bg-(--l-surface)"
           />
           <FieldError
             id="password-error"
@@ -164,10 +170,13 @@ export function EmailPasswordForm({
 
         {isSignUp ? (
           <Field
-            className="gap-1.5"
+            className="gap-2"
             data-invalid={fieldErrors.confirmPassword ? true : undefined}
           >
-            <FieldLabel htmlFor="confirm-password" className="text-[13px]">
+            <FieldLabel
+              htmlFor="confirm-password"
+              className="font-mono text-[11px] font-normal text-(--l-fg-2)"
+            >
               Confirm password
             </FieldLabel>
             <Input
@@ -184,7 +193,7 @@ export function EmailPasswordForm({
                   : undefined
               }
               disabled={isSubmitting}
-              className="h-9 text-sm"
+              className="h-11 rounded-md border-(--l-border) bg-(--l-surface) px-3.5 text-[13px] shadow-none transition-colors focus-visible:border-(--l-fg-3) focus-visible:ring-0 dark:bg-(--l-surface)"
             />
             <FieldError
               id="confirm-password-error"
@@ -206,7 +215,7 @@ export function EmailPasswordForm({
         <Button
           type="submit"
           disabled={isSubmitting}
-          className="mt-1 h-9 w-full text-[13px] font-medium"
+          className="mt-1 h-11 w-full rounded-md bg-(--l-btn-bg) text-[13px] font-medium text-(--l-btn-fg) shadow-none hover:bg-(--l-btn-hover)"
         >
           {isSubmitting
             ? isSignUp
@@ -224,11 +233,11 @@ export function EmailPasswordForm({
 export function AuthModeSwitch({ mode, callbackUrl }: EmailPasswordFormProps) {
   if (mode === "sign-in") {
     return (
-      <p className="text-muted-foreground text-center text-[13px]">
+      <p className="text-center text-[13px] text-(--l-fg-3)">
         Don&apos;t have an account?{" "}
         <Link
           href={getAuthPageHref("/sign-up", callbackUrl)}
-          className="text-foreground font-medium underline-offset-4 transition-colors hover:underline"
+          className="font-medium text-(--l-fg) underline-offset-4 transition-colors hover:text-(--l-accent)"
         >
           Sign up
         </Link>
@@ -237,11 +246,11 @@ export function AuthModeSwitch({ mode, callbackUrl }: EmailPasswordFormProps) {
   }
 
   return (
-    <p className="text-muted-foreground text-center text-[13px]">
+    <p className="text-center text-[13px] text-(--l-fg-3)">
       Already have an account?{" "}
       <Link
         href={getAuthPageHref("/sign-in", callbackUrl)}
-        className="text-foreground font-medium underline-offset-4 transition-colors hover:underline"
+        className="font-medium text-(--l-fg) underline-offset-4 transition-colors hover:text-(--l-accent)"
       >
         Sign in
       </Link>

@@ -11,9 +11,9 @@ export function LandingFooter() {
               Launchstack
             </div>
             <div className="mt-3 text-sm text-(--l-fg-2)">
-              Launchstack for
+              Cloud agents.
               <br />
-              shipping code.
+              Reviewable code.
             </div>
           </div>
 

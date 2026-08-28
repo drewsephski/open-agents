@@ -1,7 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt =
-  "Launchstack — Cloud coding agents that work autonomously from code to launch";
+export const alt = "Launchstack. Send coding work to the cloud.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 export const runtime = "edge";
@@ -21,7 +20,7 @@ export default function OgImage() {
           'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
-      {/* Subtle radial glow — top-left warm, bottom-right cool */}
+      {/* Subtle radial glow: warm at top left, cool at bottom right */}
       <div
         style={{
           position: "absolute",
@@ -126,7 +125,9 @@ export default function OgImage() {
               color: "#ffffff",
             }}
           >
-            Launchstack.
+            Send coding work
+            <br />
+            to the cloud.
           </div>
 
           {/* Subtitle */}
@@ -139,12 +140,12 @@ export default function OgImage() {
               maxWidth: 720,
             }}
           >
-            Spawn coding agents that run infinitely in the cloud—built to take
-            software from code to launch.
+            Build features, fix bugs, run tests, and prepare pull requests in
+            isolated cloud sandboxes.
           </div>
         </div>
 
-        {/* Bottom row — tech pills */}
+        {/* Bottom row with tech pills */}
         <div
           style={{
             display: "flex",

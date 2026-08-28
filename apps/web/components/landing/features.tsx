@@ -74,24 +74,24 @@ export function LandingFeatures() {
         <div>
           <Spotlight
             tone="slate"
-            title="Agents that ship real code."
-            description="Each agent gets a full sandbox environment with filesystem, network, and runtime access. Describe what to build and let the agent work autonomously until it's done."
+            title="Give it a task, not a code snippet."
+            description="Ask Launchstack to trace a bug, add a feature, update a dependency, or repair a failing build. The agent can inspect the repository, edit files, run commands, and verify its work in one session."
             bullets={[
-              "File ops, search, shell, and task delegation built in",
-              "Explorer and executor subagents for parallel work",
-              "Multi-model support with OpenRouter",
+              "Build features across multiple files",
+              "Investigate bugs before changing code",
+              "Run type checks and tests before handoff",
             ]}
             window={<FeatureAgent />}
           />
 
           <Spotlight
             tone="ash"
-            title="Cloud sandboxes, not local machines."
-            description="Every session runs in an isolated cloud sandbox with its own branch. Work is committed and pushed automatically — nothing is lost when the sandbox pauses."
+            title="Keep agent work off your machine."
+            description="Every session gets an isolated cloud sandbox and its own Git branch. Agents can install dependencies, start development servers, and test changes without competing for your local files or compute."
             bullets={[
-              "Ephemeral environments with full git integration",
-              "Auto-hibernate on inactivity, instant restore",
-              "Snapshot and restore filesystem state",
+              "Run several tasks on separate branches",
+              "Preview changes before they reach your codebase",
+              "Hibernate inactive sandboxes and restore their files",
             ]}
             flip
             window={<FeatureSandbox />}
@@ -99,12 +99,12 @@ export function LandingFeatures() {
 
           <Spotlight
             tone="iron"
-            title="Durable workflows that survive anything."
-            description="Agent loops run as durable workflows that survive restarts, retry on failure, and coordinate multi-step operations over time. No work is ever lost mid-run."
+            title="Come back when the work is ready."
+            description="Launchstack runs each agent turn as a durable workflow. You can leave the page, reconnect from another device, and continue following the same run instead of keeping a browser tab and local process alive."
             bullets={[
-              "Resumable agent loops with automatic checkpointing",
-              "Post-finish: usage tracking, diff caching, auto-commit",
-              "Reconnect to running workflows from any client",
+              "Resume long tasks after an interruption",
+              "Review the diff and share a read-only session",
+              "Optionally commit, push, and open a pull request",
             ]}
             window={<FeatureWorkflow />}
           />
