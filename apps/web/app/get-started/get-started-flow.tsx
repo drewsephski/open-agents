@@ -13,13 +13,13 @@ import { sanitizeInternalRedirect } from "@/lib/redirect-safety";
 
 type StepId = 1 | 2;
 
-function OpenAgentsLogo({ className }: { className?: string }) {
+function LaunchstackMark({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
       className={className}
-      aria-label="Open Agents"
+      aria-label="Launchstack"
     >
       <path
         d="M4 17L10 11L4 5"
@@ -82,7 +82,7 @@ export function GetStartedFlow() {
   };
 
   const steps: { id: StepId; title: string }[] = [
-    { id: 1, title: "Vercel Account" },
+    { id: 1, title: "Your account" },
     { id: 2, title: "Connect GitHub" },
   ];
 
@@ -91,14 +91,15 @@ export function GetStartedFlow() {
       {/* left panel */}
       <div className="flex shrink-0 flex-col justify-between bg-black px-6 py-6 md:w-1/2 md:px-12 md:py-10">
         <div className="flex items-center gap-3">
-          <OpenAgentsLogo className="size-7 text-white/50" />
+          <LaunchstackMark className="size-7 text-white/50" />
           <span className="text-lg font-semibold tracking-tight text-white/50">
-            Open Agents
+            Launchstack
           </span>
         </div>
         <p className="hidden max-w-sm text-sm leading-relaxed text-zinc-600 md:block">
-          Spawn coding agents that run infinitely in the cloud. Powered by AI
-          SDK, Gateway, Sandbox, and Workflow SDK.
+          Spawn coding agents that run infinitely in the cloud—built to take
+          software from code to launch. Powered by AI SDK, OpenRouter, Sandbox,
+          and Workflow SDK.
         </p>
       </div>
 
@@ -199,7 +200,7 @@ export function GetStartedFlow() {
   );
 }
 
-// step 1: vercel account (display only)
+// step 1: signed-in account (display only)
 
 function VercelAccountStep({
   session,
@@ -217,7 +218,7 @@ function VercelAccountStep({
   return (
     <div className="space-y-3">
       <p className="text-xs text-zinc-500">
-        Signed in via Vercel. This account is used for authentication.
+        Signed in. This account is used for authentication.
       </p>
       <div className="flex items-center justify-between rounded-lg border border-white/10 px-3 py-2.5">
         <div className="flex items-center gap-3">
@@ -234,7 +235,7 @@ function VercelAccountStep({
           )}
           <div>
             <p className="text-sm font-medium text-zinc-200">
-              {session?.user?.name ?? session?.user?.username ?? "Vercel"}
+              {session?.user?.name ?? session?.user?.username ?? "Account"}
             </p>
             {session?.user?.email && (
               <p className="text-xs text-zinc-600">{session.user.email}</p>

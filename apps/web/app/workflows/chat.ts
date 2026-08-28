@@ -9,11 +9,11 @@ import {
   type UIMessageChunk,
 } from "ai";
 import type { OpenAgentCallOptions } from "@open-agents/agent";
+import { extractModelCost } from "@open-agents/agent/usage-metadata";
 import { getWorkflowMetadata, getWritable } from "workflow";
 import { getRun } from "workflow/api";
 import { assistantFileLinkPrompt } from "@/lib/assistant-file-links";
 import { addLanguageModelUsage } from "./usage-utils";
-import { extractGatewayCost } from "./gateway-metadata";
 import type {
   WebAgentCommitData,
   WebAgentCommitDataPart,
@@ -1059,7 +1059,7 @@ const runAgentStep = async (
               ? addLanguageModelUsage(totalMessageUsage, streamPart.usage)
               : streamPart.usage;
           }
-          const stepCost = extractGatewayCost(streamPart.providerMetadata);
+          const stepCost = extractModelCost(streamPart.providerMetadata);
           if (stepCost !== undefined) {
             lastStepCost = stepCost;
             totalMessageCost = (totalMessageCost ?? 0) + stepCost;
@@ -1129,7 +1129,7 @@ const runAgentStep = async (
     }
 
     const stepsCost = steps.reduce<number | undefined>((sum, step) => {
-      const cost = extractGatewayCost(step.providerMetadata);
+      const cost = extractModelCost(step.providerMetadata);
       if (cost === undefined) {
         return sum;
       }

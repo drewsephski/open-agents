@@ -1,4 +1,5 @@
 import type { SandboxState } from "@open-agents/sandbox";
+import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import type { ModelVariant } from "@/lib/model-variants";
 import type { GlobalSkillRef } from "@/lib/skills/global-skill-refs";
 import {
@@ -14,18 +15,22 @@ import {
 } from "drizzle-orm/pg-core";
 
 // users
-export const users = pgTable("users", {
-  id: text("id").primaryKey(),
-  username: text("username").notNull(),
-  email: text("email"),
-  emailVerified: boolean("email_verified").notNull().default(false),
-  name: text("name"),
-  avatarUrl: text("avatar_url"),
-  isAdmin: boolean("is_admin").notNull().default(false),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  lastLoginAt: timestamp("last_login_at").defaultNow().notNull(),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: text("id").primaryKey(),
+    username: text("username").notNull(),
+    email: text("email"),
+    emailVerified: boolean("email_verified").notNull().default(false),
+    name: text("name"),
+    avatarUrl: text("avatar_url"),
+    isAdmin: boolean("is_admin").notNull().default(false),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    lastLoginAt: timestamp("last_login_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("users_email_idx").on(table.email)],
+);
 
 // oauth provider accounts
 export const accounts = pgTable("accounts", {
@@ -208,7 +213,7 @@ export const chats = pgTable(
       .notNull()
       .references(() => sessions.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
-    modelId: text("model_id").default("anthropic/claude-haiku-4.5"),
+    modelId: text("model_id").default(APP_DEFAULT_MODEL_ID),
     activeStreamId: text("active_stream_id"),
     lastAssistantMessageAt: timestamp("last_assistant_message_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -341,9 +346,7 @@ export const userPreferences = pgTable("user_preferences", {
     .notNull()
     .unique()
     .references(() => users.id, { onDelete: "cascade" }),
-  defaultModelId: text("default_model_id").default(
-    "anthropic/claude-haiku-4.5",
-  ),
+  defaultModelId: text("default_model_id").default(APP_DEFAULT_MODEL_ID),
   defaultSubagentModelId: text("default_subagent_model_id"),
   defaultSandboxType: text("default_sandbox_type", {
     enum: ["vercel"],

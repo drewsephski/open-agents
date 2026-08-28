@@ -6,6 +6,18 @@ import type { ToolNeedsApprovalFunction } from "./utils";
 
 const sandboxRegistry = new Map<string, Record<string, unknown>>();
 
+process.env.OPENROUTER_API_KEY ??= "test-openrouter-key";
+
+mock.module("@openrouter/ai-sdk-provider", () => ({
+  createOpenRouter: () => {
+    const chat = (modelId: string) => ({
+      modelId,
+      provider: "openrouter",
+    });
+    return Object.assign(chat, { chat });
+  },
+}));
+
 mock.module("ai", () => {
   class MockToolLoopAgent {
     constructor(_config: unknown) {}
@@ -17,12 +29,13 @@ mock.module("ai", () => {
     }
   }
 
-  const gateway = (modelId: string) => ({ modelId });
-
   return {
     tool: <T extends Record<string, unknown>>(definition: T) => definition,
-    gateway,
     stepCountIs: (count: number) => ({ count }),
+    defaultSettingsMiddleware: (_settings: unknown) => ({
+      kind: "default-settings-middleware",
+    }),
+    wrapLanguageModel: ({ model }: { model: unknown }) => model,
     ToolLoopAgent: MockToolLoopAgent,
     getToolName: (part: { toolName?: string; type?: string }) => {
       if (part.toolName) {

@@ -1,17 +1,9 @@
 import { headers } from "next/headers";
 import { cache } from "react";
+import { listAccountProviderIds } from "@/lib/auth/account-providers";
 import { auth } from "@/lib/auth/config";
+import { toAppSession } from "./to-app-session";
 import type { Session } from "./types";
-
-function extractUsername(user: {
-  name?: string | null;
-  [key: string]: unknown;
-}): string {
-  if (typeof user.username === "string" && user.username) {
-    return user.username;
-  }
-  return user.name ?? "";
-}
 
 export const getServerSession = cache(
   async (): Promise<Session | undefined> => {
@@ -23,16 +15,7 @@ export const getServerSession = cache(
       return undefined;
     }
 
-    return {
-      created: baSession.session.createdAt.getTime(),
-      authProvider: "vercel",
-      user: {
-        id: baSession.user.id,
-        username: extractUsername(baSession.user),
-        email: baSession.user.email ?? undefined,
-        avatar: baSession.user.image ?? "",
-        name: baSession.user.name ?? undefined,
-      },
-    };
+    const providerIds = await listAccountProviderIds(baSession.user.id);
+    return toAppSession(baSession, providerIds);
   },
 );

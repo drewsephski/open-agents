@@ -843,6 +843,7 @@ export function ModelPreferencesSection() {
               label: option.label,
               description: option.description,
               isVariant: option.isVariant,
+              provider: option.provider,
             }))}
             placeholder="Select a model"
             searchPlaceholder="Search models..."
@@ -866,6 +867,7 @@ export function ModelPreferencesSection() {
                 label: option.label,
                 description: option.description,
                 isVariant: option.isVariant,
+                provider: option.provider,
               })),
             ]}
             placeholder="Select a model"

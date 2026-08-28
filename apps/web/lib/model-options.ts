@@ -61,7 +61,7 @@ function toVariantOption(
 }
 
 /** Providers pinned to the top of the list, in order. */
-const PRIORITY_PROVIDERS = ["anthropic", "openai"];
+export const PRIORITY_PROVIDERS = ["z-ai", "openai", "anthropic"];
 
 export interface ModelGroup {
   provider: string;

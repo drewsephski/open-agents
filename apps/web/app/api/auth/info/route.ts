@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
   const data: SessionUserInfo = {
     user: session.user,
     authProvider: session.authProvider,
+    hasVercelAccount: session.hasVercelAccount,
     isAdmin,
     isManagedTemplateTrialUser: isManagedTemplateTrialUser(session, req.url),
     hasGitHub,

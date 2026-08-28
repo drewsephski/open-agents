@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { SignInButton } from "@/components/auth/sign-in-button";
+import { AuthButtons } from "@/components/auth/auth-buttons";
 import { AppMockup } from "@/components/landing/app-mockup";
-import { GitHubLink } from "@/components/landing/github-link";
 import { LandingBento } from "@/components/landing/bento";
 import { LandingFeatures } from "@/components/landing/features";
 import { LandingFooter } from "@/components/landing/footer";
@@ -38,11 +37,12 @@ export function SignedOutHero() {
           <div className="mx-auto max-w-[1320px] px-6">
             <div className="max-w-[740px]">
               <h1 className="text-4xl font-semibold leading-[1.03] tracking-tighter sm:text-5xl md:text-7xl">
-                Open Agents.
+                Launchstack.
               </h1>
               <p className="mt-4 text-balance text-base leading-relaxed text-(--l-fg-2) sm:mt-6 sm:text-xl">
-                Spawn coding agents that run infinitely in the cloud. Powered by
-                AI SDK, Gateway, Sandbox, and Workflow SDK.
+                Spawn coding agents that run infinitely in the cloud—built to
+                take software from code to launch. Powered by AI SDK,
+                OpenRouter, Sandbox, and Workflow SDK.
               </p>
             </div>
 
@@ -50,8 +50,7 @@ export function SignedOutHero() {
               ref={heroButtonsRef}
               className="mt-6 flex items-center gap-2 sm:mt-8"
             >
-              <SignInButton size="lg" callbackUrl="/sessions" />
-              <GitHubLink>Open Source</GitHubLink>
+              <AuthButtons size="lg" />
             </div>
           </div>
 

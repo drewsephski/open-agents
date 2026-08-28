@@ -8,10 +8,13 @@ import {
 } from "@/lib/model-variants";
 import type { Session } from "@/lib/session/types";
 
-const RESTRICTED_MODEL_PREFIXES = ["anthropic/claude-opus-"];
+const RESTRICTED_MODEL_PREFIXES = [
+  "anthropic/claude-opus-",
+  "anthropic/claude-fable-",
+];
 
 export const MANAGED_TEMPLATE_TRIAL_MODEL_ACCESS_ERROR =
-  "Claude Opus models are disabled in the hosted demo. Deploy your own copy to unlock full model access.";
+  "Frontier Claude models (Opus and Fable) are disabled in the hosted demo. Deploy your own copy to unlock full model access.";
 
 type SessionLike = Pick<Session, "authProvider" | "user"> | null | undefined;
 

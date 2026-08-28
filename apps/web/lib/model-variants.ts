@@ -82,20 +82,10 @@ export type ProviderOptionsByProvider = Record<
 >;
 
 function withVariantProviderDefaults(
-  provider: string,
+  _provider: string,
   providerOptions: Record<string, JsonValue>,
 ): Record<string, JsonValue> {
-  if (provider !== "openai") {
-    return providerOptions;
-  }
-
-  // OpenAI Responses items are not persisted when store is false. Ensure
-  // variants always carry the non-persistent setting so follow-up turns never
-  // try to reference missing rs_* items.
-  return {
-    ...providerOptions,
-    store: false,
-  };
+  return providerOptions;
 }
 
 export function toProviderOptionsByProvider(
@@ -161,18 +151,17 @@ export function isBuiltInVariant(variantId: string): boolean {
 
 export const BUILT_IN_VARIANTS: ModelVariant[] = [
   {
-    id: `${BUILT_IN_VARIANT_ID_PREFIX}gpt-5.4-xhigh`,
-    name: "GPT-5.4 (XHigh)",
-    baseModelId: "openai/gpt-5.4",
+    id: `${BUILT_IN_VARIANT_ID_PREFIX}gpt-5.6-luna-xhigh`,
+    name: "GPT-5.6 Luna (XHigh)",
+    baseModelId: "openai/gpt-5.6-luna",
     providerOptions: {
       reasoningEffort: "xhigh",
-      reasoningSummary: "auto",
     },
   },
   {
-    id: `${BUILT_IN_VARIANT_ID_PREFIX}claude-opus-4.6-high`,
-    name: "Claude Opus 4.6 (High)",
-    baseModelId: "anthropic/claude-opus-4.6",
+    id: `${BUILT_IN_VARIANT_ID_PREFIX}claude-fable-5-high`,
+    name: "Claude Fable 5 (High)",
+    baseModelId: "anthropic/claude-fable-5",
     providerOptions: {
       effort: "high",
     },

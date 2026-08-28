@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { ModelCombobox } from "@/components/model-combobox";
+import { getProviderFromModelId } from "@/components/provider-icons";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -30,7 +31,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { type AvailableModel, getModelDisplayName } from "@/lib/models";
+import {
+  APP_DEFAULT_MODEL_ID,
+  type AvailableModel,
+  getModelDisplayName,
+} from "@/lib/models";
 import {
   isBuiltInVariant,
   providerOptionsSchema,
@@ -107,7 +112,7 @@ function VariantFormDialog({
   onOpenChange: (open: boolean) => void;
   editingVariant: ModelVariant | null;
   models: AvailableModel[];
-  modelItems: Array<{ id: string; label: string }>;
+  modelItems: Array<{ id: string; label: string; provider?: string }>;
   isSaving: boolean;
   onSubmit: (data: {
     name: string;
@@ -130,7 +135,11 @@ function VariantFormDialog({
         );
       } else {
         setName("");
-        setBaseModelId(models[0]?.id ?? "");
+        setBaseModelId(
+          models.some((model) => model.id === APP_DEFAULT_MODEL_ID)
+            ? APP_DEFAULT_MODEL_ID
+            : (models[0]?.id ?? ""),
+        );
         setProviderOptionsText("{}");
       }
       setError(null);
@@ -422,6 +431,7 @@ export function ModelVariantsSection() {
       models.map((model) => ({
         id: model.id,
         label: getModelDisplayName(model),
+        provider: getProviderFromModelId(model.id),
       })),
     [models],
   );

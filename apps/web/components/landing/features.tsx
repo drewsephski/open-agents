@@ -79,7 +79,7 @@ export function LandingFeatures() {
             bullets={[
               "File ops, search, shell, and task delegation built in",
               "Explorer and executor subagents for parallel work",
-              "Multi-model support with AI Gateway",
+              "Multi-model support with OpenRouter",
             ]}
             window={<FeatureAgent />}
           />

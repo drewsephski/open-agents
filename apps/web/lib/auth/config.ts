@@ -5,69 +5,16 @@ import type {
   VercelProfile,
 } from "better-auth/social-providers";
 import { nanoid } from "nanoid";
+import { getAllowedAuthHosts } from "@/lib/auth/allowed-hosts";
 import { deriveAuthUsername } from "@/lib/auth/username";
 import { db } from "@/lib/db/client";
 import * as schema from "@/lib/db/schema";
-
-function normalizeHost(value?: string): string | null {
-  if (!value) {
-    return null;
-  }
-
-  try {
-    return new URL(
-      value.startsWith("http://") || value.startsWith("https://")
-        ? value
-        : `https://${value}`,
-    ).host;
-  } catch {
-    return null;
-  }
-}
-
-function getWildcardHostPattern(host: string): string | null {
-  const hostname = host.split(":")[0];
-  if (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname.startsWith("[")
-  ) {
-    return null;
-  }
-
-  return `*.${host}`;
-}
 
 function getAuthBaseURLFallback(): string | undefined {
   return (
     process.env.BETTER_AUTH_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined)
   );
-}
-
-function getAllowedAuthHosts(): string[] {
-  const hosts = new Set<string>(["localhost:3000", "127.0.0.1:3000"]);
-
-  for (const value of [
-    process.env.BETTER_AUTH_URL,
-    process.env.VERCEL_URL,
-    process.env.VERCEL_PROJECT_PRODUCTION_URL,
-    process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL,
-  ]) {
-    const host = normalizeHost(value);
-    if (!host) {
-      continue;
-    }
-
-    hosts.add(host);
-
-    const wildcardPattern = getWildcardHostPattern(host);
-    if (wildcardPattern) {
-      hosts.add(wildcardPattern);
-    }
-  }
-
-  return [...hosts];
 }
 
 function mapVercelProfileToUser(profile: VercelProfile): { username: string } {
@@ -133,6 +80,13 @@ export const auth = betterAuth({
         }),
       },
     },
+  },
+
+  emailAndPassword: {
+    enabled: true,
+    requireEmailVerification: false,
+    autoSignIn: true,
+    minPasswordLength: 8,
   },
 
   session: {

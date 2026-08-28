@@ -11,7 +11,7 @@ function VercelIcon({ className }: { className?: string }) {
       className={className}
       viewBox="0 0 24 24"
       fill="currentColor"
-      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
     >
       <path d="M12 1L24 22H0L12 1Z" />
     </svg>
@@ -42,6 +42,7 @@ type SignInButtonProps = {
 export function SignInButton({
   callbackUrl,
   disabled,
+  children,
   ...props
 }: SignInButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
@@ -64,12 +65,13 @@ export function SignInButton({
   return (
     <Button
       {...props}
+      type="button"
       aria-busy={isLoading}
       disabled={disabled || isLoading}
       onClick={handleSignIn}
     >
       {isLoading ? <Loader2 className="animate-spin" /> : <VercelIcon />}
-      {isLoading ? "Signing in..." : "Sign in with Vercel"}
+      {isLoading ? "Signing in..." : (children ?? "Sign in with Vercel")}
     </Button>
   );
 }

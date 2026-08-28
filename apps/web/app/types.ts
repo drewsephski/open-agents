@@ -23,9 +23,9 @@ export type WebAgentMessageMetadata = {
   modelId?: string;
   lastStepUsage?: LanguageModelUsage;
   totalMessageUsage?: LanguageModelUsage;
-  /** Gateway-reported cost of the most recent step, in USD. */
+  /** OpenRouter-reported cost of the most recent step, in USD. */
   lastStepCost?: number;
-  /** Cumulative gateway-reported cost across every step of the message, in USD. */
+  /** Cumulative OpenRouter-reported cost across every step of the message, in USD. */
   totalMessageCost?: number;
   lastStepFinishReason?: FinishReason;
   lastStepRawFinishReason?: string;

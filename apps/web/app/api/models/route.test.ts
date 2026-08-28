@@ -1,17 +1,9 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { OpenRouterCatalogModel } from "@open-agents/agent/model-catalog";
 
-interface MockGatewayModel extends Record<string, unknown> {
-  id: string;
-  name?: string;
-  description?: string | null;
-  modelType: string;
-  context_window?: number;
-}
-
-const gatewayModels: MockGatewayModel[] = [];
+const catalogModels: OpenRouterCatalogModel[] = [];
 const requestedUrls: string[] = [];
 
-let gatewayError: unknown = null;
 let modelsDevApiData: unknown = {};
 let currentSession: {
   authProvider?: "vercel" | "github";
@@ -30,19 +22,11 @@ function getRequestUrl(input: RequestInfo | URL): string {
   return input.url;
 }
 
-mock.module("ai", () => ({
-  gateway: {
-    getAvailableModels: async () => {
-      if (gatewayError) {
-        throw gatewayError;
-      }
-
-      return { models: gatewayModels };
-    },
-  },
-}));
-
 mock.module("server-only", () => ({}));
+
+mock.module("@open-agents/agent/model-catalog", () => ({
+  fetchOpenRouterLanguageModels: async () => catalogModels,
+}));
 
 mock.module("@/lib/session/get-server-session", () => ({
   getServerSession: async () => currentSession,
@@ -56,9 +40,8 @@ afterEach(() => {
 
 describe("/api/models context window enrichment", () => {
   beforeEach(() => {
-    gatewayModels.length = 0;
+    catalogModels.length = 0;
     requestedUrls.length = 0;
-    gatewayError = null;
     modelsDevApiData = {};
     currentSession = null;
 
@@ -73,27 +56,31 @@ describe("/api/models context window enrichment", () => {
     }) as unknown as typeof fetch;
   });
 
-  test("overrides gateway context windows from models.dev", async () => {
-    gatewayModels.push(
+  test("overrides OpenRouter context windows from models.dev", async () => {
+    catalogModels.push(
       {
         id: "openai/gpt-5.3-codex",
+        name: "GPT 5.3 Codex",
         modelType: "language",
         context_window: 200_000,
       },
       {
         id: "anthropic/claude-opus-4.6",
+        name: "Claude Opus 4.6",
         modelType: "language",
         context_window: 200_000,
       },
       {
         id: "openai/gpt-4o-mini",
+        name: "GPT-4o mini",
         modelType: "language",
         context_window: 128_000,
       },
       {
-        id: "openai/image-gen",
-        modelType: "image",
-        context_window: 200_000,
+        id: "z-ai/glm-5.3-flash",
+        name: "GLM 5.3 Flash",
+        modelType: "language",
+        context_window: 128_000,
       },
     );
 
@@ -129,18 +116,20 @@ describe("/api/models context window enrichment", () => {
     expect(contextById.get("openai/gpt-5.3-codex")).toBe(400_000);
     expect(contextById.get("anthropic/claude-opus-4.6")).toBe(1_000_000);
     expect(contextById.get("openai/gpt-4o-mini")).toBe(128_000);
-    expect(contextById.has("openai/image-gen")).toBe(false);
+    expect(contextById.get("z-ai/glm-5.3-flash")).toBe(128_000);
     expect(requestedUrls).toContain("https://models.dev/api.json");
   });
 
   test("hides Claude Opus models for managed trial users", async () => {
-    gatewayModels.push(
+    catalogModels.push(
       {
         id: "anthropic/claude-opus-4.6",
+        name: "Claude Opus 4.6",
         modelType: "language",
       },
       {
         id: "anthropic/claude-haiku-4.5",
+        name: "Claude Haiku 4.5",
         modelType: "language",
       },
     );
@@ -162,9 +151,10 @@ describe("/api/models context window enrichment", () => {
     ]);
   });
 
-  test("keeps gateway context window when models.dev only has related ids", async () => {
-    gatewayModels.push({
+  test("keeps OpenRouter context window when models.dev only has related ids", async () => {
+    catalogModels.push({
       id: "openai/gpt-5.3-codex-2026-02-15",
+      name: "GPT 5.3 Codex dated",
       modelType: "language",
       context_window: 200_000,
     });
@@ -196,8 +186,9 @@ describe("/api/models context window enrichment", () => {
   });
 
   test("keeps valid models.dev metadata when sibling fields are invalid", async () => {
-    gatewayModels.push({
+    catalogModels.push({
       id: "openai/gpt-5.3-codex",
+      name: "GPT 5.3 Codex",
       modelType: "language",
       context_window: 200_000,
     });
@@ -257,29 +248,13 @@ describe("/api/models context window enrichment", () => {
     });
   });
 
-  test("recovers from gateway validation errors when response still includes models", async () => {
-    gatewayError = {
-      response: {
-        models: [
-          {
-            id: "openai/gpt-5.4",
-            name: "GPT 5.4",
-            description: "Latest GPT model",
-            modelType: "language",
-          },
-          {
-            id: "openai/gpt-5.4-broken",
-            modelType: "language",
-          },
-          {
-            id: "cohere/rerank-v3.5",
-            name: "Cohere Rerank 3.5",
-            description: "Reranking model",
-            modelType: "reranking",
-          },
-        ],
-      },
-    };
+  test("returns the OpenRouter language catalog without Gateway recovery paths", async () => {
+    catalogModels.push({
+      id: "z-ai/glm-5.3-flash",
+      name: "GLM 5.3 Flash",
+      description: "Default Launchstack model",
+      modelType: "language",
+    });
 
     const { GET } = await routeModulePromise;
     const response = await GET(new Request("http://localhost/api/models"));
@@ -297,9 +272,9 @@ describe("/api/models context window enrichment", () => {
 
     expect(body.models).toEqual([
       {
-        id: "openai/gpt-5.4",
-        name: "GPT 5.4",
-        description: "Latest GPT model",
+        id: "z-ai/glm-5.3-flash",
+        name: "GLM 5.3 Flash",
+        description: "Default Launchstack model",
         modelType: "language",
       },
     ]);

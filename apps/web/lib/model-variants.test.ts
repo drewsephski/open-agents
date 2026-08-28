@@ -20,19 +20,13 @@ describe("model variants", () => {
       openai: {
         reasoningEffort: "medium",
         reasoningSummary: "detailed",
-        store: false,
       },
     });
   });
 
-  test("toProviderOptionsByProvider injects store false for OpenAI variants even when provider options are empty", () => {
+  test("toProviderOptionsByProvider returns undefined when provider options are empty", () => {
     const result = toProviderOptionsByProvider("openai/gpt-5", {});
-
-    expect(result).toEqual({
-      openai: {
-        store: false,
-      },
-    });
+    expect(result).toBeUndefined();
   });
 
   test("toProviderOptionsByProvider returns undefined for non-OpenAI variants with no provider options", () => {
@@ -40,7 +34,7 @@ describe("model variants", () => {
     expect(result).toBeUndefined();
   });
 
-  test("toProviderOptionsByProvider forces store false for OpenAI variants", () => {
+  test("toProviderOptionsByProvider preserves OpenAI variant options without Responses-only defaults", () => {
     const result = toProviderOptionsByProvider("openai/gpt-5", {
       reasoningEffort: "medium",
       store: true,
@@ -49,13 +43,13 @@ describe("model variants", () => {
     expect(result).toEqual({
       openai: {
         reasoningEffort: "medium",
-        store: false,
+        store: true,
       },
     });
   });
 
   test("isBuiltInVariant returns true for built-in ids and false for user ids", () => {
-    expect(isBuiltInVariant("variant:builtin:gpt-5.4-xhigh")).toBe(true);
+    expect(isBuiltInVariant("variant:builtin:gpt-5.6-luna-xhigh")).toBe(true);
     expect(isBuiltInVariant("variant:openai-medium")).toBe(false);
   });
 
@@ -124,17 +118,15 @@ describe("model variants", () => {
 
   test("resolveModelSelection resolves built-in variants", () => {
     const result = resolveModelSelection(
-      "variant:builtin:gpt-5.4-xhigh",
+      "variant:builtin:gpt-5.6-luna-xhigh",
       BUILT_IN_VARIANTS,
     );
 
     expect(result).toEqual({
-      resolvedModelId: "openai/gpt-5.4",
+      resolvedModelId: "openai/gpt-5.6-luna",
       providerOptionsByProvider: {
         openai: {
           reasoningEffort: "xhigh",
-          reasoningSummary: "auto",
-          store: false,
         },
       },
       isMissingVariant: false,

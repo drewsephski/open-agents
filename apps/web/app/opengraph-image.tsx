@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "Open Agents — Spawn coding agents that run in the cloud";
+export const alt =
+  "Launchstack — Cloud coding agents that work autonomously from code to launch";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 export const runtime = "edge";
@@ -111,7 +112,7 @@ export default function OgImage() {
                 color: "rgba(255, 255, 255, 0.5)",
               }}
             >
-              Open Agents
+              Launchstack
             </span>
           </div>
 
@@ -125,7 +126,7 @@ export default function OgImage() {
               color: "#ffffff",
             }}
           >
-            Open Agents.
+            Launchstack.
           </div>
 
           {/* Subtitle */}
@@ -138,7 +139,8 @@ export default function OgImage() {
               maxWidth: 720,
             }}
           >
-            Spawn coding agents that run infinitely in the cloud.
+            Spawn coding agents that run infinitely in the cloud—built to take
+            software from code to launch.
           </div>
         </div>
 
@@ -151,7 +153,7 @@ export default function OgImage() {
           }}
         >
           <TechPill label="AI SDK" />
-          <TechPill label="Gateway" />
+          <TechPill label="OpenRouter" />
           <TechPill label="Sandbox" />
           <TechPill label="Workflow SDK" />
 
@@ -170,7 +172,7 @@ export default function OgImage() {
                 letterSpacing: "0.01em",
               }}
             >
-              open-agents.dev
+              launchstack.sh
             </span>
           </div>
         </div>

@@ -260,6 +260,20 @@
       "when": 1778835412125,
       "tag": "0036_faulty_yellow_claw",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1787922858399,
+      "tag": "0037_moaning_warbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1787923280654,
+      "tag": "0038_foamy_slayback",
+      "breakpoints": true
     }
   ]
 }

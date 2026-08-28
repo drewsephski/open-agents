@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckIcon, ChevronDown } from "lucide-react";
 import { type ModelOption, groupByProvider } from "@/lib/model-options";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
+import { getRecommendedModels } from "@/lib/recommended-models";
 import { cn } from "@/lib/utils";
 import {
   Popover,
@@ -96,7 +97,12 @@ export function ModelSelectorCompact({
   const selectedOption = modelOptions.find((option) => option.id === value);
   const displayText = selectedOption?.shortLabel ?? value;
 
+  const recommended = useMemo(
+    () => getRecommendedModels(modelOptions),
+    [modelOptions],
+  );
   const groups = useMemo(() => groupByProvider(modelOptions), [modelOptions]);
+  const showRecommended = search.trim() === "" && recommended.length > 0;
 
   return (
     <Popover
@@ -128,7 +134,7 @@ export function ModelSelectorCompact({
         </button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-64 p-0"
+        className="w-72 p-0"
         align="start"
         onOpenAutoFocus={(event) => {
           event.preventDefault();
@@ -148,6 +154,35 @@ export function ModelSelectorCompact({
           />
           <CommandList>
             <CommandEmpty>No models found.</CommandEmpty>
+            {showRecommended ? (
+              <CommandGroup heading="Recommended">
+                {recommended.map(({ option, label }) => (
+                  <CommandItem
+                    key={`recommended:${option.id}`}
+                    value={`recommended ${option.label} ${option.id} ${label}`}
+                    onSelect={() => handleSelect(option.id)}
+                    className="flex items-center"
+                  >
+                    <ProviderIcon
+                      provider={option.provider}
+                      className="mr-1.5 size-3.5 shrink-0 opacity-70"
+                    />
+                    <span className="min-w-0 truncate">
+                      {option.shortLabel}
+                    </span>
+                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                      {label}
+                    </span>
+                    <CheckIcon
+                      className={cn(
+                        "ml-1.5 size-4 shrink-0",
+                        value === option.id ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ) : null}
             {groups.map((group) => (
               <CommandGroup
                 key={group.provider}

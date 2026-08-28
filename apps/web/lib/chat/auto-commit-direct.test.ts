@@ -48,7 +48,7 @@ mock.module("ai", () => ({
 }));
 
 mock.module("@open-agents/agent", () => ({
-  gateway: () => "mock-model",
+  defaultLanguageModel: () => "mock-model",
 }));
 
 mock.module("@open-agents/sandbox", () => ({

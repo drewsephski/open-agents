@@ -2,6 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
+import { PRIORITY_PROVIDERS } from "@/lib/model-options";
+import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
+import { getRecommendedModels } from "@/lib/recommended-models";
 import { cn } from "@/lib/utils";
 import {
   Popover,
@@ -42,9 +45,6 @@ interface ModelComboboxProps {
   onChange: (value: string) => void;
 }
 
-/** Providers pinned to the top. */
-const PRIORITY_PROVIDERS = ["anthropic", "openai"];
-
 function groupByProvider(items: ModelComboboxItem[]) {
   const groups: Record<string, ModelComboboxItem[]> = {};
   const providers: string[] = [];
@@ -84,6 +84,7 @@ export function ModelCombobox({
   onChange,
 }: ModelComboboxProps) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
   const selectedItem = items.find((item) => item.id === value);
   const selectedProvider =
@@ -93,10 +94,20 @@ export function ModelCombobox({
     ? stripProviderPrefix(selectedItem.label, selectedProvider ?? "")
     : placeholder;
 
+  const recommended = useMemo(() => getRecommendedModels(items), [items]);
   const groups = useMemo(() => groupByProvider(items), [items]);
+  const showRecommended = search.trim() === "" && recommended.length > 0;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          setSearch("");
+        }
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -128,9 +139,52 @@ export function ModelCombobox({
         align="start"
       >
         <Command>
-          <CommandInput placeholder={searchPlaceholder} />
+          <CommandInput
+            value={search}
+            onValueChange={setSearch}
+            placeholder={searchPlaceholder}
+          />
           <CommandList>
             <CommandEmpty>{emptyText}</CommandEmpty>
+            {showRecommended ? (
+              <CommandGroup heading="Recommended">
+                {recommended.map(({ option, label }) => {
+                  const provider =
+                    option.provider ?? getProviderFromModelId(option.id);
+                  const shortLabel = stripProviderPrefix(
+                    option.label,
+                    provider,
+                  );
+                  return (
+                    <CommandItem
+                      key={`recommended:${option.id}`}
+                      value={`recommended ${option.label} ${option.id} ${label}`}
+                      onSelect={() => {
+                        onChange(option.id);
+                        setSearch("");
+                        setOpen(false);
+                      }}
+                      className="flex items-center"
+                    >
+                      <ProviderIcon
+                        provider={provider}
+                        className="mr-1.5 size-3.5 shrink-0 opacity-70"
+                      />
+                      <span className="min-w-0 truncate">{shortLabel}</span>
+                      <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                        {label}
+                      </span>
+                      <CheckIcon
+                        className={cn(
+                          "ml-1.5 size-4 shrink-0",
+                          value === option.id ? "opacity-100" : "opacity-0",
+                        )}
+                      />
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            ) : null}
             {groups.map((group) => (
               <CommandGroup key={group.provider} heading={group.label}>
                 {group.options.map((item) => {
@@ -143,6 +197,7 @@ export function ModelCombobox({
                       value={`${item.label} ${item.id}`}
                       onSelect={() => {
                         onChange(item.id);
+                        setSearch("");
                         setOpen(false);
                       }}
                       className="flex items-center"
@@ -155,6 +210,11 @@ export function ModelCombobox({
                       {item.isVariant && (
                         <span className="ml-1.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
                           variant
+                        </span>
+                      )}
+                      {item.id === APP_DEFAULT_MODEL_ID && (
+                        <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                          default
                         </span>
                       )}
                       <CheckIcon

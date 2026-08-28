@@ -1,6 +1,6 @@
 # Architecture
 
-This is a Turborepo monorepo for "Open Agents" - an AI coding agent built with AI SDK.
+This is a Turborepo monorepo for Launchstack, a cloud coding-agent platform built on the open-source Open Agents architecture from Vercel Labs.
 
 ## Core Flow
 

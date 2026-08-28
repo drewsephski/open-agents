@@ -1,6 +1,9 @@
+export type AuthProvider = "credential" | "vercel" | "github";
+
 export interface Session {
   created: number;
-  authProvider: "vercel" | "github";
+  authProvider: AuthProvider;
+  hasVercelAccount: boolean;
   user: {
     id: string;
     username: string;
@@ -12,7 +15,8 @@ export interface Session {
 
 export interface SessionUserInfo {
   user: Session["user"] | undefined;
-  authProvider?: "vercel" | "github";
+  authProvider?: AuthProvider;
+  hasVercelAccount?: boolean;
   isAdmin?: boolean;
   isManagedTemplateTrialUser?: boolean;
   hasGitHub?: boolean;

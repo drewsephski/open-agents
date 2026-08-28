@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 
 let currentSession: {
   authProvider?: "vercel" | "github";
@@ -8,7 +9,7 @@ let currentSession: {
 };
 
 const preferencesState = {
-  defaultModelId: "anthropic/claude-haiku-4.5",
+  defaultModelId: APP_DEFAULT_MODEL_ID,
   defaultSubagentModelId: null as string | null,
   defaultSandboxType: "vercel" as const,
   defaultDiffMode: "unified" as const,
@@ -55,7 +56,7 @@ function createJsonRequest(method: "PATCH" | "GET", body?: unknown): Request {
 describe("/api/settings/preferences", () => {
   beforeEach(() => {
     currentSession = { user: { id: "user-1" } };
-    preferencesState.defaultModelId = "anthropic/claude-haiku-4.5";
+    preferencesState.defaultModelId = APP_DEFAULT_MODEL_ID;
     preferencesState.defaultSubagentModelId = null;
     preferencesState.modelVariants = [];
     preferencesState.enabledModelIds = [];
@@ -88,21 +89,21 @@ describe("/api/settings/preferences", () => {
     expect(body.preferences.globalSkillRefs).toEqual([]);
   });
 
-  test("GET hides Opus defaults for managed trial users", async () => {
+  test("GET hides Opus and Fable defaults for managed trial users", async () => {
     const { GET } = await routeModulePromise;
 
     currentSession = {
       authProvider: "vercel",
       user: { id: "user-1", email: "person@example.com" },
     };
-    preferencesState.defaultModelId = "anthropic/claude-opus-4.6";
+    preferencesState.defaultModelId = "anthropic/claude-fable-5";
     preferencesState.defaultSubagentModelId =
-      "variant:builtin:claude-opus-4.6-high";
+      "variant:builtin:claude-fable-5-high";
     preferencesState.modelVariants = [
       {
-        id: "variant:user-opus",
-        name: "User Opus",
-        baseModelId: "anthropic/claude-opus-4.6",
+        id: "variant:user-fable",
+        name: "User Fable",
+        baseModelId: "anthropic/claude-fable-5",
         providerOptions: {},
       },
     ];
@@ -114,8 +115,8 @@ describe("/api/settings/preferences", () => {
       preferences: typeof preferencesState;
     };
 
-    expect(body.preferences.defaultModelId).toBe("openai/gpt-5.4");
-    expect(body.preferences.defaultSubagentModelId).toBe("openai/gpt-5.4");
+    expect(body.preferences.defaultModelId).toBe(APP_DEFAULT_MODEL_ID);
+    expect(body.preferences.defaultSubagentModelId).toBe(APP_DEFAULT_MODEL_ID);
     expect(body.preferences.modelVariants).toEqual([]);
   });
 

@@ -246,6 +246,7 @@ const providerIconMap: Record<string, React.FC<IconProps>> = {
   cohere: CohereIcon,
   meta: MetaIcon,
   zai: ZAIIcon,
+  "z-ai": ZAIIcon,
 };
 
 const providerDisplayNames: Record<string, string> = {
@@ -263,6 +264,7 @@ const providerDisplayNames: Record<string, string> = {
   fireworks: "Fireworks",
   meta: "Meta",
   zai: "ZAI",
+  "z-ai": "Z.AI",
 };
 
 /** Prefixes in model display names that match the provider brand (stripped in compact UI). */
@@ -283,7 +285,7 @@ export function getProviderFromModelId(modelId: string): string {
 
 /**
  * Strip the provider brand prefix from a model label for compact display.
- * e.g. "Claude Opus 4.6" → "Opus 4.6", "GPT-5.4" → "GPT-5.4"
+ * e.g. "Claude Fable 5" → "Fable 5", "GPT-5.6 Luna" → "GPT-5.6 Luna"
  */
 export function stripProviderPrefix(label: string, provider: string): string {
   const prefixes = providerLabelPrefixes[provider];

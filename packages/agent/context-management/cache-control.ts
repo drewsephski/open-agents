@@ -14,35 +14,32 @@ function isAnthropicModel(model: LanguageModel): boolean {
   );
 }
 
+/**
+ * Anthropic cache-control markers for OpenRouter.
+ *
+ * `@openrouter/ai-sdk-provider@2.9.1` forwards Anthropic prompt caching when
+ * `cacheControl: { type: "ephemeral" }` is set under the `openrouter`
+ * provider namespace (and also converts Anthropic-specific options internally).
+ * We set both namespaces so markers still apply when routing Anthropic models
+ * through OpenRouter.
+ *
+ * GLM and other non-Anthropic defaults skip this path — cache markers are
+ * Anthropic-only.
+ */
 const DEFAULT_CACHE_CONTROL_OPTIONS: Record<
   string,
   Record<string, JSONValue>
 > = {
   anthropic: { cacheControl: { type: "ephemeral" } },
+  openrouter: { cacheControl: { type: "ephemeral" } },
 };
 
 /**
  * Adds provider-specific cache control options to tools for optimal caching.
  *
- * For Anthropic: marks all tools with `cacheControl: { type: "ephemeral" }`.
+ * For Anthropic (including Anthropic models routed through OpenRouter): marks
+ * the last tool with `cacheControl: { type: "ephemeral" }`.
  * For non-Anthropic models, tools are returned unchanged.
- *
- * @example
- * ```ts
- * const result = await generateText({
- *   model: anthropic('claude-3-5-haiku-latest'),
- *   tools: addCacheControl({
- *     tools: {
- *       cityAttractions: tool({
- *         parameters: z.object({ city: z.string() }),
- *         execute: async ({ city }) => `Attractions in ${city}`,
- *       }),
- *     },
- *     model,
- *   }),
- *   messages: [...],
- * });
- * ```
  */
 export function addCacheControl<T extends ToolSet>(options: {
   tools: T;
@@ -58,14 +55,6 @@ export function addCacheControl<T extends ToolSet>(options: {
  * so the conversation can be incrementally cached."
  *
  * For non-Anthropic models, messages are returned unchanged.
- *
- * @example
- * ```ts
- * prepareStep: ({ messages, model, ...rest }) => ({
- *   ...rest,
- *   messages: addCacheControl({ messages, model }),
- * }),
- * ```
  */
 export function addCacheControl(options: {
   messages: ModelMessage[];

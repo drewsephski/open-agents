@@ -1,4 +1,5 @@
-import { SignInButton } from "@/components/auth/sign-in-button";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 type BentoItem = {
   readonly id: string;
@@ -10,22 +11,22 @@ const items: readonly BentoItem[] = [
   {
     id: "001",
     title: "AI SDK",
-    body: "Unified interface across models. Switch providers, stream responses, and call tools with a single API.",
+    body: "One interface for models, tools, and streaming. The foundation for agents that can reason, act, and adapt.",
   },
   {
     id: "002",
-    title: "AI Gateway",
-    body: "Route requests across providers with built-in fallbacks, rate limiting, and observability.",
+    title: "OpenRouter",
+    body: "Route across leading models through one API, with flexible model selection, usage tracking, and cost visibility.",
   },
   {
     id: "003",
     title: "Sandbox",
-    body: "Secure, isolated environments for every session. Full filesystem, network, and runtime access.",
+    body: "Secure, isolated environments where agents can inspect code, run commands, test changes, and launch previews.",
   },
   {
     id: "004",
     title: "Workflow SDK",
-    body: "Durable, resumable agent workflows that survive restarts and coordinate multi-step operations.",
+    body: "Durable agent workflows that keep running in the cloud, resume after interruptions, and coordinate work from code to launch.",
   },
 ];
 
@@ -85,7 +86,9 @@ export function LandingBento() {
               synthetic demos &mdash; real infrastructure for real agents.
             </p>
             <div className="mt-6">
-              <SignInButton />
+              <Button asChild>
+                <Link href="/sign-up">Get started</Link>
+              </Button>
             </div>
           </div>
         </div>

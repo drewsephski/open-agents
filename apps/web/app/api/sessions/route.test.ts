@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import type { VercelProjectSelection } from "@/lib/vercel/types";
 
 let currentSession: {
@@ -37,7 +38,7 @@ mock.module("@/lib/random-city", () => ({
 
 mock.module("@/lib/db/user-preferences", () => ({
   getUserPreferences: async () => ({
-    defaultModelId: "anthropic/claude-haiku-4.5",
+    defaultModelId: APP_DEFAULT_MODEL_ID,
     defaultSubagentModelId: null,
     defaultSandboxType: "vercel",
     defaultDiffMode: "unified",
@@ -174,7 +175,7 @@ describe("/api/sessions POST vercel project linking", () => {
 
     expect(response.status).toBe(403);
     expect(body.error).toBe(
-      "This hosted demo includes 1 trial session. Deploy your own copy to unlock the full Open Agents template.",
+      "This hosted demo includes 1 trial session. Deploy your own copy to unlock the full Launchstack template.",
     );
     expect(createCalls).toHaveLength(0);
   });

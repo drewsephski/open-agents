@@ -5,15 +5,16 @@
   "type": "module",
   "main": "./index.ts",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./usage-metadata": "./usage-metadata.ts",
+    "./model-catalog": "./model-catalog.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "catalog:",
-    "@ai-sdk/openai": "catalog:",
     "@open-agents/sandbox": "workspace:*",
+    "@openrouter/ai-sdk-provider": "2.9.1",
     "ai": "catalog:",
     "zod": "catalog:"
   },

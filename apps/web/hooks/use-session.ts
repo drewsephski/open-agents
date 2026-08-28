@@ -21,5 +21,6 @@ export function useSession() {
     hasGitHub: data?.hasGitHub ?? false,
     hasGitHubAccount: data?.hasGitHubAccount ?? false,
     hasGitHubInstallations: data?.hasGitHubInstallations ?? false,
+    hasVercelAccount: data?.hasVercelAccount ?? false,
   };
 }

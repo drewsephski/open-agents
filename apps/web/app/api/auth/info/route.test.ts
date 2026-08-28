@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 type TestSession = {
   authProvider: "vercel" | "github";
+  hasVercelAccount: boolean;
   user: {
     id: string;
     username: string;
@@ -58,6 +59,7 @@ describe("GET /api/auth/info", () => {
   beforeEach(() => {
     session = {
       authProvider: "vercel",
+      hasVercelAccount: true,
       user: {
         id: "user-1",
         username: "vercel-user",
@@ -102,6 +104,7 @@ describe("GET /api/auth/info", () => {
     expect(await response.json()).toEqual({
       user: session?.user,
       authProvider: "vercel",
+      hasVercelAccount: true,
       isAdmin: false,
       isManagedTemplateTrialUser: false,
       hasGitHub: true,
@@ -119,6 +122,7 @@ describe("GET /api/auth/info", () => {
     expect(await response.json()).toEqual({
       user: session?.user,
       authProvider: "vercel",
+      hasVercelAccount: true,
       isAdmin: false,
       isManagedTemplateTrialUser: false,
       hasGitHub: false,
@@ -138,6 +142,7 @@ describe("GET /api/auth/info", () => {
     expect(await response.json()).toEqual({
       user: session?.user,
       authProvider: "vercel",
+      hasVercelAccount: true,
       isAdmin: false,
       isManagedTemplateTrialUser: true,
       hasGitHub: false,
@@ -156,6 +161,7 @@ describe("GET /api/auth/info", () => {
     expect(await response.json()).toEqual({
       user: session?.user,
       authProvider: "vercel",
+      hasVercelAccount: true,
       isAdmin: false,
       isManagedTemplateTrialUser: true,
       hasGitHub: false,

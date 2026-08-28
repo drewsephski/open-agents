@@ -62,7 +62,12 @@ export function SessionStarter({
     string | null | undefined
   >(undefined);
 
-  const { session, loading: sessionLoading, hasGitHub } = useSession();
+  const {
+    session,
+    loading: sessionLoading,
+    hasGitHub,
+    hasVercelAccount,
+  } = useSession();
   const isTrialUser = session?.isManagedTemplateTrialUser ?? false;
   const { reconnectRequired, isLoading: githubConnectionLoading } =
     useGitHubConnectionStatus({
@@ -86,7 +91,7 @@ export function SessionStarter({
     !reconnectRequired &&
     !!selectedOwner &&
     !!selectedRepo &&
-    session?.authProvider === "vercel";
+    hasVercelAccount;
   const {
     data: repoProjects,
     loading: repoProjectsLoading,
@@ -186,7 +191,7 @@ export function SessionStarter({
     !reconnectRequired &&
     !!selectedOwner &&
     !!selectedRepo &&
-    (sessionLoading || session?.authProvider === "vercel");
+    (sessionLoading || hasVercelAccount);
 
   const handleSubmit = () => {
     if (isSubmitDisabled) return;

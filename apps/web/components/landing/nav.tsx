@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { SignInButton } from "@/components/auth/sign-in-button";
+import { AuthButtons } from "@/components/auth/auth-buttons";
 import { cn } from "@/lib/utils";
-import { GitHubLink } from "./github-link";
 import { Logo } from "./logo";
 
 export function LandingNav({
@@ -30,7 +29,7 @@ export function LandingNav({
               : "shadow-none"
           }`}
         >
-          <Logo className="h-[17px]" />
+          <Logo />
 
           <div
             className={cn(
@@ -40,8 +39,7 @@ export function LandingNav({
                 : "pointer-events-none opacity-0 blur-xs",
             )}
           >
-            <GitHubLink variant="ghost" size="sm" />
-            <SignInButton size="sm" />
+            <AuthButtons size="sm" />
           </div>
         </div>
       </div>

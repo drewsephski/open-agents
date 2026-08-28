@@ -497,7 +497,7 @@ function getConversationUsage(
   }, getUsageTotals(undefined));
 }
 
-type ConversationCostSource = "gateway" | "estimate" | "mixed";
+type ConversationCostSource = "reported" | "estimate" | "mixed";
 
 type ConversationCost = {
   total: number;
@@ -507,11 +507,11 @@ type ConversationCost = {
 /**
  * Compute the cumulative USD cost across every assistant message in the
  * conversation. Per-message preference order:
- *   1. Gateway-reported `totalMessageCost` (authoritative when present).
+ *   1. Provider-reported `totalMessageCost` (authoritative when present).
  *   2. Token-based estimate from `totalMessageUsage` / `lastStepUsage`.
  *
  * Returns `undefined` when no cost can be attributed to any message (e.g. no
- * usage metadata and no gateway cost), matching the previous "hide the row"
+ * usage metadata and no reported cost), matching the previous "hide the row"
  * behavior. The `source` discriminant lets the UI label the figure correctly.
  */
 function getConversationCost(
@@ -520,7 +520,7 @@ function getConversationCost(
 ): ConversationCost | undefined {
   let total = 0;
   let hasAnyCost = false;
-  let sawGateway = false;
+  let sawReported = false;
   let sawEstimate = false;
 
   for (const message of messages) {
@@ -528,15 +528,15 @@ function getConversationCost(
       continue;
     }
 
-    const gatewayCost = message.metadata?.totalMessageCost;
+    const reportedCost = message.metadata?.totalMessageCost;
     if (
-      typeof gatewayCost === "number" &&
-      Number.isFinite(gatewayCost) &&
-      gatewayCost >= 0
+      typeof reportedCost === "number" &&
+      Number.isFinite(reportedCost) &&
+      reportedCost >= 0
     ) {
-      total += gatewayCost;
+      total += reportedCost;
       hasAnyCost = true;
-      sawGateway = true;
+      sawReported = true;
       continue;
     }
 
@@ -564,7 +564,11 @@ function getConversationCost(
   }
 
   const source: ConversationCostSource =
-    sawGateway && sawEstimate ? "mixed" : sawGateway ? "gateway" : "estimate";
+    sawReported && sawEstimate
+      ? "mixed"
+      : sawReported
+        ? "reported"
+        : "estimate";
 
   return { total, source };
 }
@@ -684,7 +688,7 @@ function ContextUsageIndicator({
           {conversationCost !== undefined ? (
             <div className="flex justify-between gap-6">
               <span className="opacity-60">
-                {conversationCost.source === "gateway"
+                {conversationCost.source === "reported"
                   ? "Cost"
                   : conversationCost.source === "mixed"
                     ? "Cost (partial est.)"

@@ -1,5 +1,5 @@
 import type { Sandbox } from "@open-agents/sandbox";
-import { gateway } from "@open-agents/agent";
+import { defaultLanguageModel } from "@open-agents/agent";
 import { generateText, NoObjectGeneratedError, Output } from "ai";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -301,7 +301,7 @@ export async function generatePullRequestContentFromSandbox(
   let prContent: z.infer<typeof prContentSchema>;
   try {
     const { output } = await generateText({
-      model: gateway("anthropic/claude-haiku-4.5"),
+      model: defaultLanguageModel(),
       output: Output.object({
         schema: prContentSchema,
       }),

@@ -14,7 +14,8 @@ export const botIdConfig = {
       "*.vercel.com",
       "*.vercel.dev",
       "*.vercel.run",
-      "*.open-agents.dev",
+      "launchstack.sh",
+      "*.launchstack.sh",
     ],
   },
 };

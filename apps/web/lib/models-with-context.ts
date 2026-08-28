@@ -1,19 +1,22 @@
 import "server-only";
 
-import { gateway } from "ai";
+import {
+  fetchOpenRouterLanguageModels,
+  type OpenRouterCatalogModel,
+} from "@open-agents/agent/model-catalog";
 import { z } from "zod";
 import { filterDisabledModels } from "./model-availability";
 import type {
   AvailableModel,
   AvailableModelCost,
   AvailableModelCostTier,
-  GatewayAvailableModel,
+  CatalogLanguageModel,
 } from "./models";
 
 const MODELS_DEV_URL = "https://models.dev/api.json";
 const MODELS_DEV_TIMEOUT_MS = 750;
 
-type GatewayModel = GatewayAvailableModel;
+type CatalogModel = CatalogLanguageModel;
 
 interface ModelsDevMetadata {
   contextWindow?: number;
@@ -21,21 +24,6 @@ interface ModelsDevMetadata {
 }
 
 const recordSchema = z.object({}).catchall(z.unknown());
-
-const gatewayModelSchema = z
-  .object({
-    id: z.string(),
-    name: z.string(),
-    description: z.string().nullish(),
-    modelType: z.string().nullish(),
-  })
-  .passthrough();
-
-const gatewayErrorSchema = z.object({
-  response: z.object({
-    models: z.array(z.unknown()),
-  }),
-});
 
 const modelsDevLimitSchema = z
   .object({
@@ -50,20 +38,6 @@ const modelsDevCostTierSchema = z
     cache_read: z.number().finite().optional(),
   })
   .passthrough();
-
-function getModelsFromGatewayError(error: unknown): GatewayModel[] | undefined {
-  const parsed = gatewayErrorSchema.safeParse(error);
-  if (!parsed.success) {
-    return undefined;
-  }
-
-  const models = parsed.data.response.models.flatMap((model) => {
-    const parsedModel = gatewayModelSchema.safeParse(model);
-    return parsedModel.success ? [parsedModel.data] : [];
-  });
-
-  return models.length > 0 ? models : undefined;
-}
 
 function getModelsDevCostTier(
   value: unknown,
@@ -177,7 +151,7 @@ async function fetchModelsDevMetadataMap(): Promise<
 }
 
 function addModelsDevMetadata(
-  model: GatewayModel,
+  model: CatalogModel,
   metadataMap: Map<string, ModelsDevMetadata>,
 ): AvailableModel {
   const metadata = metadataMap.get(model.id);
@@ -201,27 +175,22 @@ function addModelsDevMetadata(
   return nextModel;
 }
 
-async function fetchGatewayModels(): Promise<GatewayModel[]> {
-  try {
-    const { models } = await gateway.getAvailableModels();
-    return models;
-  } catch (error) {
-    const models = getModelsFromGatewayError(error);
-    if (models) {
-      return models;
-    }
-
-    throw error;
-  }
+function toAvailableModel(model: OpenRouterCatalogModel): AvailableModel {
+  return {
+    id: model.id,
+    name: model.name,
+    description: model.description,
+    modelType: model.modelType,
+    ...(model.context_window ? { context_window: model.context_window } : {}),
+    ...(model.cost ? { cost: model.cost } : {}),
+  };
 }
 
 export async function fetchAvailableLanguageModels(): Promise<
   AvailableModel[]
 > {
-  const models = await fetchGatewayModels();
-  return filterDisabledModels(
-    models.filter((model) => model.modelType === "language"),
-  );
+  const models = await fetchOpenRouterLanguageModels();
+  return filterDisabledModels(models.map(toAvailableModel));
 }
 
 export async function fetchAvailableLanguageModelsWithContext(): Promise<

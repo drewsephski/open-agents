@@ -30,6 +30,15 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - In this codebase's Next.js version, `revalidateTag` must be called with a second argument (for example `{ expire: 0 }`); single-argument calls fail typecheck.
 - For Workflow SDK discovery in Next.js, ensure workflow files live in scanned directories (for this app, `app/`), otherwise manifests can show steps but `0 workflows` and `start()` will not run durable workflows.
 - Server-side optimistic chat route lookup must allow realistic persistence latency (multi-second retry window), otherwise `/sessions/[sessionId]/chats/[chatId]` can redirect away before chat creation finishes.
+- React 19 warns on `<script>` tags inside component trees ("never executed when rendering on the client"). For a blocking theme FOUC script, use a client helper that is `text/javascript` on the server and `text/plain` on the client, with `suppressHydrationWarning`, and place it in `<head>`.
+- Better Auth `baseURL.allowedHosts` matches `host:port`. Next.js may bind `localhost:3001+` when 3000 is taken, so allow `localhost:*` and `127.0.0.1:*` instead of hardcoding `:3000`.
+
+## Auth
+
+- Email/password is the primary Better Auth method (`emailAndPassword.enabled`, no verification). Vercel OAuth is a secondary sign-in and optional linked account. Do not assume every session is a Vercel login.
+- Better Auth stores the password hash on `accounts.password` with `providerId: "credential"`. That column already exists here, so enabling email/password does not add an accounts column.
+- Gate Vercel project/token features on `hasVercelAccount` from linked accounts, not `authProvider`. Users can sign up with email and later link Vercel.
+- Better Auth's `twoFactor` plugin only applies to credential (email/password) accounts, not Vercel/GitHub OAuth.
 
 ## Sandbox Lifecycle
 
@@ -111,3 +120,14 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - GitHub fork creation can take longer than a few seconds to become pushable; PR fallback should retry fork push on transient `repository not found` errors instead of failing immediately.
 - Git push failures from Vercel sandboxes can return empty output even when auth/write is denied; PR fallback logic should not rely only on matching "permission" text before attempting fork fallback.
 - When the GitHub App lacks push access (e.g. repo removed from installation scope), fail fast with a 403 directing users to /settings/connections rather than silently forking.
+
+## Models / OpenRouter
+
+- This repo uses `@openrouter/ai-sdk-provider` with AI SDK 6 (`createOpenRouter` + `provider.chat`). Do not point `createGateway()` at OpenRouter and do not use `@ai-sdk/openai` as the OpenRouter transport.
+- Importing `@open-agents/agent` must not require `OPENROUTER_API_KEY`. `ToolLoopAgent` constructors use `constructorPlaceholderModel()`; real OpenRouter transport is created in `prepareCall` / `defaultLanguageModel()`.
+- Workflow VMs should import `extractModelCost` from `@open-agents/agent/usage-metadata`, not the package barrel, so they do not load `createOpenRouter`.
+- Client components must not import `@open-agents/agent`. Keep default model IDs as string literals in `apps/web/lib/models.ts`.
+- User-facing brand is Launchstack / launchstack.sh. Keep internal package names (`@open-agents/agent`, `@open-agents/sandbox`, `@open-agents/shared`) unless a later controlled rename is requested.
+- OpenRouter reasoning options are a discriminated union (`effort` **or** `max_tokens`). Anthropic `effort: "max"` maps to OpenRouter `"xhigh"`. Responses-only fields (`store`, encrypted reasoning, `reasoningSummary`, `textVerbosity`) have no OpenRouter equivalent and must be dropped.
+- Prompt cache markers apply only when the routed model is Anthropic. GLM defaults skip `addCacheControl`. Set both `anthropic` and `openrouter` `cacheControl: { type: "ephemeral" }` namespaces when routing Claude through OpenRouter.
+- Cost lives at `providerMetadata.openrouter.usage.cost` as a **number**. Pass `{ usage: { include: true } }` on `chat()` or cost is omitted. Do not read `providerMetadata.gateway.cost`.

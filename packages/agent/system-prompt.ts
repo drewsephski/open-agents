@@ -26,7 +26,7 @@ function detectModelFamily(modelId: string | undefined): ModelFamily {
 // Core system prompt -- shared across all model families
 // ---------------------------------------------------------------------------
 
-const CORE_SYSTEM_PROMPT = `You are Open Agent -- an AI coding assistant that completes complex, multi-step tasks through planning, context management, and delegation.
+const CORE_SYSTEM_PROMPT = `You are Launchstack -- an AI coding assistant that completes complex, multi-step tasks through planning, context management, and delegation.
 
 # Role & Agency
 
@@ -283,8 +283,8 @@ You MUST keep working until the problem is completely solved. Do not end your tu
 
 Follow existing code conventions strictly. Never assume a library is available -- verify its usage in the project before employing it.`;
 
-const GPT_5_4_OVERLAY = `
-# GPT-5.4 style
+const GPT_CONCISENESS_OVERLAY = `
+# GPT style
 - Be concise and direct.
 - No preamble, recap, filler, or pleasantries.
 - Do not restate the request or narrate routine steps.
@@ -308,9 +308,12 @@ function getModelOverlay(family: ModelFamily, modelId?: string): string {
       break;
   }
 
-  // Append GPT-5.4-specific conciseness instructions
-  if (modelId?.startsWith("openai/gpt-5.4")) {
-    overlay += GPT_5_4_OVERLAY;
+  // Extra conciseness for GPT-5.6 Luna (and leftover GPT-5.4 chats)
+  if (
+    modelId?.startsWith("openai/gpt-5.6-luna") ||
+    modelId?.startsWith("openai/gpt-5.4")
+  ) {
+    overlay += GPT_CONCISENESS_OVERLAY;
   }
 
   return overlay;

@@ -1,16 +1,8 @@
 import type { NextRequest } from "next/server";
-import type { Session } from "./types";
+import { listAccountProviderIds } from "@/lib/auth/account-providers";
 import { auth } from "@/lib/auth/config";
-
-function extractUsername(user: {
-  name?: string | null;
-  [key: string]: unknown;
-}): string {
-  if (typeof user.username === "string" && user.username) {
-    return user.username;
-  }
-  return user.name ?? "";
-}
+import { toAppSession } from "./to-app-session";
+import type { Session } from "./types";
 
 export async function getSessionFromReq(
   req: NextRequest,
@@ -23,15 +15,6 @@ export async function getSessionFromReq(
     return undefined;
   }
 
-  return {
-    created: baSession.session.createdAt.getTime(),
-    authProvider: "vercel",
-    user: {
-      id: baSession.user.id,
-      username: extractUsername(baSession.user),
-      email: baSession.user.email ?? undefined,
-      avatar: baSession.user.image ?? "",
-      name: baSession.user.name ?? undefined,
-    },
-  };
+  const providerIds = await listAccountProviderIds(baSession.user.id);
+  return toAppSession(baSession, providerIds);
 }

@@ -18,7 +18,7 @@ type FakeSession = {
 const sessions: readonly FakeSession[] = [
   {
     title: "Auth flow",
-    repo: "open-agents",
+    repo: "launchstack",
     branch: "feat/auth-flow",
     prompt: "Build the auth flow with GitHub OAuth",
     summary:
@@ -35,7 +35,7 @@ const sessions: readonly FakeSession[] = [
   },
   {
     title: "API refactor",
-    repo: "open-agents",
+    repo: "launchstack",
     branch: "feat/edge-api",
     prompt: "Refactor the chat API routes to use edge runtime",
     summary:
@@ -48,7 +48,7 @@ const sessions: readonly FakeSession[] = [
   },
   {
     title: "Fix tests",
-    repo: "open-agents",
+    repo: "launchstack",
     branch: "fix/test-suite",
     prompt: "Run the test suite and fix any failing tests",
     summary:
@@ -313,7 +313,7 @@ export function AppMockup() {
                 <div className="flex items-center justify-between px-2.5 pb-1.5 sm:px-3 sm:pb-2">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-(--l-panel-fg-4)">
-                      Claude Opus 4.6
+                      Claude Fable 5
                     </span>
                     <span className="text-[10px] text-(--l-panel-fg-5)">
                       1%

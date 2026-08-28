@@ -3,8 +3,10 @@ import { stepCountIs, ToolLoopAgent, type ToolSet } from "ai";
 import { z } from "zod";
 import { addCacheControl } from "./context-management";
 import {
-  type GatewayModelId,
-  gateway,
+  type ModelId,
+  constructorPlaceholderModel,
+  model,
+  resolveDefaultModelId,
   type ProviderOptionsByProvider,
 } from "./models";
 
@@ -25,11 +27,11 @@ import {
 } from "./tools";
 
 export interface AgentModelSelection {
-  id: GatewayModelId;
+  id: ModelId;
   providerOptionsOverrides?: ProviderOptionsByProvider;
 }
 
-export type OpenAgentModelInput = GatewayModelId | AgentModelSelection;
+export type OpenAgentModelInput = ModelId | AgentModelSelection;
 
 export interface AgentSandboxContext {
   state: SandboxState;
@@ -48,12 +50,12 @@ const callOptionsSchema = z.object({
 
 export type OpenAgentCallOptions = z.infer<typeof callOptionsSchema>;
 
-export const defaultModelLabel = "anthropic/claude-opus-4.6" as const;
-export const defaultModel = gateway(defaultModelLabel);
+export const defaultModelLabel = resolveDefaultModelId();
+export const defaultModel = constructorPlaceholderModel(defaultModelLabel);
 
 function normalizeAgentModelSelection(
   selection: OpenAgentModelInput | undefined,
-  fallbackId: GatewayModelId,
+  fallbackId: ModelId,
 ): AgentModelSelection {
   if (!selection) {
     return { id: fallbackId };
@@ -92,22 +94,23 @@ export const openAgent = new ToolLoopAgent({
   },
   prepareCall: ({ options, ...settings }) => {
     if (!options) {
-      throw new Error("Open Agent requires call options with sandbox.");
+      throw new Error("The agent requires call options with sandbox.");
     }
 
+    const fallbackModelId = resolveDefaultModelId();
     const mainSelection = normalizeAgentModelSelection(
       options.model,
-      defaultModelLabel,
+      fallbackModelId,
     );
     const subagentSelection = options.subagentModel
-      ? normalizeAgentModelSelection(options.subagentModel, defaultModelLabel)
+      ? normalizeAgentModelSelection(options.subagentModel, fallbackModelId)
       : undefined;
 
-    const callModel = gateway(mainSelection.id, {
+    const callModel = model(mainSelection.id, {
       providerOptionsOverrides: mainSelection.providerOptionsOverrides,
     });
     const subagentModel = subagentSelection
-      ? gateway(subagentSelection.id, {
+      ? model(subagentSelection.id, {
           providerOptionsOverrides: subagentSelection.providerOptionsOverrides,
         })
       : undefined;

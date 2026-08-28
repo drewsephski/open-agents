@@ -1,9 +1,9 @@
-export const DEFAULT_MODEL_ID = "anthropic/claude-haiku-4.5";
-export const APP_DEFAULT_MODEL_ID = "openai/gpt-5.4";
+export const DEFAULT_MODEL_ID = "z-ai/glm-5.3-flash";
+export const APP_DEFAULT_MODEL_ID = "z-ai/glm-5.3-flash";
 export const DEFAULT_CONTEXT_LIMIT = 200_000;
 const TOKENS_PER_MILLION = 1_000_000;
 
-export interface GatewayAvailableModel {
+export interface CatalogLanguageModel {
   id: string;
   name: string;
   description?: string | null;
@@ -20,7 +20,7 @@ export interface AvailableModelCost extends AvailableModelCostTier {
   context_over_200k?: AvailableModelCostTier;
 }
 
-export type AvailableModel = GatewayAvailableModel & {
+export type AvailableModel = CatalogLanguageModel & {
   context_window?: number;
   cost?: AvailableModelCost;
 };

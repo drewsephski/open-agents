@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
+import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 
 // ── Spy state ──────────────────────────────────────────────────────
 
@@ -418,7 +419,7 @@ beforeEach(() => {
     modelId: null,
   };
   testPreferences = {
-    defaultModelId: "anthropic/claude-haiku-4.5",
+    defaultModelId: APP_DEFAULT_MODEL_ID,
     defaultSubagentModelId: null,
     defaultSandboxType: "vercel",
     defaultDiffMode: "unified",
@@ -598,8 +599,8 @@ describe("runAgentWorkflow", () => {
   test("persists model metadata even without a finish-step chunk", async () => {
     await runAgentWorkflow(
       makeOptions({
-        selectedModelId: "variant:builtin:gpt-5.4-xhigh",
-        modelId: "openai/gpt-5.4",
+        selectedModelId: "variant:builtin:gpt-5.6-luna-xhigh",
+        modelId: "openai/gpt-5.6-luna",
       }),
     );
 
@@ -613,8 +614,8 @@ describe("runAgentWorkflow", () => {
     };
 
     expect(persistedMessage.metadata).toMatchObject({
-      selectedModelId: "variant:builtin:gpt-5.4-xhigh",
-      modelId: "openai/gpt-5.4",
+      selectedModelId: "variant:builtin:gpt-5.6-luna-xhigh",
+      modelId: "openai/gpt-5.6-luna",
     });
   });
 
@@ -630,8 +631,8 @@ describe("runAgentWorkflow", () => {
 
     await runAgentWorkflow(
       makeOptions({
-        selectedModelId: "variant:builtin:gpt-5.4-xhigh",
-        modelId: "openai/gpt-5.4",
+        selectedModelId: "variant:builtin:gpt-5.6-luna-xhigh",
+        modelId: "openai/gpt-5.6-luna",
       }),
     );
 
@@ -648,8 +649,8 @@ describe("runAgentWorkflow", () => {
     );
 
     expect(metadataChunks.at(-1)?.messageMetadata).toMatchObject({
-      selectedModelId: "variant:builtin:gpt-5.4-xhigh",
-      modelId: "openai/gpt-5.4",
+      selectedModelId: "variant:builtin:gpt-5.6-luna-xhigh",
+      modelId: "openai/gpt-5.6-luna",
     });
 
     const persistCalls = spies.persistAssistantMessage.mock
@@ -662,8 +663,8 @@ describe("runAgentWorkflow", () => {
     };
 
     expect(persistedMessage.metadata).toMatchObject({
-      selectedModelId: "variant:builtin:gpt-5.4-xhigh",
-      modelId: "openai/gpt-5.4",
+      selectedModelId: "variant:builtin:gpt-5.6-luna-xhigh",
+      modelId: "openai/gpt-5.6-luna",
     });
   });
 
@@ -685,13 +686,13 @@ describe("runAgentWorkflow", () => {
             role: "assistant" as const,
             parts: [{ type: "text", text: "Need your approval" }],
             metadata: {
-              selectedModelId: "variant:builtin:gpt-5.4-xhigh",
-              modelId: "openai/gpt-5.4",
+              selectedModelId: "variant:builtin:gpt-5.6-luna-xhigh",
+              modelId: "openai/gpt-5.6-luna",
             },
           },
         ],
-        selectedModelId: "anthropic/claude-opus-4.6",
-        modelId: "anthropic/claude-opus-4.6",
+        selectedModelId: "anthropic/claude-fable-5",
+        modelId: "anthropic/claude-fable-5",
       }),
     );
 
@@ -705,8 +706,8 @@ describe("runAgentWorkflow", () => {
     };
 
     expect(persistedMessage.metadata).toMatchObject({
-      selectedModelId: "anthropic/claude-opus-4.6",
-      modelId: "anthropic/claude-opus-4.6",
+      selectedModelId: "anthropic/claude-fable-5",
+      modelId: "anthropic/claude-fable-5",
     });
   });
 
@@ -986,7 +987,7 @@ describe("runAgentWorkflow", () => {
     });
   });
 
-  test("streams and persists cumulative gateway cost", async () => {
+  test("streams and persists cumulative model cost", async () => {
     agentFinishReason = "tool-calls";
     agentStreamParts = [
       {
@@ -995,12 +996,12 @@ describe("runAgentWorkflow", () => {
         rawFinishReason: "provider_tool_use",
         usage: agentTotalUsage,
         providerMetadata: {
-          gateway: { cost: "0.0025" },
+          openrouter: { usage: { cost: 0.0025 } },
         },
       },
     ];
     agentProviderMetadata = {
-      gateway: { cost: "0.0025" },
+      openrouter: { usage: { cost: 0.0025 } },
     };
 
     await runAgentWorkflow(
@@ -1044,7 +1045,7 @@ describe("runAgentWorkflow", () => {
     expect(persistedMessage.metadata?.totalMessageCost).toBeCloseTo(0.005, 10);
   });
 
-  test("preserves previously accumulated gateway cost when resuming an assistant message", async () => {
+  test("preserves previously accumulated model cost when resuming an assistant message", async () => {
     const existingTotalMessageCost = 0.0025;
     const resumedStepCost = 0.001;
     const expectedTotalMessageCost = existingTotalMessageCost + resumedStepCost;
@@ -1056,12 +1057,12 @@ describe("runAgentWorkflow", () => {
         rawFinishReason: "provider_stop",
         usage: agentTotalUsage,
         providerMetadata: {
-          gateway: { cost: String(resumedStepCost) },
+          openrouter: { usage: { cost: resumedStepCost } },
         },
       },
     ];
     agentProviderMetadata = {
-      gateway: { cost: String(resumedStepCost) },
+      openrouter: { usage: { cost: resumedStepCost } },
     };
 
     await runAgentWorkflow(
@@ -1115,7 +1116,7 @@ describe("runAgentWorkflow", () => {
     );
   });
 
-  test("omits cost metadata when provider does not report gateway cost", async () => {
+  test("omits cost metadata when provider does not report OpenRouter cost", async () => {
     agentStreamParts = [
       {
         type: "finish-step",

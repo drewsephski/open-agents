@@ -1,39 +1,76 @@
-import { describe, expect, mock, test } from "bun:test";
-import type { ProviderOptionsByProvider } from "./models";
+import { afterAll, describe, expect, mock, test } from "bun:test";
+import type { ProviderOptionsByProvider } from "./provider-options";
 
-const createGatewayCalls: Array<Record<string, unknown>> = [];
+const createOpenRouterCalls: Array<Record<string, unknown>> = [];
+const chatCalls: Array<{
+  modelId: string;
+  settings?: Record<string, unknown>;
+}> = [];
 
-mock.module("ai", () => {
-  const gateway = (modelId: string) => ({ modelId });
-
-  return {
-    createGateway: (settings?: Record<string, unknown>) => {
-      createGatewayCalls.push(settings ?? {});
-      return gateway;
-    },
-    defaultSettingsMiddleware: (_settings: unknown) => ({
-      kind: "default-settings-middleware",
-    }),
-    gateway,
-    wrapLanguageModel: ({ model }: { model: unknown }) => model,
-  };
-});
-
-mock.module("@ai-sdk/devtools", () => ({
-  devToolsMiddleware: () => ({ kind: "devtools-middleware" }),
+mock.module("@openrouter/ai-sdk-provider", () => ({
+  createOpenRouter: (settings?: Record<string, unknown>) => {
+    createOpenRouterCalls.push(settings ?? {});
+    const chat = (modelId: string, modelSettings?: Record<string, unknown>) => {
+      chatCalls.push({ modelId, settings: modelSettings });
+      return {
+        modelId,
+        provider: "openrouter",
+      };
+    };
+    return Object.assign(chat, { chat });
+  },
 }));
 
+mock.module("ai", () => ({
+  defaultSettingsMiddleware: (_settings: unknown) => ({
+    kind: "default-settings-middleware",
+  }),
+  wrapLanguageModel: ({ model }: { model: unknown }) => model,
+}));
+
+const originalApiKey = process.env.OPENROUTER_API_KEY;
+const originalModel = process.env.OPENROUTER_MODEL;
+const originalProductionUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+const originalPublicProductionUrl =
+  process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL;
+
+process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+delete process.env.OPENROUTER_MODEL;
+delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+delete process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL;
+
 const {
-  gateway,
+  DEFAULT_OPENROUTER_MODEL_ID,
+  MissingOpenRouterApiKeyError,
+  defaultLanguageModel,
   getProviderOptionsForModel,
   mergeProviderOptions,
+  model,
+  resolveDefaultModelId,
   shouldApplyOpenAIReasoningDefaults,
 } = await import("./models");
+
+describe("resolveDefaultModelId", () => {
+  test("defaults to GLM 5.3 Flash", () => {
+    expect(resolveDefaultModelId({})).toBe("z-ai/glm-5.3-flash");
+    expect(DEFAULT_OPENROUTER_MODEL_ID).toBe("z-ai/glm-5.3-flash");
+  });
+
+  test("honors OPENROUTER_MODEL override", () => {
+    expect(
+      resolveDefaultModelId({
+        OPENROUTER_MODEL: "anthropic/claude-sonnet-4.6",
+      }),
+    ).toBe("anthropic/claude-sonnet-4.6");
+  });
+});
 
 describe("shouldApplyOpenAIReasoningDefaults", () => {
   test("returns true for existing GPT-5 variants", () => {
     expect(shouldApplyOpenAIReasoningDefaults("openai/gpt-5.3")).toBe(true);
-    expect(shouldApplyOpenAIReasoningDefaults("openai/gpt-5.4")).toBe(true);
+    expect(shouldApplyOpenAIReasoningDefaults("openai/gpt-5.6-luna")).toBe(
+      true,
+    );
   });
 
   test("returns true for future GPT-5 variants", () => {
@@ -46,114 +83,82 @@ describe("shouldApplyOpenAIReasoningDefaults", () => {
 });
 
 describe("getProviderOptionsForModel", () => {
-  test("applies adaptive thinking defaults to Anthropic 4.6 models", () => {
-    const result = getProviderOptionsForModel("anthropic/claude-sonnet-4.6");
-
-    expect(result).toEqual({
-      anthropic: {
-        effort: "medium",
-        thinking: { type: "adaptive" },
+  test("translates adaptive Anthropic thinking to OpenRouter reasoning effort", () => {
+    expect(getProviderOptionsForModel("anthropic/claude-sonnet-4.6")).toEqual({
+      openrouter: {
+        reasoning: { effort: "medium" },
       },
     });
   });
 
-  test("applies adaptive thinking defaults to Anthropic 4.7 models", () => {
-    const result = getProviderOptionsForModel("anthropic/claude-opus-4.7");
-
-    expect(result).toEqual({
-      anthropic: {
-        effort: "medium",
-        thinking: { type: "adaptive" },
+  test("translates Anthropic 4.7 adaptive thinking to OpenRouter reasoning effort", () => {
+    expect(getProviderOptionsForModel("anthropic/claude-opus-4.7")).toEqual({
+      openrouter: {
+        reasoning: { effort: "medium" },
       },
     });
   });
 
-  test("preserves legacy thinking defaults for older Anthropic models", () => {
-    const result = getProviderOptionsForModel("anthropic/claude-opus-4.5");
+  test("translates legacy Anthropic thinking budget to OpenRouter max_tokens", () => {
+    expect(getProviderOptionsForModel("anthropic/claude-opus-4.5")).toEqual({
+      openrouter: {
+        reasoning: { max_tokens: 8000 },
+      },
+    });
+  });
 
-    expect(result).toEqual({
-      anthropic: {
-        thinking: {
-          type: "enabled",
-          budgetTokens: 8000,
+  test("translates OpenAI GPT-5 reasoning effort and drops Responses-only options", () => {
+    expect(
+      getProviderOptionsForModel("openai/gpt-5", {
+        openai: {
+          reasoningEffort: "medium",
+          store: false,
+          reasoningSummary: "detailed",
+          include: ["reasoning.encrypted_content"],
         },
+      }),
+    ).toEqual({
+      openrouter: {
+        reasoning: { effort: "medium" },
       },
     });
   });
 
-  test("merges OpenAI defaults with custom variant options", () => {
-    const result = getProviderOptionsForModel("openai/gpt-5", {
-      openai: {
-        reasoningEffort: "medium",
-      },
-    });
+  test("does not emit OpenAI Responses defaults for GPT-5.6 Luna", () => {
+    expect(getProviderOptionsForModel("openai/gpt-5.6-luna")).toEqual({});
+  });
 
-    expect(result).toEqual({
-      openai: {
-        reasoningSummary: "detailed",
-        include: ["reasoning.encrypted_content"],
-        reasoningEffort: "medium",
-        store: false,
+  test("maps GPT-5.6 Luna xhigh reasoning variants through OpenRouter", () => {
+    expect(
+      getProviderOptionsForModel("openai/gpt-5.6-luna", {
+        openai: {
+          reasoningEffort: "xhigh",
+          reasoningSummary: "auto",
+          store: false,
+          textVerbosity: "low",
+        },
+      }),
+    ).toEqual({
+      openrouter: {
+        reasoning: { effort: "xhigh" },
       },
     });
   });
 
-  test("applies low text verbosity defaults to GPT-5.4 snapshots", () => {
-    const result = getProviderOptionsForModel("openai/gpt-5.4-2026-03-05");
-
-    expect(result).toEqual({
-      openai: {
-        reasoningSummary: "detailed",
-        include: ["reasoning.encrypted_content"],
-        store: false,
-        textVerbosity: "low",
+  test("maps Anthropic max effort to OpenRouter xhigh", () => {
+    expect(
+      getProviderOptionsForModel("anthropic/claude-opus-4.6", {
+        anthropic: { effort: "max" },
+      }),
+    ).toEqual({
+      openrouter: {
+        reasoning: { effort: "xhigh" },
       },
     });
   });
 
-  test("preserves store false and encrypted reasoning content for the built-in GPT-5.4 variant", () => {
-    const result = getProviderOptionsForModel("openai/gpt-5.4", {
-      openai: {
-        reasoningEffort: "xhigh",
-        reasoningSummary: "auto",
-      },
-    });
-
-    expect(result).toEqual({
-      openai: {
-        reasoningEffort: "xhigh",
-        reasoningSummary: "auto",
-        include: ["reasoning.encrypted_content"],
-        store: false,
-        textVerbosity: "low",
-      },
-    });
-  });
-
-  test("enforces store false for OpenAI models even when variant overrides it", () => {
-    const result = getProviderOptionsForModel("openai/gpt-5", {
-      openai: {
-        store: true,
-      },
-    });
-
-    expect(result).toEqual({
-      openai: {
-        reasoningSummary: "detailed",
-        include: ["reasoning.encrypted_content"],
-        store: false,
-      },
-    });
-  });
-
-  test("applies store false to non-GPT-5 OpenAI models", () => {
-    const result = getProviderOptionsForModel("openai/gpt-4o");
-
-    expect(result).toEqual({
-      openai: {
-        store: false,
-      },
-    });
+  test("returns no provider options for GLM", () => {
+    expect(getProviderOptionsForModel("z-ai/glm-5.3-flash")).toEqual({});
   });
 });
 
@@ -195,98 +200,83 @@ describe("mergeProviderOptions", () => {
       },
     });
   });
+});
 
-  test("adds provider overrides that do not exist in defaults", () => {
-    const defaults: ProviderOptionsByProvider = {
-      openai: {
-        store: false,
-      },
-    };
+describe("model factory", () => {
+  test("throws when OPENROUTER_API_KEY is missing", () => {
+    const previous = process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
 
-    const overrides: ProviderOptionsByProvider = {
-      anthropic: {
-        effort: "low",
-      },
-    };
+    try {
+      expect(() => model("z-ai/glm-5.3-flash")).toThrow(
+        MissingOpenRouterApiKeyError,
+      );
+    } finally {
+      process.env.OPENROUTER_API_KEY = previous;
+    }
+  });
 
-    expect(mergeProviderOptions(defaults, overrides)).toEqual({
-      openai: {
-        store: false,
+  test("creates OpenRouter chat models with usage accounting and Launchstack attribution", () => {
+    createOpenRouterCalls.length = 0;
+    chatCalls.length = 0;
+
+    defaultLanguageModel();
+
+    expect(chatCalls).toEqual([
+      {
+        modelId: "z-ai/glm-5.3-flash",
+        settings: { usage: { include: true } },
       },
-      anthropic: {
-        effort: "low",
-      },
+    ]);
+    expect(createOpenRouterCalls[0]).toMatchObject({
+      apiKey: "test-openrouter-key",
+      compatibility: "strict",
+      appName: "Launchstack",
+      appUrl: "https://launchstack.sh",
     });
   });
 
-  test("replaces arrays instead of deep-merging arrays", () => {
-    const defaults: ProviderOptionsByProvider = {
-      openai: {
-        include: ["reasoning.encrypted_content"],
-      },
-    };
-
-    const overrides: ProviderOptionsByProvider = {
-      openai: {
-        include: ["reasoning.summary"],
-      },
-    };
-
-    expect(mergeProviderOptions(defaults, overrides)).toEqual({
-      openai: {
-        include: ["reasoning.summary"],
-      },
+  test("passes canonical app URL when available", () => {
+    createOpenRouterCalls.length = 0;
+    model("z-ai/glm-5.3-flash", {
+      appUrl: "https://launchstack.example",
     });
+
+    expect(createOpenRouterCalls.at(-1)).toMatchObject({
+      appName: "Launchstack",
+      appUrl: "https://launchstack.example",
+    });
+  });
+
+  test("does not use Vercel AI Gateway", () => {
+    const source = [createOpenRouterCalls[0], chatCalls[0]];
+    expect(JSON.stringify(source)).not.toContain("createGateway");
   });
 });
 
-describe("gateway attribution headers", () => {
-  test("sends default attribution headers", () => {
-    createGatewayCalls.length = 0;
-    gateway("anthropic/claude-sonnet-4.6" as never);
+afterAll(() => {
+  if (originalApiKey === undefined) {
+    delete process.env.OPENROUTER_API_KEY;
+  } else {
+    process.env.OPENROUTER_API_KEY = originalApiKey;
+  }
 
-    expect(createGatewayCalls).toEqual([
-      {
-        headers: {
-          "http-referer": "https://open-agents.dev",
-          "x-title": "Open Agents",
-        },
-      },
-    ]);
-  });
+  if (originalModel === undefined) {
+    delete process.env.OPENROUTER_MODEL;
+  } else {
+    process.env.OPENROUTER_MODEL = originalModel;
+  }
 
-  test("allows overriding attribution via appName and appUrl", () => {
-    createGatewayCalls.length = 0;
-    gateway("anthropic/claude-sonnet-4.6" as never, {
-      appName: "My App",
-      appUrl: "https://myapp.com",
-    });
+  if (originalProductionUrl === undefined) {
+    delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  } else {
+    process.env.VERCEL_PROJECT_PRODUCTION_URL = originalProductionUrl;
+  }
 
-    expect(createGatewayCalls).toEqual([
-      {
-        headers: {
-          "http-referer": "https://myapp.com",
-          "x-title": "My App",
-        },
-      },
-    ]);
-  });
-
-  test("passes attribution headers with custom gateway config", () => {
-    createGatewayCalls.length = 0;
-    gateway("anthropic/claude-sonnet-4.6" as never, {
-      config: { baseURL: "https://custom.api", apiKey: "sk-test" },
-    });
-
-    expect(createGatewayCalls).toEqual([
-      {
-        baseURL: "https://custom.api",
-        apiKey: "sk-test",
-        headers: {
-          "http-referer": "https://open-agents.dev",
-          "x-title": "Open Agents",
-        },
-      },
-    ]);
-  });
+  if (originalPublicProductionUrl === undefined) {
+    delete process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL;
+  } else {
+    process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL =
+      originalPublicProductionUrl;
+  }
 });

@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useSession } from "@/hooks/use-session";
-import { SignInButton } from "./sign-in-button";
+import { Button } from "@/components/ui/button";
 
 export function AuthGuard({
   children,
@@ -24,7 +25,9 @@ export function AuthGuard({
         {unauthenticatedFallback ?? (
           <div className="flex flex-col items-center gap-4 p-8">
             <p>Please sign in to continue</p>
-            <SignInButton />
+            <Button asChild>
+              <Link href="/sign-in">Sign in</Link>
+            </Button>
           </div>
         )}
       </>

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ThemeToggle } from "./theme-toggle";
 
 export function LandingFooter() {
@@ -6,11 +7,11 @@ export function LandingFooter() {
       <div className="mx-auto max-w-[1320px] md:border-t md:border-(--l-border)">
         <div className="grid sm:grid-cols-2 lg:grid-cols-4">
           <div className="px-6 pt-14 md:px-10 md:py-18">
-            <div className="font-mono text-xs uppercase tracking-widest text-(--l-fg-3)">
-              Open Agents
+            <div className="font-mono text-xs tracking-widest text-(--l-fg-3)">
+              Launchstack
             </div>
             <div className="mt-3 text-sm text-(--l-fg-2)">
-              Open Agents for
+              Launchstack for
               <br />
               shipping code.
             </div>
@@ -32,12 +33,12 @@ export function LandingFooter() {
                 AI SDK
               </a>
               <a
-                href="https://vercel.com/ai-gateway"
+                href="https://openrouter.ai"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-sans text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
               >
-                AI Gateway
+                OpenRouter
               </a>
               <a
                 href="https://vercel.com/sandbox"
@@ -63,14 +64,18 @@ export function LandingFooter() {
               Links
             </div>
             <div className="mt-4 flex flex-col gap-2">
-              <a
-                href="https://github.com/vercel-labs/open-agents"
-                target="_blank"
-                rel="noopener noreferrer"
+              <Link
+                href="/sign-in"
                 className="text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
               >
-                GitHub
-              </a>
+                Sign in
+              </Link>
+              <Link
+                href="/sign-up"
+                className="text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+              >
+                Sign up
+              </Link>
               <a
                 href="https://vercel.com"
                 target="_blank"

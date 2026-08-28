@@ -1,4 +1,21 @@
-export { type GatewayConfig, type GatewayOptions, gateway } from "./models";
+export {
+  DEFAULT_OPENROUTER_MODEL_ID,
+  type ModelFactoryOptions,
+  type ModelId,
+  MissingOpenRouterApiKeyError,
+  OPENROUTER_APP_NAME,
+  OPENROUTER_APP_URL,
+  type OpenRouterConfig,
+  type ProviderOptionsByProvider,
+  defaultLanguageModel,
+  getProviderOptionsForModel,
+  mergeProviderOptions,
+  model,
+  resolveCanonicalAppUrl,
+  resolveDefaultModelId,
+  shouldApplyOpenAIReasoningDefaults,
+  translateToOpenRouterProviderOptions,
+} from "./models";
 export type {
   AgentModelSelection,
   AgentSandboxContext,
@@ -6,6 +23,16 @@ export type {
   OpenAgentModelInput,
 } from "./open-agent";
 export { defaultModel, defaultModelLabel, openAgent } from "./open-agent";
+export {
+  type CatalogModelCost,
+  type OpenRouterCatalogModel,
+  fetchOpenRouterLanguageModels,
+} from "./model-catalog";
+export {
+  type NormalizedModelUsage,
+  extractModelCost,
+  extractNormalizedUsage,
+} from "./usage-metadata";
 // Skills exports
 export { discoverSkills, parseSkillFrontmatter } from "./skills/discovery";
 export { extractSkillBody, substituteArguments } from "./skills/loader";

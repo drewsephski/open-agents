@@ -168,7 +168,7 @@ export async function GET(request: Request, context: OgRouteContext) {
       />
 
       {/* Content — using fixed positioning for reliable layout */}
-      {/* Top-left: Open Agents branding */}
+      {/* Top-left: Launchstack branding */}
       <div
         style={{
           position: "absolute",
@@ -202,7 +202,7 @@ export async function GET(request: Request, context: OgRouteContext) {
             letterSpacing: "-0.01em",
           }}
         >
-          Open Agents
+          Launchstack
         </span>
       </div>
 
@@ -347,7 +347,7 @@ export async function GET(request: Request, context: OgRouteContext) {
               letterSpacing: "0.01em",
             }}
           >
-            open-agents.dev
+            launchstack.sh
           </span>
         </div>
       </div>

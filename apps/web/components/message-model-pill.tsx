@@ -55,7 +55,7 @@ function formatCostUsd(amount: number): string {
  *
  * - Normal turn: shows the model display name.
  * - Variant turn: shows the variant label; tooltip reveals the resolved model.
- * - When the gateway reports a cost, the cumulative USD cost is rendered
+ * - When the provider reports a cost, the cumulative USD cost is rendered
  *   next to the model name.
  */
 export function MessageModelPill({
@@ -109,9 +109,7 @@ export function MessageModelPill({
     tooltipParts.push(resolvedOption?.label ?? resolvedModelId);
   }
   if (hasCost) {
-    tooltipParts.push(
-      `Cost: ${(totalMessageCost as number).toFixed(6)} (gateway)`,
-    );
+    tooltipParts.push(`Cost: ${(totalMessageCost as number).toFixed(6)}`);
   }
 
   const pill = (

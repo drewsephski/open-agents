@@ -1,5 +1,15 @@
 const FALLBACK_BASE_URL = "https://open-agents.invalid";
 
+export function getSingleSearchParam(
+  value: string | string[] | undefined,
+): string | null {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return null;
+}
+
 export function sanitizeInternalRedirect(
   rawRedirectTo: string | null | undefined,
   fallbackPath: string,

@@ -81,7 +81,7 @@ describe("model options", () => {
     expect(options[0].label).toBe("Claude Opus 4.6");
   });
 
-  test("groupByProvider puts anthropic and openai first, preserves insertion order", () => {
+  test("groupByProvider puts z-ai, openai, and anthropic first", () => {
     const options = [
       {
         id: "google/gemini-2.5",
@@ -96,6 +96,13 @@ describe("model options", () => {
         shortLabel: "GPT-5",
         isVariant: false,
         provider: "openai",
+      },
+      {
+        id: "z-ai/glm-5.3-flash",
+        label: "GLM 5.3 Flash",
+        shortLabel: "GLM 5.3 Flash",
+        isVariant: false,
+        provider: "z-ai",
       },
       {
         id: "variant:opus-custom",
@@ -116,13 +123,14 @@ describe("model options", () => {
     const groups = groupByProvider(options);
 
     expect(groups.map((g) => g.provider)).toEqual([
-      "anthropic",
+      "z-ai",
       "openai",
+      "anthropic",
       "google",
     ]);
     // Within anthropic: preserves original order (variant first, base second)
-    expect(groups[0].options[0].id).toBe("variant:opus-custom");
-    expect(groups[0].options[1].id).toBe("anthropic/claude-opus-4.6");
+    expect(groups[2].options[0].id).toBe("variant:opus-custom");
+    expect(groups[2].options[1].id).toBe("anthropic/claude-opus-4.6");
   });
 
   test("withMissingModelOption appends missing variant option", () => {
@@ -173,11 +181,18 @@ describe("model options", () => {
   test("getDefaultModelOptionId prefers repository default model when present", () => {
     const options = [
       {
-        id: "openai/gpt-5.4",
-        label: "GPT-5.4",
-        shortLabel: "GPT-5.4",
+        id: "openai/gpt-5.6-luna",
+        label: "GPT-5.6 Luna",
+        shortLabel: "GPT-5.6 Luna",
         isVariant: false,
-        provider: "anthropic",
+        provider: "openai",
+      },
+      {
+        id: "z-ai/glm-5.3-flash",
+        label: "GLM 5.3 Flash",
+        shortLabel: "GLM 5.3 Flash",
+        isVariant: false,
+        provider: "z-ai",
       },
       {
         id: "openai/gpt-5",
@@ -188,7 +203,7 @@ describe("model options", () => {
       },
     ];
 
-    expect(getDefaultModelOptionId(options)).toBe("openai/gpt-5.4");
+    expect(getDefaultModelOptionId(options)).toBe("z-ai/glm-5.3-flash");
   });
 
   test("getDefaultModelOptionId falls back to first option when default is missing", () => {
