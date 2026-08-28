@@ -23,32 +23,75 @@ export function normalizeLegacySandboxState(
 
   const state = sandboxState as Record<string, unknown>;
   const normalizedType = state.type === "hybrid" ? "vercel" : state.type;
+  if (normalizedType !== "vercel" && normalizedType !== "codesandbox") {
+    return null;
+  }
+
+  if (normalizedType === "codesandbox") {
+    const providerSandboxId =
+      typeof state.providerSandboxId === "string" &&
+      state.providerSandboxId.length > 0
+        ? state.providerSandboxId
+        : typeof state.sandboxId === "string" && state.sandboxId.length > 0
+          ? state.sandboxId
+          : undefined;
+    const restore =
+      state.restore &&
+      typeof state.restore === "object" &&
+      (state.restore as Record<string, unknown>).kind === "hibernate" &&
+      typeof (state.restore as Record<string, unknown>).sandboxId === "string"
+        ? state.restore
+        : providerSandboxId
+          ? { kind: "hibernate", sandboxId: providerSandboxId }
+          : undefined;
+    return {
+      type: "codesandbox",
+      ...(providerSandboxId
+        ? { providerSandboxId, sandboxId: providerSandboxId }
+        : {}),
+      ...(restore ? { restore } : {}),
+      ...(typeof state.expiresAt === "number"
+        ? { expiresAt: state.expiresAt }
+        : {}),
+      ...(typeof state.currentBranch === "string"
+        ? { currentBranch: state.currentBranch }
+        : {}),
+    } as SandboxState;
+  }
+
   const sandboxName =
     typeof state.sandboxName === "string" && state.sandboxName.length > 0
       ? state.sandboxName
-      : typeof state.sandboxId === "string" && state.sandboxId.length > 0
-        ? state.sandboxId
-        : undefined;
+      : typeof state.providerSandboxId === "string" &&
+          state.providerSandboxId.length > 0
+        ? state.providerSandboxId
+        : typeof state.sandboxId === "string" && state.sandboxId.length > 0
+          ? state.sandboxId
+          : undefined;
+  const snapshotId =
+    typeof state.snapshotId === "string" && state.snapshotId.length > 0
+      ? state.snapshotId
+      : undefined;
 
-  if (normalizedType !== "vercel") {
-    return sandboxState as SandboxState;
-  }
-
-  if (normalizedType === state.type && sandboxName === undefined) {
-    return sandboxState as SandboxState;
-  }
-
-  const normalizedState: Record<string, unknown> = {
-    ...state,
-    type: normalizedType,
+  return {
+    type: "vercel",
+    ...(sandboxName
+      ? {
+          providerSandboxId: sandboxName,
+          sandboxName,
+          restore: { kind: "named" as const, sandboxName },
+        }
+      : snapshotId
+        ? {
+            snapshotId,
+            restore: { kind: "snapshot" as const, snapshotId },
+          }
+        : {}),
+    ...(sandboxName && snapshotId ? { snapshotId } : {}),
+    ...(typeof state.expiresAt === "number"
+      ? { expiresAt: state.expiresAt }
+      : {}),
   };
-
-  if (sandboxName !== undefined) {
-    normalizedState.sandboxName = sandboxName;
-    delete normalizedState.sandboxId;
-  }
-
-  return normalizedState as unknown as SandboxState;
 }
 
 function normalizeSessionRecord<T extends { sandboxState: unknown }>(

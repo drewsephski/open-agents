@@ -205,6 +205,29 @@ export const sessions = pgTable(
   (table) => [index("sessions_user_id_idx").on(table.userId)],
 );
 
+/**
+ * Cross-instance sandbox provider circuit state. Provider is text (rather than
+ * a Postgres enum) so a future real adapter can be added without an enum
+ * migration. This table never stores provider credentials or sandbox IDs.
+ */
+export const sandboxProviderCircuits = pgTable(
+  "sandbox_provider_circuits",
+  {
+    provider: text("provider").primaryKey(),
+    failureCount: integer("failure_count").notNull().default(0),
+    failureWindowStartedAt: timestamp("failure_window_started_at"),
+    openedAt: timestamp("opened_at"),
+    openUntil: timestamp("open_until"),
+    probeLeaseUntil: timestamp("probe_lease_until"),
+    lastFailureClass: text("last_failure_class"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("sandbox_provider_circuits_open_until_idx").on(table.openUntil),
+  ],
+);
+
 export const chats = pgTable(
   "chats",
   {

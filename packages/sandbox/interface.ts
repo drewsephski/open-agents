@@ -5,13 +5,23 @@ import type { Dirent } from "fs";
  */
 export type SandboxType = "cloud";
 
-/**
- * Result of a successful snapshot operation.
- * Uses native Vercel snapshot IDs instead of blob URLs.
- */
+export type SandboxSnapshot =
+  | {
+      provider: "vercel";
+      id: string;
+      kind: "native";
+      expiresAt?: number;
+    }
+  | {
+      provider: "codesandbox";
+      id: string;
+      kind: "hibernate";
+      expiresAt?: number;
+    };
+
+/** Provider-neutral restore metadata produced by a lifecycle checkpoint. */
 export interface SnapshotResult {
-  /** Native Vercel snapshot ID */
-  snapshotId: string;
+  snapshot: SandboxSnapshot;
 }
 
 /**
@@ -82,6 +92,9 @@ export interface Sandbox {
    */
   readonly type: SandboxType;
 
+  /** Cloud provider that owns this sandbox. */
+  readonly provider: "vercel" | "codesandbox";
+
   /**
    * The working directory for this sandbox.
    */
@@ -125,6 +138,7 @@ export interface Sandbox {
   readFile(path: string, encoding: "utf-8"): Promise<string>;
   readFileBuffer(path: string): Promise<Buffer>;
   writeFile(path: string, content: string, encoding: "utf-8"): Promise<void>;
+  writeFileBuffer?(path: string, content: Buffer): Promise<void>;
   stat(path: string): Promise<SandboxStats>;
   access(path: string): Promise<void>;
   mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
@@ -142,9 +156,12 @@ export interface Sandbox {
   execDetached?(command: string, cwd: string): Promise<{ commandId: string }>;
 
   /**
-   * Temporarily update GitHub credential brokering for trusted broker work.
-   * Callers must clear the token as soon as the trusted operation completes.
+   * Run one trusted broker operation with scoped GitHub credentials. Providers
+   * must guarantee credential cleanup even when the operation throws.
    */
+  withGitHubAuth?<T>(token: string, operation: () => Promise<T>): Promise<T>;
+
+  /** @deprecated Use withGitHubAuth for guaranteed cleanup. */
   setGitHubAuthToken?(token?: string): Promise<void>;
 
   /**
@@ -163,7 +180,7 @@ export interface Sandbox {
   extendTimeout?(additionalMs: number): Promise<{ expiresAt: number }>;
 
   /**
-   * Create a native Vercel snapshot of the sandbox filesystem.
+   * Create provider-specific restore metadata for this sandbox.
    */
   snapshot?(): Promise<SnapshotResult>;
 

@@ -66,7 +66,9 @@ export function ToolCall({
     case "tool-grep":
       return <GrepRenderer part={part} state={state} {...approvalProps} />;
     case "tool-task":
-      return <TaskRenderer part={part} state={state} {...approvalProps} />;
+      return (
+        <TaskRenderer part={part} state={state} cwd={cwd} {...approvalProps} />
+      );
     case "tool-todo_write":
       return <TodoRenderer part={part} state={state} />;
     case "tool-ask_user_question":

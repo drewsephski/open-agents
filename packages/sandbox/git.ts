@@ -416,6 +416,10 @@ export async function withTemporaryGitHubAuth<T>(
     return operation();
   }
 
+  if (sandbox.withGitHubAuth) {
+    return sandbox.withGitHubAuth(token, operation);
+  }
+
   if (!sandbox.setGitHubAuthToken) {
     throw new Error("Sandbox does not support temporary GitHub auth");
   }

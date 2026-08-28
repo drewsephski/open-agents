@@ -1,26 +1,40 @@
 import type { SandboxState } from "@open-agents/sandbox";
 import { SANDBOX_EXPIRES_BUFFER_MS } from "./config";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 function hasNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
 function getSandboxExpiresAt(state: unknown): number | undefined {
-  if (!state || typeof state !== "object") {
-    return undefined;
-  }
-
-  const expiresAt = (state as { expiresAt?: unknown }).expiresAt;
-  return typeof expiresAt === "number" ? expiresAt : undefined;
+  if (!isRecord(state)) return undefined;
+  return typeof state.expiresAt === "number" ? state.expiresAt : undefined;
 }
 
-function getLegacySandboxId(state: unknown): string | null {
-  if (!state || typeof state !== "object") {
-    return null;
+export function isSandboxState(value: unknown): value is SandboxState {
+  if (!isRecord(value)) return false;
+  if (value.type === "vercel") {
+    return (
+      value.restore === undefined ||
+      (isRecord(value.restore) &&
+        ((value.restore.kind === "named" &&
+          hasNonEmptyString(value.restore.sandboxName)) ||
+          (value.restore.kind === "snapshot" &&
+            hasNonEmptyString(value.restore.snapshotId))))
+    );
   }
-
-  const sandboxId = (state as { sandboxId?: unknown }).sandboxId;
-  return hasNonEmptyString(sandboxId) ? sandboxId : null;
+  if (value.type === "codesandbox") {
+    return (
+      value.restore === undefined ||
+      (isRecord(value.restore) &&
+        value.restore.kind === "hibernate" &&
+        hasNonEmptyString(value.restore.sandboxId))
+    );
+  }
+  return false;
 }
 
 export function getSessionSandboxName(sessionId: string): string {
@@ -28,68 +42,80 @@ export function getSessionSandboxName(sessionId: string): string {
 }
 
 export function getPersistentSandboxName(state: unknown): string | null {
-  if (!state || typeof state !== "object") {
-    return null;
+  if (!isRecord(state) || state.type !== "vercel") return null;
+  if (
+    isRecord(state.restore) &&
+    state.restore.kind === "named" &&
+    hasNonEmptyString(state.restore.sandboxName)
+  ) {
+    return state.restore.sandboxName;
   }
+  return hasNonEmptyString(state.sandboxName) ? state.sandboxName : null;
+}
 
-  const sandboxName = (state as { sandboxName?: unknown }).sandboxName;
-  return hasNonEmptyString(sandboxName) ? sandboxName : null;
+export function getProviderSandboxId(state: unknown): string | null {
+  if (!isRecord(state)) return null;
+  if (hasNonEmptyString(state.providerSandboxId)) {
+    return state.providerSandboxId;
+  }
+  if (state.type === "vercel") {
+    return (
+      getPersistentSandboxName(state) ??
+      (hasNonEmptyString(state.sandboxId) ? state.sandboxId : null)
+    );
+  }
+  if (state.type === "codesandbox") {
+    if (
+      isRecord(state.restore) &&
+      state.restore.kind === "hibernate" &&
+      hasNonEmptyString(state.restore.sandboxId)
+    ) {
+      return state.restore.sandboxId;
+    }
+    return hasNonEmptyString(state.sandboxId) ? state.sandboxId : null;
+  }
+  return null;
 }
 
 export function getResumableSandboxName(state: unknown): string | null {
-  return getPersistentSandboxName(state) ?? getLegacySandboxId(state);
+  return getProviderSandboxId(state);
 }
 
 export function hasResumableSandboxState(state: unknown): boolean {
-  return getResumableSandboxName(state) !== null;
+  if (!isSandboxState(state)) return false;
+  if (state.type === "vercel" && state.restore?.kind === "snapshot") {
+    return true;
+  }
+  return getProviderSandboxId(state) !== null;
 }
 
 export function hasPausedSandboxState(state: unknown): boolean {
   return hasResumableSandboxState(state) && !hasRuntimeSandboxState(state);
 }
 
-/**
- * Type guard to check if a sandbox is active and ready to accept operations.
- */
+export function hasRuntimeSandboxState(state: unknown): boolean {
+  return (
+    isSandboxState(state) &&
+    getProviderSandboxId(state) !== null &&
+    getSandboxExpiresAt(state) !== undefined
+  );
+}
+
 export function isSandboxActive(
   state: SandboxState | null | undefined,
 ): state is SandboxState {
-  if (!state) return false;
-
+  if (!hasRuntimeSandboxState(state)) return false;
   const expiresAt = getSandboxExpiresAt(state);
-  if (expiresAt === undefined) {
-    return false;
-  }
-
-  if (Date.now() >= expiresAt - SANDBOX_EXPIRES_BUFFER_MS) {
-    return false;
-  }
-
-  return hasRuntimeState(state);
+  return (
+    expiresAt !== undefined &&
+    Date.now() < expiresAt - SANDBOX_EXPIRES_BUFFER_MS
+  );
 }
 
-/**
- * Check if we can perform operations on a live sandbox session (stop, extend, etc.).
- */
 export function canOperateOnSandbox(
   state: SandboxState | null | undefined,
 ): state is SandboxState {
-  if (!state) return false;
-  return hasRuntimeState(state);
-}
-
-/**
- * Check if an unknown value represents sandbox state with live runtime data.
- */
-export function hasRuntimeSandboxState(state: unknown): boolean {
-  if (!state || typeof state !== "object") return false;
-
-  const expiresAt = getSandboxExpiresAt(state);
-  if (expiresAt === undefined) {
-    return false;
-  }
-
-  return hasResumableSandboxState(state);
+  return hasRuntimeSandboxState(state);
 }
 
 export function isSandboxNotFoundError(message: string): boolean {
@@ -100,9 +126,6 @@ export function isSandboxNotFoundError(message: string): boolean {
   );
 }
 
-/**
- * Check if an error message indicates the sandbox VM is permanently unavailable.
- */
 export function isSandboxUnavailableError(message: string): boolean {
   const normalized = message.toLowerCase();
   return (
@@ -115,48 +138,55 @@ export function isSandboxUnavailableError(message: string): boolean {
   );
 }
 
-function hasRuntimeState(state: SandboxState): boolean {
-  const expiresAt = getSandboxExpiresAt(state);
-  if (expiresAt === undefined) {
-    return false;
-  }
-
-  return hasResumableSandboxState(state);
-}
-
-/**
- * Clear sandbox runtime state while preserving durable resume state when available.
- */
+/** Clear active-runtime fields while retaining the exact provider restore key. */
 export function clearSandboxState(
   state: SandboxState | null | undefined,
 ): SandboxState | null {
   if (!state) return null;
 
-  const sandboxName = getPersistentSandboxName(state);
-  const sandboxId = sandboxName ? null : getLegacySandboxId(state);
+  if (state.type === "codesandbox") {
+    const sandboxId = getProviderSandboxId(state);
+    return {
+      type: "codesandbox",
+      ...(sandboxId
+        ? {
+            providerSandboxId: sandboxId,
+            sandboxId,
+            restore: { kind: "hibernate" as const, sandboxId },
+          }
+        : {}),
+      ...(state.currentBranch ? { currentBranch: state.currentBranch } : {}),
+    };
+  }
 
+  const named = getPersistentSandboxName(state);
+  const snapshotId =
+    state.restore?.kind === "snapshot"
+      ? state.restore.snapshotId
+      : state.snapshotId;
   return {
-    type: state.type,
-    ...(sandboxName ? { sandboxName } : {}),
-    ...(sandboxId ? { sandboxId } : {}),
-  } as SandboxState;
+    type: "vercel",
+    ...(named
+      ? {
+          providerSandboxId: named,
+          sandboxName: named,
+          restore: { kind: "named" as const, sandboxName: named },
+        }
+      : snapshotId
+        ? {
+            snapshotId,
+            restore: { kind: "snapshot" as const, snapshotId },
+          }
+        : {}),
+  };
 }
 
-/**
- * Clear both runtime state and any saved resume handle.
- */
 export function clearSandboxResumeState(
   state: SandboxState | null | undefined,
 ): SandboxState | null {
-  if (!state) return null;
-
-  return { type: state.type } as SandboxState;
+  return state ? ({ type: state.type } as SandboxState) : null;
 }
 
-/**
- * Clear sandbox state after an unavailable-sandbox error.
- * Hard 404s wipe the saved resume handle; other unavailable errors preserve it.
- */
 export function clearUnavailableSandboxState(
   state: SandboxState | null | undefined,
   message: string,

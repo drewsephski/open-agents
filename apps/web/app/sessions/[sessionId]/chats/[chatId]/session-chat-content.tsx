@@ -3571,6 +3571,7 @@ export function SessionChatContent({
                                     >
                                       <ToolCall
                                         part={p as WebAgentUIToolPart}
+                                        cwd={sandboxInfo?.workingDirectory}
                                         isStreaming={isMessageStreaming}
                                         onApprove={(id) =>
                                           addToolApprovalResponse({

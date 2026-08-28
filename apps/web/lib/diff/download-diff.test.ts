@@ -14,6 +14,7 @@ function createSandbox(params: {
 }): Sandbox {
   return {
     type: "cloud",
+    provider: "vercel",
     workingDirectory: "/repo",
     exec: async (command: string, _cwd: string, _timeout: number) => {
       const result = await params.exec(command);

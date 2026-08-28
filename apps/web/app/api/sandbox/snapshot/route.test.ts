@@ -2,11 +2,20 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 mock.module("server-only", () => ({}));
 
-type TestSandboxState = {
-  type: "vercel";
-  sandboxName?: string;
-  expiresAt?: number;
-};
+type TestSandboxState =
+  | {
+      type: "vercel";
+      sandboxName?: string;
+      expiresAt?: number;
+    }
+  | {
+      type: "codesandbox";
+      providerSandboxId?: string;
+      sandboxId?: string;
+      restore?: { kind: "hibernate"; sandboxId: string };
+      expiresAt?: number;
+      currentBranch?: string;
+    };
 
 type TestSessionRecord = {
   id: string;
@@ -77,6 +86,8 @@ mock.module("@/lib/sandbox/lifecycle-kick", () => ({
 }));
 
 mock.module("@open-agents/sandbox", () => ({
+  isSandboxProviderError: (error: unknown) =>
+    error instanceof Error && "errorClass" in error,
   connectSandbox: async (
     state: Record<string, unknown>,
     options?: Record<string, unknown>,
@@ -103,11 +114,21 @@ mock.module("@open-agents/sandbox", () => ({
       stop: async () => {
         stopCallCount += 1;
       },
-      getState: () => ({
-        type: "vercel" as const,
-        sandboxName,
-        expiresAt: Date.now() + 120_000,
-      }),
+      getState: () =>
+        state.type === "codesandbox"
+          ? {
+              type: "codesandbox" as const,
+              providerSandboxId: state.providerSandboxId,
+              sandboxId: state.providerSandboxId,
+              restore: state.restore,
+              currentBranch: state.currentBranch,
+              expiresAt: Date.now() + 120_000,
+            }
+          : {
+              type: "vercel" as const,
+              sandboxName,
+              expiresAt: Date.now() + 120_000,
+            },
     };
   },
 }));
@@ -175,7 +196,12 @@ describe("/api/sandbox/snapshot", () => {
         snapshotCreatedAt: null,
         sandboxState: {
           type: "vercel",
+          providerSandboxId: "session_session-1",
           sandboxName: "session_session-1",
+          restore: {
+            kind: "named",
+            sandboxName: "session_session-1",
+          },
         },
         lifecycleVersion: 3,
         lifecycleState: "hibernated",
@@ -230,6 +256,60 @@ describe("/api/sandbox/snapshot", () => {
     ]);
   });
 
+  test("PUT resumes CodeSandbox on its persisted provider and restore ID", async () => {
+    const { PUT } = await routeModulePromise;
+
+    sessionRecord = makeSessionRecord({
+      sandboxState: {
+        type: "codesandbox",
+        providerSandboxId: "csb-1",
+        sandboxId: "csb-1",
+        restore: { kind: "hibernate", sandboxId: "csb-1" },
+        currentBranch: "feature/fallback",
+      },
+      lifecycleState: "hibernated",
+      sandboxExpiresAt: null,
+      hibernateAfter: null,
+    });
+
+    const response = await PUT(
+      new Request("http://localhost/api/sandbox/snapshot", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: "session-1" }),
+      }),
+    );
+    const payload = (await response.json()) as {
+      provider: string;
+      restoredFrom: string;
+    };
+
+    expect(response.ok).toBe(true);
+    expect(payload).toMatchObject({
+      provider: "codesandbox",
+      restoredFrom: "csb-1",
+    });
+    expect(connectCalls).toHaveLength(1);
+    expect(connectCalls[0]).toMatchObject({
+      state: {
+        type: "codesandbox",
+        providerSandboxId: "csb-1",
+        restore: { kind: "hibernate", sandboxId: "csb-1" },
+      },
+      options: { resume: true },
+    });
+    expect(updateCalls[0]).toEqual(
+      expect.objectContaining({
+        sandboxState: expect.objectContaining({
+          type: "codesandbox",
+          providerSandboxId: "csb-1",
+          restore: { kind: "hibernate", sandboxId: "csb-1" },
+        }),
+        lifecycleVersion: 3,
+      }),
+    );
+  });
+
   test("PUT clears a broken persistent sandbox handle after a 404", async () => {
     const { PUT } = await routeModulePromise;
 
@@ -243,7 +323,10 @@ describe("/api/sandbox/snapshot", () => {
       sandboxExpiresAt: null,
       hibernateAfter: null,
     });
-    connectSandboxResumeError = new Error("Status code 404 is not ok");
+    connectSandboxResumeError = Object.assign(
+      new Error("Status code 404 is not ok"),
+      { errorClass: "resource_not_found" },
+    );
 
     const response = await PUT(
       new Request("http://localhost/api/sandbox/snapshot", {

@@ -43,6 +43,17 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 
 ## Sandbox Lifecycle
 
+- CodeSandbox SDK 2.4 command completion does not expose separate stdout,
+  stderr, and exit status in the Vercel contract shape; capture them into
+  per-command temporary files and always clean those files after completion,
+  abort, timeout, or provider failure.
+- CodeSandbox control, preview HTTP, and preview WebSocket connections can
+  otherwise keep or wake a VM; disable both automatic wake channels and call
+  `keepActiveWhileConnected(false)` so durable server activity remains
+  authoritative.
+- Persist the concrete provider and restore key at provisioning time. Provider
+  fallback is safe only before a workspace exists; reconnect, lifecycle, and
+  mutating commands must remain pinned to the original provider.
 - Detached/background bash results may have `exitCode: null` for both successful starts and explicit tool failures; bash renderer error state must also honor `output.success === false` (not only numeric non-zero exit codes), and detached quick-failure probing should prefer a timer-vs-wait race branch over matching SDK-specific error names.
 - Creating a sandbox snapshot automatically shuts down that sandbox; lifecycle plans and implementations must treat snapshotting as a stop/hibernate transition, not a non-disruptive backup.
 - Vercel `sdk.domain(port)` throws when a sandbox has no route for that port (common on some restored/reconnected sandboxes); environment/prompt metadata should guard per-port URL generation instead of assuming every configured port is routable.

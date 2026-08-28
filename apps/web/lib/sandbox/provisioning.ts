@@ -2,8 +2,11 @@ import "server-only";
 
 import {
   connectSandbox,
+  provisionSandbox,
   type Sandbox,
   type SandboxState,
+  type SandboxProvider,
+  type SandboxSelectionReason,
 } from "@open-agents/sandbox";
 import {
   getSessionById,
@@ -27,6 +30,7 @@ import {
   DEFAULT_SANDBOX_PORTS,
   DEFAULT_SANDBOX_TIMEOUT_MS,
   DEFAULT_SANDBOX_VCPUS,
+  SANDBOX_INACTIVITY_TIMEOUT_MS,
 } from "@/lib/sandbox/config";
 import {
   buildActiveLifecycleUpdate,
@@ -34,10 +38,13 @@ import {
 } from "@/lib/sandbox/lifecycle";
 import { kickSandboxLifecycleWorkflow } from "@/lib/sandbox/lifecycle-kick";
 import {
-  getResumableSandboxName,
   getSessionSandboxName,
-  isSandboxActive,
+  hasResumableSandboxState,
+  isSandboxState,
 } from "@/lib/sandbox/utils";
+import { getSandboxProviderConfig } from "@/lib/sandbox/provider-config";
+import { sandboxProviderCircuit } from "@/lib/sandbox/provider-circuit";
+import { emitSandboxTelemetry } from "@/lib/sandbox/telemetry";
 import { installGlobalSkills } from "@/lib/skills/global-skill-installer";
 import { eq } from "drizzle-orm";
 
@@ -54,6 +61,8 @@ export type ProvisionSessionSandboxResult = {
   currentBranch?: string;
   environmentDetails?: string;
   didSetupWorkspace: boolean;
+  provider: SandboxProvider;
+  selectionReason: SandboxSelectionReason | "restore";
   session: SessionRecord;
 };
 
@@ -62,15 +71,6 @@ export class SessionArchivedDuringProvisioningError extends Error {
     super(`Session ${sessionId} was archived during sandbox provisioning`);
     this.name = "SessionArchivedDuringProvisioningError";
   }
-}
-
-function isSandboxState(value: unknown): value is SandboxState {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "type" in value &&
-    value.type === "vercel"
-  );
 }
 
 async function getUserById(userId: string): Promise<UserRecord | null> {
@@ -101,20 +101,6 @@ function buildSandboxSource(session: SessionRecord): SandboxState["source"] {
     ...(shouldCreateNewBranch
       ? { newBranch: session.branch ?? undefined }
       : { branch: session.branch ?? "main" }),
-  };
-}
-
-function buildSandboxState(session: SessionRecord): SandboxState {
-  const existingState = session.sandboxState;
-  const sandboxName =
-    getResumableSandboxName(existingState) ?? getSessionSandboxName(session.id);
-  const source = buildSandboxSource(session);
-
-  return {
-    type: "vercel",
-    ...(isSandboxState(existingState) ? existingState : {}),
-    sandboxName,
-    ...(source ? { source } : {}),
   };
 }
 
@@ -219,7 +205,8 @@ export async function provisionSessionSandbox(params: {
     throw new Error("Session is archived");
   }
 
-  const didSetupWorkspace = !isSandboxActive(session.sandboxState);
+  const isPinnedRestore = hasResumableSandboxState(session.sandboxState);
+  const didSetupWorkspace = !isPinnedRestore;
   const user = await getUserById(session.userId);
   if (!user) {
     throw new Error("User not found");
@@ -231,22 +218,47 @@ export async function provisionSessionSandbox(params: {
     session,
   });
 
+  const providerConfig = getSandboxProviderConfig();
+  const sharedOptions = {
+    githubToken: setupToken?.token,
+    gitUser,
+    timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
+    hibernationTimeoutMs: SANDBOX_INACTIVITY_TIMEOUT_MS,
+    vcpus: DEFAULT_SANDBOX_VCPUS,
+    ports: DEFAULT_SANDBOX_PORTS,
+    baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
+    persistent: true,
+    resume: true,
+    createIfMissing: true,
+    providerOrder: providerConfig.providerOrder,
+    providerOptions: providerConfig.providerOptions,
+    circuitBreaker: sandboxProviderCircuit,
+    telemetry: emitSandboxTelemetry,
+  } as const;
+
   let sandbox: Sandbox;
+  let provider: SandboxProvider;
+  let selectionReason: SandboxSelectionReason | "restore";
   try {
-    sandbox = await connectSandbox({
-      state: buildSandboxState(session),
-      options: {
-        githubToken: setupToken?.token,
-        gitUser,
-        timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
-        vcpus: DEFAULT_SANDBOX_VCPUS,
-        ports: DEFAULT_SANDBOX_PORTS,
-        baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
-        persistent: true,
-        resume: true,
-        createIfMissing: true,
-      },
-    });
+    if (isPinnedRestore && isSandboxState(session.sandboxState)) {
+      sandbox = await connectSandbox({
+        state: session.sandboxState,
+        options: sharedOptions,
+      });
+      provider = session.sandboxState.type;
+      selectionReason = "restore";
+    } else {
+      const provisioned = await provisionSandbox(
+        {
+          source: buildSandboxSource(session),
+          persistenceKey: getSessionSandboxName(session.id),
+        },
+        sharedOptions,
+      );
+      sandbox = provisioned.sandbox;
+      provider = provisioned.provider;
+      selectionReason = provisioned.reason;
+    }
   } finally {
     if (setupToken) {
       await revokeInstallationToken(setupToken.token);
@@ -256,7 +268,7 @@ export async function provisionSessionSandbox(params: {
   const rawSandboxState = sandbox.getState?.();
   const sandboxState = isSandboxState(rawSandboxState)
     ? rawSandboxState
-    : buildSandboxState(session);
+    : ({ type: provider } as SandboxState);
 
   const updatedSession = await updateSessionIfNotArchived(params.sessionId, {
     sandboxState,
@@ -291,6 +303,8 @@ export async function provisionSessionSandbox(params: {
     currentBranch: sandbox.currentBranch,
     environmentDetails: sandbox.environmentDetails,
     didSetupWorkspace,
+    provider,
+    selectionReason,
     session: updatedSession ?? session,
   };
 }
