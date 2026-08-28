@@ -4,6 +4,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 const ALGORITHM = "aes-256-gcm";
 const KEY_LENGTH_BYTES = 32;
 const NONCE_LENGTH_BYTES = 12;
+const AUTHENTICATION_TAG_LENGTH_BYTES = 16;
 
 export interface CredentialEnvelope {
   ciphertext: string;
@@ -119,6 +120,23 @@ function getAdditionalAuthenticatedData(
   );
 }
 
+function decodeCanonicalBase64Url(
+  value: string,
+  expectedLength?: number,
+): Buffer {
+  if (!/^[A-Za-z0-9_-]*$/.test(value)) {
+    throw new Error("Invalid base64url encoding");
+  }
+  const decoded = Buffer.from(value, "base64url");
+  if (decoded.toString("base64url") !== value) {
+    throw new Error("Invalid base64url encoding");
+  }
+  if (expectedLength !== undefined && decoded.byteLength !== expectedLength) {
+    throw new Error("Invalid envelope field length");
+  }
+  return decoded;
+}
+
 export function encryptCredential(
   plaintext: string,
   context: CredentialCryptographyContext,
@@ -130,7 +148,9 @@ export function encryptCredential(
   }
 
   const nonce = randomBytes(NONCE_LENGTH_BYTES);
-  const cipher = createCipheriv(ALGORITHM, key, nonce);
+  const cipher = createCipheriv(ALGORITHM, key, nonce, {
+    authTagLength: AUTHENTICATION_TAG_LENGTH_BYTES,
+  });
   cipher.setAAD(getAdditionalAuthenticatedData(context, encryptionKeyVersion));
   const ciphertext = Buffer.concat([
     cipher.update(plaintext, "utf8"),
@@ -155,17 +175,21 @@ export function decryptCredential(
   }
 
   try {
-    const decipher = createDecipheriv(
-      ALGORITHM,
-      key,
-      Buffer.from(envelope.nonce, "base64url"),
+    const nonce = decodeCanonicalBase64Url(envelope.nonce, NONCE_LENGTH_BYTES);
+    const authenticationTag = decodeCanonicalBase64Url(
+      envelope.authenticationTag,
+      AUTHENTICATION_TAG_LENGTH_BYTES,
     );
+    const ciphertext = decodeCanonicalBase64Url(envelope.ciphertext);
+    const decipher = createDecipheriv(ALGORITHM, key, nonce, {
+      authTagLength: AUTHENTICATION_TAG_LENGTH_BYTES,
+    });
     decipher.setAAD(
       getAdditionalAuthenticatedData(context, envelope.encryptionKeyVersion),
     );
-    decipher.setAuthTag(Buffer.from(envelope.authenticationTag, "base64url"));
+    decipher.setAuthTag(authenticationTag);
     return Buffer.concat([
-      decipher.update(Buffer.from(envelope.ciphertext, "base64url")),
+      decipher.update(ciphertext),
       decipher.final(),
     ]).toString("utf8");
   } catch {

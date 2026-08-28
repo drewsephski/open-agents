@@ -79,3 +79,48 @@ No remaining correctness, ownership, or secret-exposure findings were identified
 - `ENCRYPTION_KEY` must be configured with 32 random bytes encoded as base64 before create/replace can succeed. Status and delete remain functional without it.
 - Runtime credential decryption/resolution and explicit propagation to authenticated model calls are intentionally deferred to Task 3. No plaintext is placed in workflow state or a sandbox in this task.
 - Onboarding/Connections UI remains Task 6.
+
+## Security follow-up: strict credential-envelope decoding
+
+### Finding and fix
+
+Node's `Buffer.from(value, "base64url")` decoder accepts invalid and noncanonical input. In particular, an invalid suffix such as `!` could be ignored, leaving the authenticated bytes unchanged and allowing a serialized envelope mutation to decrypt successfully.
+
+- Added a strict decoder for every persisted envelope field. It accepts only the unpadded base64url alphabet and requires the decoded bytes to encode back to the exact stored string.
+- Enforced a 12-byte AES-GCM nonce and 16-byte authentication tag before constructing the decipher.
+- Set `authTagLength: 16` explicitly for both encryption and decryption.
+- Kept all parse, length, authentication, key-version, and tamper failures behind the existing stable `Credential could not be decrypted` boundary.
+- Added the strict-decoding rule to the repository's OpenRouter lessons.
+
+### TDD evidence
+
+RED was captured after adding the first adversarial regression and before changing the implementation:
+
+```text
+pnpm test:verbose apps/web/lib/credentials/envelope-encryption.test.ts
+
+5 pass, 1 fail
+rejects invalid junk appended to serialized ciphertext
+Received function did not throw; Received value: "sk-or-v1-sensitive"
+```
+
+GREEN expanded the regression coverage to invalid junk and standard-base64 characters on every envelope field, padded values, a noncanonical encoding that decodes to the same bytes, valid AES-GCM fixtures with 11- and 13-byte nonces, valid AES-GCM fixtures with a 15-byte tag, a 17-byte tag, byte tampering, wrong keys, and unknown key versions.
+
+```text
+pnpm test:verbose \
+  apps/web/lib/credentials/envelope-encryption.test.ts \
+  apps/web/lib/credentials/openrouter-validation.test.ts \
+  apps/web/lib/credentials/provider-credentials.test.ts \
+  apps/web/app/api/settings/provider-credentials/openrouter/route.test.ts
+
+24 pass, 0 fail, 80 assertions across 4 files
+```
+
+### Verification and self-review
+
+- `pnpm fix`: PASS.
+- `pnpm --dir apps/web typecheck`: PASS.
+- `git diff --check`: PASS.
+- `pnpm run ci`: PASS: format/lint, 4/4 typecheck tasks, all 135 isolated test files, and migration/schema consistency.
+- Self-review found the first malformed-length fixtures could have failed incidentally through authentication mismatch. They were replaced with independently generated, cryptographically valid nonstandard AES-GCM fixtures, proving that nonce/tag length enforcement itself rejects them.
+- No remaining findings. The only environment note is the existing Node engine warning: the host used Node `v26.3.0` while the repository declares `24.x`.

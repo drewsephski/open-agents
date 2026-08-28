@@ -156,3 +156,4 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - Prompt cache markers apply only when the routed model is Anthropic. GLM defaults skip `addCacheControl`. Set both `anthropic` and `openrouter` `cacheControl: { type: "ephemeral" }` namespaces when routing Claude through OpenRouter.
 - Cost lives at `providerMetadata.openrouter.usage.cost` as a **number**. Pass `{ usage: { include: true } }` on `chat()` or cost is omitted. Do not read `providerMetadata.gateway.cost`.
 - Treat OpenRouter credential metadata as untrusted even after authenticated validation: re-project safe response fields and replace any provider label that contains the submitted plaintext key before storing or returning it.
+- Do not pass persisted envelope strings directly to Node's permissive base64url decoder. Require canonical unpadded base64url, round-trip the encoding, enforce the 12-byte GCM nonce and 16-byte tag, and set `authTagLength` explicitly.
