@@ -167,7 +167,7 @@ export function TechSelector() {
             </div>
           </form>
 
-          <div className="relative min-h-[470px] overflow-hidden bg-[#11110f] p-5 text-white sm:p-8">
+          <div className="relative min-h-[470px] overflow-hidden bg-[#11110f] p-5 text-white sm:p-7">
             <div className="pointer-events-none absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(255,255,255,.1)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.1)_1px,transparent_1px)] [background-size:32px_32px]" />
             <div className="relative flex h-full flex-col">
               <div className="flex items-center justify-between border-b border-white/10 pb-4 font-mono text-[11px] uppercase tracking-[0.16em] text-white/45">
@@ -178,12 +178,12 @@ export function TechSelector() {
                 </span>
               </div>
 
-              <div className="py-7">
-                <h3 className="text-2xl font-medium tracking-tight sm:text-3xl">
+              <div className="pb-5 pt-6">
+                <h3 className="max-w-2xl text-2xl font-medium tracking-tight sm:text-[1.75rem] sm:leading-tight">
                   {recommendation?.headline ??
                     "Composing the LaunchStack system"}
                 </h3>
-                <div className="mt-3 max-w-xl text-sm leading-relaxed text-white/75 [&_p]:my-2 [&_strong]:font-medium [&_strong]:text-white [&_ul]:mt-2 [&_ul]:space-y-1 [&_ul]:pl-4 [&_li]:list-disc [&_li::marker]:text-emerald-400">
+                <div className="mt-2 max-w-2xl text-sm leading-relaxed text-white/65 [&_p]:m-0">
                   <Streamdown mode="static" isAnimating={false}>
                     {recommendation?.summaryMarkdown ??
                       "Reading the product brief and matching its responsibilities to the live technology catalog…"}
@@ -191,14 +191,13 @@ export function TechSelector() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-px overflow-hidden border border-white/10 bg-white/10 sm:grid-cols-3">
-                {recommendation?.technologies.map((technology, index) => (
+              <div className="grid grid-cols-1 gap-px overflow-hidden border border-white/10 bg-white/10 sm:grid-cols-2 sm:[&>:last-child:nth-child(odd)]:col-span-2">
+                {recommendation?.technologies.map((technology) => (
                   <div
                     key={technology.id}
-                    className="group relative min-h-28 bg-[#11110f] p-4 transition-colors hover:bg-white/[0.06]"
-                    style={{ animationDelay: `${index * 55}ms` }}
+                    className="group flex min-w-0 items-start gap-3 bg-[#11110f] p-3.5 transition-colors hover:bg-white/[0.045]"
                   >
-                    <div className="flex size-9 items-center justify-center rounded-md border border-white/15 bg-[#f7f7f5] shadow-[0_4px_14px_rgba(0,0,0,0.35)]">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[#f7f7f5] shadow-[0_4px_14px_rgba(0,0,0,0.35)]">
                       <Image
                         src={technology.logo}
                         alt=""
@@ -207,20 +206,19 @@ export function TechSelector() {
                         className="size-6 object-contain [filter:drop-shadow(0_0_0.6px_rgba(0,0,0,0.9))]"
                       />
                     </div>
-                    <p className="mt-3 text-sm font-medium text-white">
-                      {technology.name}
-                    </p>
-                    <p className="mt-0.5 text-xs text-white/60">
-                      {technology.responsibility ?? technology.role}
-                    </p>
-                    <span className="absolute right-3 top-3 font-mono text-[9px] text-white/35">
-                      0{index + 1}
-                    </span>
+                    <div className="min-w-0 pt-0.5">
+                      <p className="text-sm font-medium leading-5 text-white">
+                        {technology.name}
+                      </p>
+                      <p className="mt-0.5 text-xs leading-[1.45] text-white/60">
+                        {technology.responsibility ?? technology.role}
+                      </p>
+                    </div>
                   </div>
                 ))}
               </div>
 
-              <div className="mt-auto pt-6">
+              <div className="mt-auto pt-5">
                 <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-amber-300/70">
                   Main tradeoff
                 </p>

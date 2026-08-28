@@ -4,7 +4,7 @@ import { z } from "zod";
 import { getSvglCatalog } from "@/lib/svgl";
 import { techStackRecommendationSchema } from "@/lib/tech-stack";
 
-const STACK_RECOMMENDATION_MODEL = "openai/gpt-5.6-luna-fast";
+const STACK_RECOMMENDATION_MODEL = "openai/gpt-5.6-luna";
 const STACK_RECOMMENDATION_TIMEOUT_MS = 12_000;
 
 export async function recommendTechStack({
@@ -71,14 +71,8 @@ Return 4-12 unique technology names exactly as written in the catalog. Every cat
       "The model did not return a complete catalog-backed stack.",
     );
   }
-  const summaryMarkdown = [
-    "A small set of clear layers keeps this product simple to build and operate.",
-    "\n**What handles what**",
-    ...uniqueTechnologies.map(
-      ({ name, responsibility }) =>
-        `- **${name}** — ${responsibility.toLowerCase().slice(0, 76)}`,
-    ),
-  ].join("\n");
+  const summaryMarkdown =
+    "A small set of clear layers keeps this product simple to build and operate.";
 
   const recommendation = techStackRecommendationSchema.safeParse({
     headline: output.headline,

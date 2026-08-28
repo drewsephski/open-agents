@@ -99,7 +99,8 @@ describe("/api/recommend-stack", () => {
         responsibilities: [
           {
             technologyName: "Next.js",
-            responsibility: "Runs the analytics dashboard and server routes",
+            responsibility:
+              "Runs the analytics dashboard, server routes, authenticated reporting views, and scheduled data refreshes",
           },
           {
             technologyName: "TypeScript",
@@ -144,9 +145,16 @@ describe("/api/recommend-stack", () => {
 
     expect(response.status).toBe(200);
     expect(body.headline).toBe("A practical commerce stack");
-    expect(body.summaryMarkdown).toContain("**Next.js**");
-    expect(body.summaryMarkdown).toContain("**What handles what**");
+    expect(body.summaryMarkdown).toBe(
+      "A small set of clear layers keeps this product simple to build and operate.",
+    );
     expect(body.technologies.map(({ name }) => name)).toContain("Stripe");
+    expect(
+      body.technologies.find(({ name }) => name === "Next.js"),
+    ).toMatchObject({
+      responsibility:
+        "Runs the analytics dashboard, server routes, authenticated reporting views, and scheduled data refreshes",
+    });
     expect(generateTextCalls[0]?.prompt).toContain(
       "A paid analytics product for agencies",
     );
@@ -156,7 +164,7 @@ describe("/api/recommend-stack", () => {
       timeout: 12_000,
     });
     expect(generateTextCalls[0]).toMatchObject({
-      model: "openai/gpt-5.6-luna-fast",
+      model: "openai/gpt-5.6-luna",
     });
   });
 
