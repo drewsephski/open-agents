@@ -10,6 +10,20 @@ This file provides guidance for AI coding agents working in this repository.
 - [Code Style & Patterns](docs/agents/code-style.md)
 - [Lessons Learned](docs/agents/lessons-learned.md)
 
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are tracked in GitHub Issues for `drewsephski/open-agents`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The repository uses the default five-role triage vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository with a root glossary and system-wide ADRs. See `docs/agents/domain.md`.
+
 ## Authentication
 
 Authentication uses [Better Auth](https://www.better-auth.com/) with Vercel OAuth (sign-in) and GitHub OAuth (repo access). Config lives in `apps/web/lib/auth/config.ts`. Sessions are managed by better-auth's built-in session system — there is no manual JWE/encryption layer.
