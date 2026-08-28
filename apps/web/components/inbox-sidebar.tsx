@@ -22,6 +22,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BranchPickerDialog } from "@/components/branch-picker-dialog";
 import { getValidRenameTitle } from "@/components/inbox-sidebar-rename";
 import { InboxSidebarStatusTabs } from "@/components/inbox-sidebar-status-tabs";
+import { ThemeToggleButton } from "@/components/theme-toggle-button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -1214,6 +1215,7 @@ export function InboxSidebar({
                 <span className="mt-1 block h-4 w-24 animate-pulse rounded bg-muted" />
               ) : null}
             </div>
+            <ThemeToggleButton />
             <Button
               type="button"
               variant="ghost"

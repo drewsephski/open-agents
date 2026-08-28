@@ -18,7 +18,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { ModelCombobox } from "@/components/model-combobox";
 import { ProviderIcon } from "@/components/provider-icons";
 import { useModelOptions } from "@/hooks/use-model-options";
@@ -40,6 +39,7 @@ import {
   getRecommendedModelBadge,
   getRecommendedModels,
 } from "@/lib/recommended-models";
+import { SettingsToggleRow } from "./settings-toggle-row";
 
 const SANDBOX_OPTIONS: Array<{ id: SandboxType; name: string }> = [
   { id: "vercel", name: "Vercel" },
@@ -599,81 +599,53 @@ export function PreferencesSection() {
           </div>
 
           {/* Right column: toggles */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="auto-commit-push">Auto commit &amp; push</Label>
-                <p className="text-xs text-muted-foreground">
-                  Commit and push when an agent turn finishes.
-                </p>
-              </div>
-              <Switch
-                id="auto-commit-push"
-                checked={preferences?.autoCommitPush ?? false}
-                onCheckedChange={handleAutoCommitPushChange}
-                disabled={isSaving}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="auto-create-pr">Auto create PR</Label>
-                <p className="text-xs text-muted-foreground">
-                  Open a pull request after auto commit.
-                </p>
-              </div>
-              <Switch
-                id="auto-create-pr"
-                checked={preferences?.autoCreatePr ?? false}
-                onCheckedChange={handleAutoCreatePrChange}
-                disabled={isSaving || !(preferences?.autoCommitPush ?? false)}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="alerts-enabled">Alerts</Label>
-                <p className="text-xs text-muted-foreground">
-                  Notify when a background agent finishes.
-                </p>
-              </div>
-              <Switch
-                id="alerts-enabled"
-                checked={preferences?.alertsEnabled ?? true}
-                onCheckedChange={handleAlertsEnabledChange}
-                disabled={isSaving}
-              />
-            </div>
+          <div className="divide-y divide-border/50">
+            <SettingsToggleRow
+              id="auto-commit-push"
+              label="Auto commit & push"
+              description="Commit and push when an agent turn finishes."
+              checked={preferences?.autoCommitPush ?? false}
+              onCheckedChange={handleAutoCommitPushChange}
+              disabled={isSaving}
+            />
+            <SettingsToggleRow
+              id="auto-create-pr"
+              label="Auto create PR"
+              description="Open a pull request after auto commit."
+              checked={preferences?.autoCreatePr ?? false}
+              onCheckedChange={handleAutoCreatePrChange}
+              disabled={isSaving || !(preferences?.autoCommitPush ?? false)}
+            />
+            <SettingsToggleRow
+              id="alerts-enabled"
+              label="Alerts"
+              description="Notify when a background agent finishes."
+              checked={preferences?.alertsEnabled ?? true}
+              onCheckedChange={handleAlertsEnabledChange}
+              disabled={isSaving}
+            />
             {(preferences?.alertsEnabled ?? true) && (
-              <div className="flex items-center justify-between gap-4 pl-4">
-                <div className="space-y-0.5">
-                  <Label htmlFor="alert-sound-enabled">Alert sound</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Play a sound with alerts.
-                  </p>
-                </div>
-                <Switch
-                  id="alert-sound-enabled"
-                  checked={preferences?.alertSoundEnabled ?? true}
-                  onCheckedChange={handleAlertSoundEnabledChange}
-                  disabled={isSaving}
-                />
-              </div>
-            )}
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="public-usage-enabled">
-                  Public usage profile
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Publish a shareable wrapped page at <code>/u/username</code>.
-                </p>
-              </div>
-              <Switch
-                id="public-usage-enabled"
-                checked={preferences?.publicUsageEnabled ?? false}
-                onCheckedChange={handlePublicUsageEnabledChange}
+              <SettingsToggleRow
+                id="alert-sound-enabled"
+                label="Alert sound"
+                description="Play a sound with alerts."
+                checked={preferences?.alertSoundEnabled ?? true}
+                onCheckedChange={handleAlertSoundEnabledChange}
                 disabled={isSaving}
               />
-            </div>
+            )}
+            <SettingsToggleRow
+              id="public-usage-enabled"
+              label="Public usage profile"
+              description={
+                <>
+                  Publish a shareable wrapped page at <code>/u/username</code>.
+                </>
+              }
+              checked={preferences?.publicUsageEnabled ?? false}
+              onCheckedChange={handlePublicUsageEnabledChange}
+              disabled={isSaving}
+            />
             {(preferences?.publicUsageEnabled ?? false) &&
               publicProfilePath && (
                 <div className="grid gap-2 pl-4">

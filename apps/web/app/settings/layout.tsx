@@ -24,6 +24,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ThemeToggleButton } from "@/components/theme-toggle-button";
 import { cn } from "@/lib/utils";
 import { AccountsSectionSkeleton } from "./accounts-section";
 import { LeaderboardSectionSkeleton } from "./leaderboard-section";
@@ -163,15 +164,16 @@ function SettingsLayout({
             </p>
             {navItems}
           </nav>
-          <div className="border-t border-sidebar-border px-2 py-3">
+          <div className="flex items-center gap-1 border-t border-sidebar-border px-2 py-3">
             <button
               type="button"
               onClick={signOut}
-              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
             >
               <LogOut className="h-4 w-4" />
               Sign out
             </button>
+            <ThemeToggleButton />
           </div>
         </div>
       </aside>
@@ -197,15 +199,16 @@ function SettingsLayout({
             </p>
             {navItems}
           </nav>
-          <div className="border-t border-sidebar-border px-2 py-3">
+          <div className="flex items-center gap-1 border-t border-sidebar-border px-2 py-3">
             <button
               type="button"
               onClick={signOut}
-              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
             >
               <LogOut className="h-4 w-4" />
               Sign out
             </button>
+            <ThemeToggleButton />
           </div>
         </SheetContent>
       </Sheet>
