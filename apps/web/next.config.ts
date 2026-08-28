@@ -17,6 +17,11 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "*.vercel.com",
       },
+      {
+        protocol: "https",
+        hostname: "svgl.app",
+        pathname: "/library/**",
+      },
     ],
   },
   experimental: {
