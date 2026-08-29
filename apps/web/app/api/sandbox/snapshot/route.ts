@@ -21,6 +21,13 @@ import {
   buildHibernatedLifecycleUpdate,
   getNextLifecycleVersion,
 } from "@/lib/sandbox/lifecycle";
+import {
+  admitSandboxOperation,
+  confirmSandboxRunning,
+  releaseSandboxRunning,
+  SandboxAccessDeniedError,
+  toSandboxAccessErrorResponse,
+} from "@/lib/sandbox/allowance";
 import { kickSandboxLifecycleWorkflow } from "@/lib/sandbox/lifecycle-kick";
 import {
   canOperateOnSandbox,
@@ -128,6 +135,7 @@ export async function POST(req: Request) {
       getConnectOptions(),
     );
     await sandbox.stop();
+    await releaseSandboxRunning(body.sessionId);
     const stoppedState = sandbox.getState?.();
     const clearedState = clearSandboxState(
       isSandboxState(stoppedState) ? stoppedState : sandboxState,
@@ -139,7 +147,6 @@ export async function POST(req: Request) {
       lifecycleVersion: getNextLifecycleVersion(sessionRecord.lifecycleVersion),
       ...buildHibernatedLifecycleUpdate(),
     });
-
     return Response.json({
       snapshotId: getProviderSandboxId(clearedState),
       provider: clearedState?.type,
@@ -204,6 +211,19 @@ export async function PUT(req: Request) {
   }
 
   try {
+    await admitSandboxOperation({
+      userId: authResult.userId,
+      sessionId: body.sessionId,
+      operation: "resume",
+    });
+  } catch (error) {
+    if (error instanceof SandboxAccessDeniedError) {
+      return toSandboxAccessErrorResponse(error);
+    }
+    throw error;
+  }
+
+  try {
     let attemptedRestoreState = restoreState;
     let sandbox: Sandbox;
     try {
@@ -242,6 +262,7 @@ export async function PUT(req: Request) {
       lifecycleVersion: getNextLifecycleVersion(sessionRecord.lifecycleVersion),
       ...buildActiveLifecycleUpdate(restoredState),
     });
+    await confirmSandboxRunning(body.sessionId);
     kickSandboxLifecycleWorkflow({
       sessionId: body.sessionId,
       reason: "snapshot-restored",
@@ -253,6 +274,7 @@ export async function PUT(req: Request) {
       restoredFrom: getRestoredFrom(attemptedRestoreState),
     });
   } catch (error) {
+    await releaseSandboxRunning(body.sessionId);
     const message = error instanceof Error ? error.message : String(error);
     if (
       hasProviderRestore &&

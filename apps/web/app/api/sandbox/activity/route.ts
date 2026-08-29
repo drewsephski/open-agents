@@ -2,8 +2,7 @@ import {
   requireAuthenticatedUser,
   requireOwnedSession,
 } from "@/app/api/sessions/_lib/session-context";
-import { updateSession } from "@/lib/db/sessions";
-import { buildLifecycleActivityUpdate } from "@/lib/sandbox/lifecycle";
+import { recordSandboxActivity } from "@/lib/sandbox/activity";
 
 interface ActivityRequest {
   sessionId: string;
@@ -49,7 +48,7 @@ export async function POST(req: Request) {
     return Response.json({ success: false, reason: "not-active" });
   }
 
-  await updateSession(sessionId, buildLifecycleActivityUpdate());
+  await recordSandboxActivity(sessionId);
 
   return Response.json({ success: true });
 }

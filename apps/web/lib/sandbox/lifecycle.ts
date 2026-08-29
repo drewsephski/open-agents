@@ -17,6 +17,7 @@ import {
   isSandboxState,
 } from "./utils";
 import { connectConfiguredSandbox } from "./connect";
+import { releaseSandboxRunning } from "./allowance";
 
 export type SandboxLifecycleState =
   | "provisioning"
@@ -239,6 +240,7 @@ export async function evaluateSandboxLifecycle(
     }
 
     await sandbox.stop();
+    await releaseSandboxRunning(sessionId);
 
     const stoppedState = sandbox.getState?.();
     const clearedState = clearSandboxState(

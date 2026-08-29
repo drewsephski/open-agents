@@ -20,6 +20,7 @@ import type {
 } from "./inference-source";
 import type { AllowancePeriod } from "./allowance-period";
 import type { SubscriptionAccessState } from "./subscription-state";
+import type { InferenceCallAdmission } from "./inference-call-accounting";
 
 export interface ModelCredentialAccessState {
   byokCredential: {
@@ -183,15 +184,120 @@ export async function resolveModelCredential(params: {
   return productionResolver(params);
 }
 
+interface ModelCallCredentialResolverDependencies {
+  resolve(params: {
+    userId: string;
+    modelId: string;
+  }): Promise<ModelCredentialResolution>;
+  loadManagedPeriod(userId: string): Promise<AllowancePeriod | null>;
+  authorize(params: {
+    userId: string;
+    modelId: string;
+    source: "byok" | "managed";
+    agentType?: "main" | "subagent";
+    period: AllowancePeriod | null;
+  }): Promise<InferenceCallAdmission | null>;
+}
+
+export function createModelCallCredentialResolver(
+  dependencies: ModelCallCredentialResolverDependencies,
+) {
+  return async (params: {
+    userId: string;
+    modelId: string;
+    agentType?: "main" | "subagent";
+  }): Promise<ResolvedModelCredential> => {
+    let resolution = await dependencies.resolve(params);
+    if (!resolution.allowed) {
+      throw new InferenceAccessDeniedError(resolution.failure);
+    }
+    if (resolution.source === "administrative") {
+      throw new InferenceAccessDeniedError({
+        code: "access_state_invalid",
+        remediation: ["retry_later"],
+      });
+    }
+    let period: AllowancePeriod | null = null;
+    let admission: InferenceCallAdmission | null;
+    try {
+      if (resolution.source === "managed") {
+        period = await dependencies.loadManagedPeriod(params.userId);
+      }
+      admission = await dependencies.authorize({
+        ...params,
+        source: resolution.source,
+        period,
+      });
+    } catch {
+      throw new InferenceAccessDeniedError({
+        code: "access_state_invalid",
+        remediation: ["retry_later"],
+      });
+    }
+
+    if (!admission && resolution.source === "managed") {
+      resolution = await dependencies.resolve(params);
+      if (!resolution.allowed) {
+        throw new InferenceAccessDeniedError(resolution.failure);
+      }
+      if (resolution.source === "administrative") {
+        throw new InferenceAccessDeniedError({
+          code: "access_state_invalid",
+          remediation: ["retry_later"],
+        });
+      }
+      if (resolution.source === "managed") {
+        throw new InferenceAccessDeniedError({
+          code: "managed_allowance_exhausted",
+          remediation: ["add_byok", "wait_for_reset"],
+          ...(period ? { resetAt: period.end } : {}),
+        });
+      }
+      try {
+        admission = await dependencies.authorize({
+          ...params,
+          source: resolution.source,
+          period: null,
+        });
+      } catch {
+        admission = null;
+      }
+    }
+
+    if (!admission) {
+      throw new InferenceAccessDeniedError({
+        code: "access_state_invalid",
+        remediation: ["retry_later"],
+      });
+    }
+
+    return {
+      ...resolution,
+      openRouter: {
+        ...resolution.openRouter,
+        accounting: admission.callbacks,
+      },
+    };
+  };
+}
+
+const productionCallResolver = createModelCallCredentialResolver({
+  resolve: resolveModelCredential,
+  loadManagedPeriod: async (userId) =>
+    (await getBillingCredentialAccessState(userId)).managedInference.period,
+  authorize: async (params) => {
+    const { authorizeInferenceCall } =
+      await import("./inference-call-accounting");
+    return authorizeInferenceCall(params);
+  },
+});
+
 export async function requireModelCredential(params: {
   userId: string;
   modelId: string;
+  agentType?: "main" | "subagent";
 }): Promise<ResolvedModelCredential> {
-  const resolution = await resolveModelCredential(params);
-  if (!resolution.allowed) {
-    throw new InferenceAccessDeniedError(resolution.failure);
-  }
-  return resolution;
+  return productionCallResolver(params);
 }
 
 export function isInferenceAccessDeniedError(

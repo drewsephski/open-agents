@@ -14,6 +14,9 @@ beforeAll(async () => {
 });
 
 describe("getLifecycleDueAtMs", () => {
+  test("uses a fifteen-minute inactivity window", () => {
+    expect(SANDBOX_INACTIVITY_TIMEOUT_MS).toBe(15 * 60 * 1000);
+  });
   test("prefers hibernateAfter when earlier than expiry", () => {
     const baseMs = Date.UTC(2025, 0, 1, 0, 0, 0);
     const record = {

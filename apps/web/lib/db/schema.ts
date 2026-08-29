@@ -532,6 +532,33 @@ export const sandboxUsagePeriods = pgTable(
   ],
 );
 
+export const sandboxMeteringLeases = pgTable(
+  "sandbox_metering_leases",
+  {
+    sessionId: text("session_id")
+      .primaryKey()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    usagePeriodId: text("usage_period_id")
+      .notNull()
+      .references(() => sandboxUsagePeriods.id, { onDelete: "cascade" }),
+    state: text("state", { enum: ["starting", "running"] })
+      .notNull()
+      .default("starting"),
+    startedAt: timestamp("started_at").notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("sandbox_metering_leases_user_period_idx").on(
+      table.userId,
+      table.usagePeriodId,
+      table.state,
+    ),
+  ],
+);
+
 export const chats = pgTable(
   "chats",
   {
@@ -687,6 +714,7 @@ export type ManagedKeyCleanupJob = typeof managedKeyCleanupJobs.$inferSelect;
 export type NewManagedKeyCleanupJob = typeof managedKeyCleanupJobs.$inferInsert;
 export type SandboxUsagePeriod = typeof sandboxUsagePeriods.$inferSelect;
 export type NewSandboxUsagePeriod = typeof sandboxUsagePeriods.$inferInsert;
+export type SandboxMeteringLease = typeof sandboxMeteringLeases.$inferSelect;
 
 // User preferences for settings
 export const userPreferences = pgTable("user_preferences", {
@@ -727,7 +755,7 @@ export const userPreferences = pgTable("user_preferences", {
 export type UserPreferences = typeof userPreferences.$inferSelect;
 export type NewUserPreferences = typeof userPreferences.$inferInsert;
 
-// Usage tracking — one row per assistant turn (append-only)
+// Usage tracking — one row per authenticated provider call (append-only)
 export const usageEvents = pgTable("usage_events", {
   id: text("id").primaryKey(),
   userId: text("user_id")
@@ -755,5 +783,41 @@ export const usageEvents = pgTable("usage_events", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const inferenceCallReservations = pgTable(
+  "inference_call_reservations",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    modelId: text("model_id").notNull(),
+    periodStart: timestamp("period_start").notNull(),
+    periodEnd: timestamp("period_end").notNull(),
+    reservedMicros: bigint("reserved_micros", { mode: "number" }).notNull(),
+    state: text("state", {
+      enum: ["pending", "reconciled", "missing_cost"],
+    })
+      .notNull()
+      .default("pending"),
+    actualCostUsd: numeric("actual_cost_usd", {
+      precision: 18,
+      scale: 12,
+    }),
+    actualCostMicros: bigint("actual_cost_micros", { mode: "number" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    completedAt: timestamp("completed_at"),
+  },
+  (table) => [
+    index("inference_call_reservations_user_period_idx").on(
+      table.userId,
+      table.periodStart,
+      table.periodEnd,
+      table.state,
+    ),
+  ],
+);
+
 export type UsageEvent = typeof usageEvents.$inferSelect;
 export type NewUsageEvent = typeof usageEvents.$inferInsert;
+export type InferenceCallReservation =
+  typeof inferenceCallReservations.$inferSelect;

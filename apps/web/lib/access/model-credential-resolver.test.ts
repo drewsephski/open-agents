@@ -2,8 +2,11 @@ import { describe, expect, mock, test } from "bun:test";
 
 mock.module("server-only", () => ({}));
 
-const { createModelCredentialResolver } =
-  await import("./model-credential-resolver");
+const {
+  createModelCallCredentialResolver,
+  createModelCredentialResolver,
+  InferenceAccessDeniedError,
+} = await import("./model-credential-resolver");
 
 const NOW = new Date("2026-08-15T12:00:00.000Z");
 
@@ -161,5 +164,86 @@ describe("model credential resolver", () => {
       },
     });
     expect(JSON.stringify(result)).not.toContain("sk-or-v1-secret");
+  });
+});
+
+describe("model call credential resolver", () => {
+  test("falls back to a newly valid BYOK credential when managed admission loses at the allowance boundary", async () => {
+    const callbacks = { reconcile: async () => undefined };
+    const sources: string[] = [];
+    let resolveCount = 0;
+    const resolve = createModelCallCredentialResolver({
+      resolve: async () => {
+        resolveCount += 1;
+        return resolveCount === 1
+          ? {
+              allowed: true as const,
+              source: "managed" as const,
+              modelId: "z-ai/glm-5.3-flash",
+              openRouter: { apiKey: "managed-subkey" },
+            }
+          : {
+              allowed: true as const,
+              source: "byok" as const,
+              modelId: "z-ai/glm-5.3-flash",
+              openRouter: { apiKey: "user-key" },
+            };
+      },
+      loadManagedPeriod: async () => ({
+        start: new Date("2026-08-01T00:00:00.000Z"),
+        end: new Date("2026-09-01T00:00:00.000Z"),
+      }),
+      authorize: async (params) => {
+        sources.push(params.source);
+        return params.source === "managed"
+          ? null
+          : { callId: "byok-call", source: "byok", callbacks };
+      },
+    });
+
+    await expect(
+      resolve({
+        userId: "user-1",
+        modelId: "z-ai/glm-5.3-flash",
+        agentType: "subagent",
+      }),
+    ).resolves.toEqual({
+      allowed: true,
+      source: "byok",
+      modelId: "z-ai/glm-5.3-flash",
+      openRouter: { apiKey: "user-key", accounting: callbacks },
+    });
+    expect(sources).toEqual(["managed", "byok"]);
+  });
+
+  test("denies a new call at the managed limit with the paid-period reset", async () => {
+    const period = {
+      start: new Date("2026-08-01T00:00:00.000Z"),
+      end: new Date("2026-09-01T00:00:00.000Z"),
+    };
+    const resolve = createModelCallCredentialResolver({
+      resolve: async () => ({
+        allowed: true,
+        source: "managed",
+        modelId: "z-ai/glm-5.3-flash",
+        openRouter: { apiKey: "managed-subkey" },
+      }),
+      loadManagedPeriod: async () => period,
+      authorize: async () => null,
+    });
+
+    const error = await resolve({
+      userId: "user-1",
+      modelId: "z-ai/glm-5.3-flash",
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(InferenceAccessDeniedError);
+    expect(error).toMatchObject({
+      failure: {
+        code: "managed_allowance_exhausted",
+        remediation: ["add_byok", "wait_for_reset"],
+        resetAt: period.end,
+      },
+    });
   });
 });

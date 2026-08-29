@@ -993,6 +993,7 @@ export async function runAgentWorkflow(options: Options) {
           finishedAt: runFinishedAt.toISOString(),
           totalDurationMs: runFinishedAt.getTime() - runStartedAt.getTime(),
           stepTimings,
+          inferenceAccounted: true,
         },
       );
     }
@@ -1052,6 +1053,7 @@ const runAgentStep = async (
     const mainCredential = await requireModelCredential({
       userId,
       modelId: mainModelId,
+      agentType: "main",
     });
     const authorizedAgentOptions: OpenAgentCallOptions = {
       ...agentOptions,
@@ -1060,6 +1062,7 @@ const runAgentStep = async (
         const credential = await requireModelCredential({
           userId,
           modelId: subagentModelId,
+          agentType: "subagent",
         });
         return credential.openRouter;
       },

@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 mock.module("server-only", () => ({}));
+mock.module("@/lib/sandbox/allowance", () => ({
+  admitSandboxOperation: async () => ({ tier: "byok" }),
+  confirmSandboxRunning: async () => {},
+  releaseSandboxRunning: async () => {},
+  SandboxAccessDeniedError: class SandboxAccessDeniedError extends Error {
+    name = "SandboxAccessDeniedError";
+  },
+  toSandboxAccessErrorResponse: () => new Response(null, { status: 403 }),
+}));
 
 type TestSandboxState =
   | {

@@ -131,6 +131,9 @@ export async function requireOwnedSessionWithSandboxGuard(
     };
   }
 
+  const { recordSandboxActivity } = await import("@/lib/sandbox/activity");
+  await recordSandboxActivity(sessionId);
+
   return ownedSessionResult;
 }
 

@@ -156,7 +156,11 @@ let agentResponseBody: unknown;
 let agentProviderMetadata: Record<string, unknown> | undefined;
 let agentInputMessages: unknown;
 let agentCallOptions: Record<string, unknown> | undefined;
-const modelCredentialCalls: Array<{ userId: string; modelId: string }> = [];
+const modelCredentialCalls: Array<{
+  userId: string;
+  modelId: string;
+  agentType?: "main" | "subagent";
+}> = [];
 
 function buildAgentSteps() {
   return [
@@ -352,6 +356,7 @@ mock.module("@/lib/access/model-credential-resolver", () => ({
   requireModelCredential: async (params: {
     userId: string;
     modelId: string;
+    agentType?: "main" | "subagent";
   }) => {
     modelCredentialCalls.push(params);
     return {
@@ -781,7 +786,11 @@ describe("runAgentWorkflow", () => {
     await runAgentWorkflow(makeOptions());
 
     expect(modelCredentialCalls).toEqual([
-      { userId: "user-1", modelId: APP_DEFAULT_MODEL_ID },
+      {
+        userId: "user-1",
+        modelId: APP_DEFAULT_MODEL_ID,
+        agentType: "main",
+      },
     ]);
     expect(agentCallOptions).toMatchObject({
       openRouter: { apiKey: `credential-for-${APP_DEFAULT_MODEL_ID}` },
@@ -808,9 +817,21 @@ describe("runAgentWorkflow", () => {
     ).resolves.toEqual({ apiKey: "credential-for-openai/gpt-5.6-luna" });
 
     expect(modelCredentialCalls).toEqual([
-      { userId: "user-1", modelId: APP_DEFAULT_MODEL_ID },
-      { userId: "user-1", modelId: "openai/gpt-5.6-luna" },
-      { userId: "user-1", modelId: "openai/gpt-5.6-luna" },
+      {
+        userId: "user-1",
+        modelId: APP_DEFAULT_MODEL_ID,
+        agentType: "main",
+      },
+      {
+        userId: "user-1",
+        modelId: "openai/gpt-5.6-luna",
+        agentType: "subagent",
+      },
+      {
+        userId: "user-1",
+        modelId: "openai/gpt-5.6-luna",
+        agentType: "subagent",
+      },
     ]);
     expect(agentCallOptions).toMatchObject({
       openRouter: { apiKey: `credential-for-${APP_DEFAULT_MODEL_ID}` },

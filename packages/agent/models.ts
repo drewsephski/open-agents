@@ -17,6 +17,10 @@ import {
   getProviderOptionsForModel,
   type ProviderOptionsByProvider,
 } from "./provider-options";
+import {
+  type InferenceAccountingCallbacks,
+  withInferenceAccounting,
+} from "./inference-accounting";
 
 export type { JSONValue, LanguageModel, ModelId, ProviderOptionsByProvider };
 export {
@@ -38,6 +42,8 @@ export {
 export interface OpenRouterConfig {
   apiKey: string;
   baseURL?: string;
+  /** Server-only callbacks for one authorized provider call. */
+  accounting?: InferenceAccountingCallbacks;
 }
 
 export interface ModelFactoryOptions {
@@ -93,6 +99,19 @@ export function model(
         settings: { providerOptions },
       }),
     });
+  }
+
+  if (options.config.accounting) {
+    if (
+      typeof languageModel === "string" ||
+      languageModel.specificationVersion !== "v3"
+    ) {
+      throw new Error("Inference accounting requires a v3 language model");
+    }
+    languageModel = withInferenceAccounting(
+      languageModel,
+      options.config.accounting,
+    );
   }
 
   return languageModel;

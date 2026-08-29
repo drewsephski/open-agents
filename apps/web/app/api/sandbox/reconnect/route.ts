@@ -20,6 +20,7 @@ import {
   hasRuntimeSandboxState,
 } from "@/lib/sandbox/utils";
 import { connectConfiguredSandbox } from "@/lib/sandbox/connect";
+import { releaseSandboxRunning } from "@/lib/sandbox/allowance";
 
 export type ReconnectStatus =
   | "connected"
@@ -194,6 +195,7 @@ export async function GET(req: Request): Promise<Response> {
     const hasResumeStateAfterFailure =
       hasResumableSandboxState(clearedState) || !!sessionRecord.snapshotUrl;
 
+    await releaseSandboxRunning(sessionId);
     await updateSession(sessionId, {
       sandboxState: clearedState,
       ...buildHibernatedLifecycleUpdate(),

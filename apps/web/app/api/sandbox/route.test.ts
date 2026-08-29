@@ -40,6 +40,13 @@ mock.module("@/lib/sandbox/provisioning", () => ({
     };
   },
 }));
+mock.module("@/lib/sandbox/allowance", () => ({
+  releaseSandboxRunning: async () => {},
+  SandboxAccessDeniedError: class SandboxAccessDeniedError extends Error {
+    name = "SandboxAccessDeniedError";
+  },
+  toSandboxAccessErrorResponse: () => new Response(null, { status: 403 }),
+}));
 mock.module("@/lib/sandbox/connect", () => ({
   connectConfiguredSandbox: async () => ({
     stop: async () => {},

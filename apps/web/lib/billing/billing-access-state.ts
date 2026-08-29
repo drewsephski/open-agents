@@ -1,16 +1,18 @@
 import "server-only";
-import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import type { CredentialEnvelope } from "@/lib/credentials/envelope-encryption";
 import { db } from "@/lib/db/client";
 import {
   billingEntitlements,
   billingSubscriptions,
+  inferenceCallReservations,
   managedInferenceKeys,
   usageEvents,
 } from "@/lib/db/schema";
 import type { ManagedKeyState } from "@/lib/access/inference-source";
 import type { SubscriptionAccessState } from "@/lib/access/subscription-state";
 import type { AllowancePeriod } from "@/lib/access/allowance-period";
+import { modelCostUsdToMicros } from "@open-agents/agent";
 
 export interface BillingCredentialAccessState {
   subscription: SubscriptionAccessState | null;
@@ -35,11 +37,11 @@ const unavailableState: BillingCredentialAccessState = {
 };
 
 function toMicros(rawUsd: string): number {
-  const usd = Number(rawUsd);
-  if (!(Number.isFinite(usd) && usd >= 0)) {
+  const micros = modelCostUsdToMicros(rawUsd);
+  if (micros === undefined) {
     throw new Error("Managed inference spend is invalid");
   }
-  return Math.round(usd * 1_000_000);
+  return micros;
 }
 
 export async function getBillingCredentialAccessState(
@@ -124,19 +126,34 @@ export async function getBillingCredentialAccessState(
         }
       : null;
 
-  const [spend] = await db
-    .select({
-      usd: sql<string>`coalesce(sum(${usageEvents.inferenceCostUsd}), 0)`,
-    })
-    .from(usageEvents)
-    .where(
-      and(
-        eq(usageEvents.userId, userId),
-        eq(usageEvents.credentialSource, "managed"),
-        gte(usageEvents.createdAt, period.start),
-        lt(usageEvents.createdAt, period.end),
+  const [[spend], [reservations]] = await Promise.all([
+    db
+      .select({
+        usd: sql<string>`coalesce(sum(${usageEvents.inferenceCostUsd}), 0)`,
+      })
+      .from(usageEvents)
+      .where(
+        and(
+          eq(usageEvents.userId, userId),
+          eq(usageEvents.credentialSource, "managed"),
+          gte(usageEvents.createdAt, period.start),
+          lt(usageEvents.createdAt, period.end),
+        ),
       ),
-    );
+    db
+      .select({
+        micros: sql<string>`coalesce(sum(${inferenceCallReservations.reservedMicros}), 0)`,
+      })
+      .from(inferenceCallReservations)
+      .where(
+        and(
+          eq(inferenceCallReservations.userId, userId),
+          eq(inferenceCallReservations.periodStart, period.start),
+          eq(inferenceCallReservations.periodEnd, period.end),
+          inArray(inferenceCallReservations.state, ["pending", "missing_cost"]),
+        ),
+      ),
+  ]);
 
   return {
     subscription: {
@@ -153,7 +170,7 @@ export async function getBillingCredentialAccessState(
       keyState: key?.lifecycleState ?? "missing",
       period,
       spentMicros: toMicros(spend?.usd ?? "0"),
-      reservedMicros: 0,
+      reservedMicros: Number(reservations?.micros ?? "0"),
       envelope,
     },
   };

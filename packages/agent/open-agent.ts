@@ -47,6 +47,15 @@ export interface AgentSandboxContext {
 const openRouterConfigSchema: z.ZodType<OpenRouterConfig> = z.object({
   apiKey: z.string().trim().min(1),
   baseURL: z.string().optional(),
+  accounting: z
+    .custom<OpenRouterConfig["accounting"]>(
+      (value) =>
+        typeof value === "object" &&
+        value !== null &&
+        "reconcile" in value &&
+        typeof value.reconcile === "function",
+    )
+    .optional(),
 });
 
 const callOptionsSchema = z.object({

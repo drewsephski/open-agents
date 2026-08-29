@@ -14,10 +14,7 @@ import {
   upsertChatMessageScoped,
   updateChatAssistantActivity,
 } from "@/lib/db/sessions";
-import {
-  buildActiveLifecycleUpdate,
-  buildLifecycleActivityUpdate,
-} from "@/lib/sandbox/lifecycle";
+import { buildActiveLifecycleUpdate } from "@/lib/sandbox/lifecycle";
 import { dedupeMessageReasoning } from "@/lib/chat/dedupe-message-reasoning";
 import {
   recordWorkflowRun,
@@ -25,6 +22,7 @@ import {
   type WorkflowRunStepTiming,
 } from "@/lib/db/workflow-runs";
 import { recordUsage } from "@/lib/db/usage";
+import { recordSandboxActivity } from "@/lib/sandbox/activity";
 
 const cachedInputTokensFor = (usage: LanguageModelUsage) =>
   usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens ?? 0;
@@ -209,7 +207,7 @@ export async function refreshLifecycleActivity(
   "use step";
 
   try {
-    await updateSession(sessionId, buildLifecycleActivityUpdate(new Date()));
+    await recordSandboxActivity(sessionId);
   } catch (error) {
     console.error("[workflow] Failed to refresh lifecycle activity:", error);
   }
@@ -365,6 +363,7 @@ export async function recordWorkflowUsage(
     finishedAt: string;
     totalDurationMs: number;
     stepTimings: WorkflowRunStepTiming[];
+    inferenceAccounted?: boolean;
   },
 ): Promise<void> {
   "use step";
@@ -392,8 +391,9 @@ export async function recordWorkflowUsage(
       }
     }
 
-    // Record main agent usage
-    if (totalUsage) {
+    // New authenticated calls are recorded individually by model middleware.
+    // Retain this fallback for callers that have not migrated to that boundary.
+    if (totalUsage && !workflowRun?.inferenceAccounted) {
       await recordUsage(userId, {
         source: "web",
         agentType: "main",
@@ -416,7 +416,7 @@ export async function recordWorkflowUsage(
       baselineSubagentUsageEvents,
     );
 
-    if (subagentUsageEvents.length > 0) {
+    if (subagentUsageEvents.length > 0 && !workflowRun?.inferenceAccounted) {
       const subagentUsageByModel = new Map<string, UsageByModel>();
 
       for (const event of subagentUsageEvents) {

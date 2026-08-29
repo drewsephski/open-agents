@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 mock.module("server-only", () => ({}));
+mock.module("@/lib/sandbox/allowance", () => ({
+  releaseSandboxRunning: async () => {},
+}));
 
 const updateCalls: Array<{
   sessionId: string;

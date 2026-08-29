@@ -29,10 +29,18 @@ export {
   fetchOpenRouterLanguageModels,
 } from "./model-catalog";
 export {
+  type NormalizedModelCost,
   type NormalizedModelUsage,
   extractModelCost,
+  extractModelCostUsd,
   extractNormalizedUsage,
+  modelCostUsdToMicros,
 } from "./usage-metadata";
+export {
+  type InferenceAccountingCallbacks,
+  type InferenceAccountingResult,
+  withInferenceAccounting,
+} from "./inference-accounting";
 // Skills exports
 export { discoverSkills, parseSkillFrontmatter } from "./skills/discovery";
 export { extractSkillBody, substituteArguments } from "./skills/loader";
