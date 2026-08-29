@@ -287,7 +287,6 @@ export function createBillingSessionService(
             url: published.currentSession.url,
           };
         }
-        await dependencies.stripe.checkout.sessions.expire(session.id);
         throw new BillingSessionError("billing_checkout_in_progress");
       }
       return { id: session.id, url: session.url };

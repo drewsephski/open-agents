@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/pglite";
 mock.module("server-only", () => ({}));
 
 const { createBillingCheckoutStore } = await import("./billing-checkout-store");
+const { createBillingSessionService } = await import("./billing-sessions");
 const { createBillingStateStore } = await import("./billing-state-store");
 const { createManagedInferenceKeyStore } = await import("./managed-key-store");
 
@@ -118,6 +119,100 @@ async function createTestDatabase() {
 }
 
 describe("production billing store concurrency", () => {
+  test("does not expire a shared Stripe session when a stale Checkout worker returns first", async () => {
+    const { client, database } = await createTestDatabase();
+    const store = createBillingCheckoutStore(
+      database as unknown as Parameters<typeof createBillingCheckoutStore>[0],
+    );
+    const releases: Array<() => void> = [];
+    const createBodies: unknown[] = [];
+    const idempotencyKeys: string[] = [];
+    const remoteSessions = new Map<
+      string,
+      { id: string; url: string; status: "open" | "expired" }
+    >();
+    const stripe = {
+      checkout: {
+        sessions: {
+          create: async (
+            params: unknown,
+            options?: { idempotencyKey?: string },
+          ) => {
+            const idempotencyKey = options?.idempotencyKey ?? "missing";
+            createBodies.push(params);
+            idempotencyKeys.push(idempotencyKey);
+            let remote = remoteSessions.get(idempotencyKey);
+            if (!remote) {
+              remote = {
+                id: "cs_shared",
+                url: "https://checkout.stripe.com/c/shared",
+                status: "open",
+              };
+              remoteSessions.set(idempotencyKey, remote);
+            }
+            await new Promise<void>((resolve) => releases.push(resolve));
+            return remote;
+          },
+          expire: async (sessionId: string) => {
+            const remote = [...remoteSessions.values()].find(
+              (session) => session.id === sessionId,
+            );
+            if (remote) {
+              remote.status = "expired";
+            }
+          },
+          list: async () => ({ data: [] }),
+        },
+      },
+      subscriptions: { list: async () => ({ data: [] }) },
+      billingPortal: {
+        sessions: {
+          create: async () => ({ url: "https://billing.stripe.com/p/owned" }),
+        },
+      },
+    };
+    const service = createBillingSessionService({
+      stripe,
+      customerStore: { getStripeCustomerIdForUser: async () => null },
+      checkoutStore: store,
+      config: {
+        proPriceId: "price_pro_monthly",
+        appOrigin: "https://launchstack.sh",
+      },
+      integrationSuffix: () => "abcdefgh",
+    });
+
+    const staleWorker = service.createCheckout({
+      userId: "user-1",
+      email: "owner@example.com",
+    });
+    while (releases.length < 1) {
+      await Promise.resolve();
+    }
+    await client.query(
+      "UPDATE billing_checkout_reservations SET lease_expires_at = $1 WHERE user_id = 'user-1'",
+      [new Date("2020-01-01T00:00:00.000Z")],
+    );
+    const currentWorker = service.createCheckout({
+      userId: "user-1",
+      email: "owner@example.com",
+    });
+    while (releases.length < 2) {
+      await Promise.resolve();
+    }
+
+    releases[0]?.();
+    await expect(staleWorker).rejects.toThrow("billing_checkout_in_progress");
+    releases[1]?.();
+    await expect(currentWorker).resolves.toMatchObject({ id: "cs_shared" });
+
+    expect(idempotencyKeys[1]).toBe(idempotencyKeys[0]);
+    expect(createBodies[1]).toEqual(createBodies[0]);
+    expect(remoteSessions.size).toBe(1);
+    expect(remoteSessions.values().next().value?.status).toBe("open");
+    await client.close();
+  });
+
   test("reclaims Checkout with the same generation/request and rejects the stale publisher", async () => {
     const { client, database } = await createTestDatabase();
     await client.query(
