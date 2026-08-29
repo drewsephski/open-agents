@@ -26,35 +26,37 @@ export const accessRemediationSchema = z.enum([
 
 export type AccessRemediation = z.infer<typeof accessRemediationSchema>;
 
-export const exhaustedAllowanceStateSchema = z.object({
-  warning: z.literal("exhausted"),
+export const allowanceStateSchema = z.object({
+  warning: z.enum(["none", "passive", "prominent", "exhausted"]),
   period: z.object({ start: z.date(), end: z.date() }),
   used: z.number().int().nonnegative(),
   limit: z.number().int().positive(),
   remaining: z.number().int().nonnegative(),
 });
 
-export type ExhaustedAllowanceState = z.infer<
-  typeof exhaustedAllowanceStateSchema
->;
+export type AllowanceState = z.infer<typeof allowanceStateSchema>;
+
+export function allowanceState(params: {
+  warning: AllowanceState["warning"];
+  period: { start: Date; end: Date };
+  used: number;
+  limit: number;
+}): AllowanceState {
+  return {
+    ...params,
+    remaining: Math.max(0, params.limit - params.used),
+  };
+}
 
 export function exhaustedAllowanceState(params: {
   period: { start: Date; end: Date };
   used: number;
   limit: number;
-}): ExhaustedAllowanceState {
-  return {
-    warning: "exhausted",
-    period: params.period,
-    used: params.used,
-    limit: params.limit,
-    remaining: Math.max(0, params.limit - params.used),
-  };
+}): AllowanceState {
+  return allowanceState({ ...params, warning: "exhausted" });
 }
 
-export function serializeExhaustedAllowanceState(
-  state: ExhaustedAllowanceState | undefined,
-) {
+export function serializeAllowanceState(state: AllowanceState | undefined) {
   return state
     ? {
         ...state,
@@ -70,7 +72,7 @@ export const accessFailureSchema = z.object({
   code: accessFailureCodeSchema,
   remediation: z.array(accessRemediationSchema),
   resetAt: z.date().optional(),
-  allowanceState: exhaustedAllowanceStateSchema.optional(),
+  allowanceState: allowanceStateSchema.optional(),
 });
 
 export type AccessFailure = z.infer<typeof accessFailureSchema>;

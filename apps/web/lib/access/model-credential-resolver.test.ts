@@ -228,13 +228,33 @@ describe("model call credential resolver", () => {
       start: new Date("2026-08-01T00:00:00.000Z"),
       end: new Date("2026-09-01T00:00:00.000Z"),
     };
+    let resolutionCount = 0;
+    const exhaustedFailure: Parameters<
+      typeof toInferenceAccessErrorResponse
+    >[0] = {
+      code: "managed_allowance_exhausted",
+      remediation: ["add_byok", "wait_for_reset"],
+      resetAt: period.end,
+      allowanceState: {
+        warning: "exhausted" as const,
+        period,
+        used: 10_000_000,
+        limit: 10_000_000,
+        remaining: 0,
+      },
+    };
     const resolve = createModelCallCredentialResolver({
-      resolve: async () => ({
-        allowed: true,
-        source: "managed",
-        modelId: "z-ai/glm-5.3-flash",
-        openRouter: { apiKey: "managed-subkey" },
-      }),
+      resolve: async () => {
+        resolutionCount += 1;
+        return resolutionCount === 1
+          ? {
+              allowed: true as const,
+              source: "managed" as const,
+              modelId: "z-ai/glm-5.3-flash",
+              openRouter: { apiKey: "managed-subkey" },
+            }
+          : { allowed: false as const, failure: exhaustedFailure };
+      },
       loadManagedPeriod: async () => period,
       authorize: async () => null,
     });
@@ -246,18 +266,7 @@ describe("model call credential resolver", () => {
 
     expect(error).toBeInstanceOf(InferenceAccessDeniedError);
     expect(error).toMatchObject({
-      failure: {
-        code: "managed_allowance_exhausted",
-        remediation: ["add_byok", "wait_for_reset"],
-        resetAt: period.end,
-        allowanceState: {
-          warning: "exhausted",
-          period,
-          used: 10_000_000,
-          limit: 10_000_000,
-          remaining: 0,
-        },
-      },
+      failure: exhaustedFailure,
     });
 
     const response = toInferenceAccessErrorResponse(
@@ -281,5 +290,96 @@ describe("model call credential resolver", () => {
         },
       },
     });
+  });
+
+  test("retries admission when a competing reservation settles between checks", async () => {
+    const period = {
+      start: new Date("2026-08-01T00:00:00.000Z"),
+      end: new Date("2026-09-01T00:00:00.000Z"),
+    };
+    const callbacks = { reconcile: async () => undefined };
+    let authorizationCount = 0;
+    const resolve = createModelCallCredentialResolver({
+      resolve: async () => ({
+        allowed: true,
+        source: "managed",
+        modelId: "z-ai/glm-5.3-flash",
+        openRouter: { apiKey: "managed-subkey" },
+        allowanceState: {
+          consumedMicros: 1_000_000,
+          allowanceMicros: 10_000_000,
+          resetAt: period.end,
+          warning: "none",
+        },
+      }),
+      loadManagedPeriod: async () => period,
+      authorize: async () => {
+        authorizationCount += 1;
+        return authorizationCount === 1
+          ? null
+          : {
+              callId: "managed-retry",
+              source: "managed",
+              callbacks,
+            };
+      },
+    });
+
+    await expect(
+      resolve({ userId: "user-1", modelId: "z-ai/glm-5.3-flash" }),
+    ).resolves.toMatchObject({
+      source: "managed",
+      openRouter: { accounting: callbacks },
+      allowanceState: { consumedMicros: 1_000_000 },
+    });
+    expect(authorizationCount).toBe(2);
+  });
+
+  test("reports a busy managed admission with authoritative remaining allowance", async () => {
+    const period = {
+      start: new Date("2026-08-01T00:00:00.000Z"),
+      end: new Date("2026-09-01T00:00:00.000Z"),
+    };
+    let resolutionCount = 0;
+    const resolve = createModelCallCredentialResolver({
+      resolve: async () => {
+        resolutionCount += 1;
+        return {
+          allowed: true,
+          source: "managed",
+          modelId: "z-ai/glm-5.3-flash",
+          openRouter: { apiKey: "managed-subkey" },
+          allowanceState: {
+            consumedMicros: 1_000_000,
+            allowanceMicros: 10_000_000,
+            resetAt: period.end,
+            warning: "none",
+          },
+        };
+      },
+      loadManagedPeriod: async () => period,
+      authorize: async () => null,
+    });
+
+    const error = await resolve({
+      userId: "user-1",
+      modelId: "z-ai/glm-5.3-flash",
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      failure: {
+        code: "managed_inference_unavailable",
+        remediation: ["retry_later"],
+        resetAt: period.end,
+        allowanceState: {
+          warning: "none",
+          period,
+          used: 1_000_000,
+          limit: 10_000_000,
+          remaining: 9_000_000,
+        },
+      },
+    });
+    expect(resolutionCount).toBe(3);
   });
 });

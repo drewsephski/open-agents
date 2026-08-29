@@ -125,7 +125,7 @@ describe("checkpointToolResults", () => {
     });
   });
 
-  test("stores only the current step when prior assistant tool results exist", async () => {
+  test("stores cumulative UI with a step-local model replay payload", async () => {
     const stream = new ReadableStream<InferUIMessageChunk<WebAgentUIMessage>>({
       start(controller) {
         controller.enqueue({ type: "start-step" });
@@ -143,13 +143,17 @@ describe("checkpointToolResults", () => {
         controller.close();
       },
     });
-    const records: Array<{ message: WebAgentUIMessage }> = [];
+    const records: Array<{
+      message: WebAgentUIMessage;
+      responseMessages: unknown[];
+    }> = [];
     const checkpointed = checkpointToolResults({
       stream,
       originalMessage: {
         id: "assistant-1",
         role: "assistant",
         parts: [
+          { type: "text", text: "Earlier explanation" },
           { type: "step-start" },
           {
             type: "tool-write",
@@ -180,10 +184,19 @@ describe("checkpointToolResults", () => {
       // Drain the guarded stream.
     }
 
-    const toolCallIds = records
-      .at(-1)
-      ?.message.parts.filter((part) => part.type.startsWith("tool-"))
+    const lastRecord = records.at(-1);
+    const toolCallIds = lastRecord?.message.parts
+      .filter((part) => part.type.startsWith("tool-"))
       .map((part) => ("toolCallId" in part ? part.toolCallId : null));
-    expect(toolCallIds).toEqual(["new-write"]);
+    expect(toolCallIds).toEqual(["prior-write", "new-write"]);
+    expect(
+      lastRecord?.message.parts.filter(
+        (part) => part.type === "text" && part.text === "Earlier explanation",
+      ),
+    ).toHaveLength(1);
+    expect(JSON.stringify(lastRecord?.responseMessages)).toContain("new-write");
+    expect(JSON.stringify(lastRecord?.responseMessages)).not.toContain(
+      "prior-write",
+    );
   });
 });

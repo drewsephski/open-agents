@@ -173,9 +173,15 @@ async function rebuildCompleteToolCheckpoint(params: {
   ) {
     return null;
   }
+  const stepMessage = latestMessage;
   return {
-    message: latestMessage,
-    responseMessages: await convertToModelMessages([latestMessage], {
+    message: params.originalMessage
+      ? {
+          ...stepMessage,
+          parts: [...params.originalMessage.parts, ...stepMessage.parts],
+        }
+      : stepMessage,
+    responseMessages: await convertToModelMessages([stepMessage], {
       ignoreIncompleteToolCalls: true,
       tools: params.tools,
     }),

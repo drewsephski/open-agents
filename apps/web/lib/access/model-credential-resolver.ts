@@ -11,8 +11,8 @@ import { providerCredentialStore } from "@/lib/credentials/provider-credential-s
 import {
   type AccessDenied,
   type AccessFailure,
-  exhaustedAllowanceState,
-  serializeExhaustedAllowanceState,
+  allowanceState,
+  serializeAllowanceState,
 } from "./access-failure";
 import {
   evaluateInferenceAccess,
@@ -283,21 +283,88 @@ export function createModelCallCredentialResolver(
         });
       }
       if (resolution.source === "managed") {
-        if (!period) {
+        try {
+          period = await dependencies.loadManagedPeriod(params.userId);
+          admission = period
+            ? await dependencies.authorize({
+                ...params,
+                source: "managed",
+                period,
+              })
+            : null;
+        } catch {
+          admission = null;
+        }
+        if (admission) {
+          return {
+            ...resolution,
+            openRouter: {
+              ...resolution.openRouter,
+              accounting: admission.callbacks,
+            },
+          };
+        }
+        resolution = await dependencies.resolve(params);
+        if (!resolution.allowed) {
+          throw new InferenceAccessDeniedError(resolution.failure);
+        }
+        if (resolution.source === "administrative") {
           throw new InferenceAccessDeniedError({
             code: "access_state_invalid",
             remediation: ["retry_later"],
           });
         }
+        if (resolution.source !== "managed") {
+          try {
+            admission = await dependencies.authorize({
+              ...params,
+              source: resolution.source,
+              period: null,
+            });
+          } catch {
+            admission = null;
+          }
+          if (admission) {
+            return {
+              ...resolution,
+              openRouter: {
+                ...resolution.openRouter,
+                accounting: admission.callbacks,
+              },
+            };
+          }
+          throw new InferenceAccessDeniedError({
+            code: "access_state_invalid",
+            remediation: ["retry_later"],
+          });
+        }
+        try {
+          period = await dependencies.loadManagedPeriod(params.userId);
+        } catch {
+          period = null;
+        }
+        if (!period || !resolution.allowanceState) {
+          throw new InferenceAccessDeniedError({
+            code: "access_state_invalid",
+            remediation: ["retry_later"],
+          });
+        }
+        const currentAllowance = allowanceState({
+          warning: resolution.allowanceState.warning,
+          period,
+          used: resolution.allowanceState.consumedMicros,
+          limit: resolution.allowanceState.allowanceMicros,
+        });
+        const exhausted = currentAllowance.remaining === 0;
         throw new InferenceAccessDeniedError({
-          code: "managed_allowance_exhausted",
-          remediation: ["add_byok", "wait_for_reset"],
+          code: exhausted
+            ? "managed_allowance_exhausted"
+            : "managed_inference_unavailable",
+          remediation: exhausted
+            ? ["add_byok", "wait_for_reset"]
+            : ["retry_later"],
           resetAt: period.end,
-          allowanceState: exhaustedAllowanceState({
-            period,
-            used: MANAGED_INFERENCE_ALLOWANCE_MICROS,
-            limit: MANAGED_INFERENCE_ALLOWANCE_MICROS,
-          }),
+          allowanceState: currentAllowance,
         });
       }
       try {
@@ -364,9 +431,7 @@ export function toInferenceAccessErrorResponse(
         resetAt: failure.resetAt?.toISOString() ?? null,
         ...(failure.allowanceState
           ? {
-              allowanceState: serializeExhaustedAllowanceState(
-                failure.allowanceState,
-              ),
+              allowanceState: serializeAllowanceState(failure.allowanceState),
             }
           : {}),
       },

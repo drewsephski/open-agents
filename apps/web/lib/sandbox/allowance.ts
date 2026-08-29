@@ -5,7 +5,7 @@ import { nanoid } from "nanoid";
 import { evaluateSandboxAccess } from "@/lib/access/access-policy";
 import {
   type AccessFailure,
-  serializeExhaustedAllowanceState,
+  serializeAllowanceState,
 } from "@/lib/access/access-failure";
 import type { CredentialState } from "@/lib/access/inference-source";
 import type { SubscriptionAccessState } from "@/lib/access/subscription-state";
@@ -593,7 +593,7 @@ export function toSandboxAccessErrorResponse(
         resetAt: error.failure.resetAt?.toISOString() ?? null,
         ...(error.failure.allowanceState
           ? {
-              allowanceState: serializeExhaustedAllowanceState(
+              allowanceState: serializeAllowanceState(
                 error.failure.allowanceState,
               ),
             }

@@ -162,6 +162,7 @@ let replayableToolCheckpoint: {
   responseMessages: Array<Record<string, unknown>>;
   accountingSettlement?: Record<string, unknown>;
 } | null = null;
+let replayableCheckpointStepNumber = 1;
 const retriedInferenceSettlements: Array<Record<string, unknown>> = [];
 const modelCredentialCalls: Array<{
   userId: string;
@@ -242,7 +243,7 @@ mock.module("@/app/config", () => ({
       options: Record<string, unknown>;
     }) => {
       agentStreamCalls += 1;
-      agentInputMessages = messages;
+      agentInputMessages = structuredClone(messages);
       agentCallOptions = options;
       return {
         toUIMessageStream: (opts: {
@@ -362,7 +363,9 @@ mock.module("@open-agents/agent", () => ({}));
 
 mock.module("@/lib/ai/model-call-tool-checkpoint", () => ({
   getReplayableToolCheckpoint: async (params: { stepNumber: number }) =>
-    params.stepNumber === 1 ? replayableToolCheckpoint : null,
+    params.stepNumber === replayableCheckpointStepNumber
+      ? replayableToolCheckpoint
+      : null,
   checkpointToolResults: (params: {
     stream: AsyncIterable<UIMessageChunk>;
   }) => {
@@ -468,6 +471,7 @@ beforeEach(() => {
   agentCallOptions = undefined;
   agentStreamCalls = 0;
   replayableToolCheckpoint = null;
+  replayableCheckpointStepNumber = 1;
   retriedInferenceSettlements.length = 0;
   modelCredentialCalls.length = 0;
   streamOnFinishCallback = undefined;
@@ -921,6 +925,91 @@ describe("runAgentWorkflow", () => {
     expect(agentInputMessages).toEqual(
       expect.arrayContaining(replayableToolCheckpoint.responseMessages),
     );
+  });
+
+  test("preserves cumulative UI when replaying a step-local second-step checkpoint", async () => {
+    agentFinishReason = "tool-calls";
+    agentAssistantParts = [
+      { type: "text", text: "Earlier explanation" },
+      {
+        type: "tool-write",
+        toolCallId: "prior-write",
+        state: "output-available",
+        output: "created prior.ts",
+      },
+    ];
+    agentResponseMessages = [
+      {
+        role: "assistant",
+        content: [{ type: "tool-call", toolCallId: "prior-write" }],
+      },
+      {
+        role: "tool",
+        content: [{ type: "tool-result", toolCallId: "prior-write" }],
+      },
+    ];
+    agentResponse = { messages: agentResponseMessages };
+    replayableCheckpointStepNumber = 2;
+    replayableToolCheckpoint = {
+      responseMessage: {
+        id: "assistant-1",
+        role: "assistant",
+        parts: [
+          ...agentAssistantParts,
+          {
+            type: "tool-write",
+            toolCallId: "current-write",
+            state: "output-available",
+            output: "created current.ts",
+          },
+        ],
+      },
+      responseMessages: [
+        {
+          role: "assistant",
+          content: [{ type: "tool-call", toolCallId: "current-write" }],
+        },
+        {
+          role: "tool",
+          content: [{ type: "tool-result", toolCallId: "current-write" }],
+        },
+      ],
+    };
+
+    await runAgentWorkflow(makeOptions({ maxSteps: 3 }));
+
+    expect(agentStreamCalls).toBe(2);
+    expect(modelCredentialCalls).toHaveLength(2);
+    const contextToolCallIds = (
+      agentInputMessages as Array<{
+        content?: Array<{ toolCallId?: string; type?: string }>;
+      }>
+    ).flatMap((message) =>
+      (message.content ?? []).flatMap((part) =>
+        part.toolCallId ? [part.toolCallId] : [],
+      ),
+    );
+    expect(contextToolCallIds).toEqual([
+      "prior-write",
+      "prior-write",
+      "current-write",
+      "current-write",
+    ]);
+    const persisted = spies.persistAssistantMessage.mock.calls.at(-1)?.[1] as
+      | { parts: Array<Record<string, unknown>> }
+      | undefined;
+    const toolCallIds = persisted?.parts
+      .filter(
+        (part) =>
+          typeof part.type === "string" && part.type.startsWith("tool-"),
+      )
+      .map((part) => part.toolCallId);
+    expect(toolCallIds).toEqual(["prior-write", "current-write"]);
+    expect(
+      persisted?.parts.filter(
+        (part) => part.type === "text" && part.text === "Earlier explanation",
+      ),
+    ).toHaveLength(1);
   });
 
   test("logs full step diagnostics when the agent finishes with reason other", async () => {
