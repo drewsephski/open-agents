@@ -6,6 +6,8 @@ const {
   accrueRunningSandboxMilliseconds,
   createSandboxAllowanceService,
   getAllowanceWarningLevel,
+  SandboxAccessDeniedError,
+  toSandboxAccessErrorResponse,
 } = await import("./allowance");
 
 describe("sandbox allowance", () => {
@@ -83,5 +85,41 @@ describe("sandbox allowance", () => {
       },
     });
     expect(confirmations).toEqual([]);
+  });
+
+  test("serializes exhausted allowance state for API consumers", async () => {
+    const period = {
+      start: new Date("2026-08-01T00:00:00.000Z"),
+      end: new Date("2026-09-01T00:00:00.000Z"),
+    };
+    const response = toSandboxAccessErrorResponse(
+      new SandboxAccessDeniedError({
+        code: "sandbox_allowance_exhausted",
+        remediation: ["wait_for_reset"],
+        resetAt: period.end,
+        allowanceState: {
+          warning: "exhausted",
+          period,
+          used: 7_200_000,
+          limit: 7_200_000,
+          remaining: 0,
+        },
+      }),
+    );
+
+    expect(await response.json()).toMatchObject({
+      error: {
+        allowanceState: {
+          warning: "exhausted",
+          period: {
+            start: period.start.toISOString(),
+            end: period.end.toISOString(),
+          },
+          used: 7_200_000,
+          limit: 7_200_000,
+          remaining: 0,
+        },
+      },
+    });
   });
 });

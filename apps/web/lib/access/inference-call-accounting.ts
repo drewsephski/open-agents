@@ -4,6 +4,7 @@ import type {
   InferenceAccountingCallbacks,
   InferenceAccountingFailureReason,
   InferenceAccountingResult,
+  InferenceAccountingSettlement,
 } from "@open-agents/agent";
 import { modelCostUsdToMicros } from "@open-agents/agent";
 import { and, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
@@ -135,6 +136,14 @@ export function createInferenceCallAccountingService(dependencies: {
       callId,
       source: params.source,
       callbacks: {
+        settlementContext: {
+          callId,
+          userId: params.userId,
+          modelId: params.modelId,
+          source: params.source,
+          agentType: params.agentType ?? "main",
+          occurredAt: startedAt.toISOString(),
+        },
         reconcile: async (result) => {
           if (!result.cost) {
             await recordFailure("missing_cost", result.usage);
@@ -354,4 +363,35 @@ export async function authorizeInferenceCall(params: {
   period: AllowancePeriod | null;
 }): Promise<InferenceCallAdmission | null> {
   return productionService(params);
+}
+
+export async function retryInferenceSettlement(
+  settlement: InferenceAccountingSettlement,
+  dependencies: {
+    store?: InferenceCallAccountingStore;
+    now?: () => Date;
+  } = {},
+): Promise<void> {
+  const occurredAt = new Date(settlement.context.occurredAt);
+  if (Number.isNaN(occurredAt.getTime())) {
+    throw new Error("Inference settlement occurrence time is invalid");
+  }
+  const store = dependencies.store ?? createInferenceCallAccountingStore();
+  const now = (dependencies.now ?? (() => new Date()))();
+  if (!settlement.result.cost) {
+    await store.recordFailedAccounting({
+      ...settlement.context,
+      reason: "missing_cost",
+      usage: settlement.result.usage,
+      occurredAt,
+      now,
+    });
+    return;
+  }
+  await store.reconcile({
+    ...settlement.context,
+    result: settlement.result,
+    occurredAt,
+    now,
+  });
 }

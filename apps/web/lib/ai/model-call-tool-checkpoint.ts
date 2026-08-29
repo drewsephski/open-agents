@@ -9,7 +9,10 @@ import {
   readUIMessageStream,
   type ToolSet,
 } from "ai";
-import { InferenceAccountingSettlementError } from "@open-agents/agent";
+import {
+  type InferenceAccountingSettlement,
+  InferenceAccountingSettlementError,
+} from "@open-agents/agent";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { modelCallToolCheckpoints } from "@/lib/db/schema";
@@ -55,10 +58,15 @@ export async function recordObservedToolCheckpoint(params: {
 export async function promoteToolCheckpoint(params: {
   workflowRunId: string;
   stepNumber: number;
+  accountingSettlement?: InferenceAccountingSettlement;
 }): Promise<void> {
   await db
     .update(modelCallToolCheckpoints)
-    .set({ state: "replayable", updatedAt: new Date() })
+    .set({
+      state: "replayable",
+      accountingSettlement: params.accountingSettlement,
+      updatedAt: new Date(),
+    })
     .where(
       and(
         eq(modelCallToolCheckpoints.workflowRunId, params.workflowRunId),
@@ -73,11 +81,13 @@ export async function getReplayableToolCheckpoint(params: {
 }): Promise<{
   responseMessage: WebAgentUIMessage;
   responseMessages: ModelMessage[];
+  accountingSettlement: InferenceAccountingSettlement | null;
 } | null> {
   const [checkpoint] = await db
     .select({
       responseMessage: modelCallToolCheckpoints.responseMessage,
       responseMessages: modelCallToolCheckpoints.responseMessages,
+      accountingSettlement: modelCallToolCheckpoints.accountingSettlement,
     })
     .from(modelCallToolCheckpoints)
     .where(
@@ -92,6 +102,7 @@ export async function getReplayableToolCheckpoint(params: {
   return {
     responseMessage: checkpoint.responseMessage as WebAgentUIMessage,
     responseMessages: checkpoint.responseMessages as ModelMessage[],
+    accountingSettlement: checkpoint.accountingSettlement,
   };
 }
 
@@ -115,12 +126,19 @@ function isTerminalToolResultChunk(
   );
 }
 
-function isSettlementFailure(error: unknown): boolean {
-  return (
-    error instanceof InferenceAccountingSettlementError ||
-    (error instanceof Error &&
-      error.name === "InferenceAccountingSettlementError")
-  );
+function settlementFailure(error: unknown): {
+  settlement?: InferenceAccountingSettlement;
+} | null {
+  if (error instanceof InferenceAccountingSettlementError) return error;
+  if (
+    error instanceof Error &&
+    error.name === "InferenceAccountingSettlementError"
+  ) {
+    return error as Error & {
+      settlement?: InferenceAccountingSettlement;
+    };
+  }
+  return null;
 }
 
 async function rebuildCompleteToolCheckpoint(params: {
@@ -141,7 +159,9 @@ async function rebuildCompleteToolCheckpoint(params: {
   });
   let latestMessage: WebAgentUIMessage | undefined;
   for await (const message of readUIMessageStream<WebAgentUIMessage>({
-    message: params.originalMessage,
+    message: params.originalMessage
+      ? { ...params.originalMessage, parts: [] }
+      : undefined,
     stream: replayStream,
     terminateOnError: true,
   })) {
@@ -181,10 +201,12 @@ function createCheckpointedOutput(params: {
       try {
         next = await sourceReader.read();
       } catch (error) {
-        if (isSettlementFailure(error) && hasDurableCheckpoint) {
+        const accountingFailure = settlementFailure(error);
+        if (accountingFailure && hasDurableCheckpoint) {
           await params.persistence.promote({
             workflowRunId: params.workflowRunId,
             stepNumber: params.stepNumber,
+            accountingSettlement: accountingFailure.settlement,
           });
         }
         controller.error(error);

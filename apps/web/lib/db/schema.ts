@@ -1,3 +1,4 @@
+import type { InferenceAccountingSettlement } from "@open-agents/agent";
 import type { SandboxState } from "@open-agents/sandbox";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import type { ModelVariant } from "@/lib/model-variants";
@@ -695,6 +696,9 @@ export const modelCallToolCheckpoints = pgTable(
       .default("observed"),
     responseMessage: jsonb("response_message").notNull(),
     responseMessages: jsonb("response_messages").notNull(),
+    accountingSettlement: jsonb(
+      "accounting_settlement",
+    ).$type<InferenceAccountingSettlement>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

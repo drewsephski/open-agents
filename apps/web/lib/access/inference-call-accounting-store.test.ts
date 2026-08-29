@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/pglite";
 
 mock.module("server-only", () => ({}));
 
-const { createInferenceCallAccountingStore } =
+const { createInferenceCallAccountingStore, retryInferenceSettlement } =
   await import("./inference-call-accounting");
 
 async function createTestDatabase() {
@@ -60,6 +60,67 @@ const firstPeriod = {
 };
 
 describe("production inference accounting store", () => {
+  test("settles a completed provider call exactly once across workflow retries", async () => {
+    const { client, database } = await createTestDatabase();
+    await client.query(
+      `INSERT INTO managed_inference_keys
+        (id, user_id, lifecycle_state, period_start, period_end)
+       VALUES ('key-retry', 'user-1', 'active', $1, $2)`,
+      [firstPeriod.start, firstPeriod.end],
+    );
+    const store = createInferenceCallAccountingStore(
+      database as unknown as Parameters<
+        typeof createInferenceCallAccountingStore
+      >[0],
+    );
+    const occurredAt = new Date("2026-08-15T12:00:00.000Z");
+    expect(
+      await store.reserveManaged({
+        callId: "retry-call",
+        userId: "user-1",
+        modelId: "openai/gpt-5.6-luna",
+        period: firstPeriod,
+        now: occurredAt,
+      }),
+    ).toBe(true);
+    const settlement = {
+      context: {
+        callId: "retry-call",
+        userId: "user-1",
+        modelId: "openai/gpt-5.6-luna",
+        source: "managed" as const,
+        agentType: "main" as const,
+        occurredAt: occurredAt.toISOString(),
+      },
+      result: {
+        cost: { usd: "0.125", micros: 125_000 },
+        usage: {
+          inputTokens: { total: 2, noCache: 2, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 1, text: 1, reasoning: 0 },
+        },
+      },
+    };
+
+    await retryInferenceSettlement(settlement, {
+      store,
+      now: () => occurredAt,
+    });
+    await retryInferenceSettlement(settlement, {
+      store,
+      now: () => occurredAt,
+    });
+
+    const usage = await client.query<{ count: number }>(
+      "SELECT count(*)::integer AS count FROM usage_events WHERE id = 'retry-call'",
+    );
+    const reservation = await client.query<{ state: string }>(
+      "SELECT state FROM inference_call_reservations WHERE id = 'retry-call'",
+    );
+    expect(usage.rows).toEqual([{ count: 1 }]);
+    expect(reservation.rows).toEqual([{ state: "reconciled" }]);
+    await client.close();
+  });
+
   test("attributes a call that finishes after reset to its admission period", async () => {
     const { client, database } = await createTestDatabase();
     await client.query(

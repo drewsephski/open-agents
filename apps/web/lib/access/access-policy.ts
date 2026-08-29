@@ -1,4 +1,4 @@
-import type { AccessDenied } from "./access-failure";
+import { type AccessDenied, exhaustedAllowanceState } from "./access-failure";
 import {
   BYOK_SANDBOX_ALLOWANCE_MILLISECONDS,
   BYOK_SANDBOX_CONCURRENCY_LIMIT,
@@ -176,6 +176,16 @@ export function evaluateInferenceAccess(
           code: "managed_allowance_exhausted",
           remediation: ["add_byok", "wait_for_reset"],
           resetAt: paidSubscription.periodEnd,
+          allowanceState: exhaustedAllowanceState({
+            period: {
+              start: paidSubscription.periodStart,
+              end: paidSubscription.periodEnd,
+            },
+            used:
+              request.managedInference.spentMicros +
+              request.managedInference.reservedMicros,
+            limit: MANAGED_INFERENCE_ALLOWANCE_MICROS,
+          }),
         },
       };
     }
@@ -306,6 +316,11 @@ export function evaluateSandboxAccess(
           ? ["wait_for_reset"]
           : ["upgrade_to_pro", "wait_for_reset"],
         resetAt: period.end,
+        allowanceState: exhaustedAllowanceState({
+          period,
+          used: consumedMilliseconds,
+          limit: allowanceMilliseconds,
+        }),
       },
     };
   }

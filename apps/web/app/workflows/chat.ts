@@ -1029,6 +1029,11 @@ const runAgentStep = async (
     stepNumber,
   });
   if (replayableCheckpoint) {
+    if (replayableCheckpoint.accountingSettlement) {
+      const { retryInferenceSettlement } =
+        await import("@/lib/access/inference-call-accounting");
+      await retryInferenceSettlement(replayableCheckpoint.accountingSettlement);
+    }
     const stepFinishedAt = new Date();
     const checkpointFinishReason: FinishReason = "tool-calls";
     return {

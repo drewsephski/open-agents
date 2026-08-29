@@ -40,6 +40,8 @@ export {
   type InferenceAccountingCallbacks,
   type InferenceAccountingFailureReason,
   type InferenceAccountingResult,
+  type InferenceAccountingSettlement,
+  type InferenceAccountingSettlementContext,
   InferenceAccountingSettlementError,
   withInferenceAccounting,
 } from "./inference-accounting";

@@ -127,6 +127,16 @@ describe("production sandbox allowance store", () => {
         code: "sandbox_allowance_exhausted",
         remediation: ["upgrade_to_pro", "wait_for_reset"],
         resetAt: new Date("2026-09-01T00:00:00.000Z"),
+        allowanceState: {
+          warning: "exhausted",
+          period: {
+            start: new Date("2026-08-01T00:00:00.000Z"),
+            end: new Date("2026-09-01T00:00:00.000Z"),
+          },
+          used: 7_200_000,
+          limit: 7_200_000,
+          remaining: 0,
+        },
       },
     });
     const periods = await client.query<{
@@ -412,6 +422,49 @@ describe("production sandbox allowance store", () => {
       "SELECT state FROM sandbox_metering_leases WHERE session_id = 'session-1'",
     );
     expect(leases.rows).toEqual([{ state: "running" }]);
+    await client.close();
+  });
+
+  test("keeps current-period admission metering monotonic under an older interleaving", async () => {
+    const { client, database } = await createTestDatabase();
+    const store = createSandboxAllowanceStore(
+      database as unknown as Parameters<typeof createSandboxAllowanceStore>[0],
+    );
+    const access = {
+      byokCredentialState: "valid" as const,
+      subscription: null,
+    };
+    await store.admit({
+      userId: "user-1",
+      sessionId: "session-1",
+      operation: "create",
+      access,
+      now: new Date("2026-08-01T00:00:00.000Z"),
+    });
+    await store.confirm("session-1", new Date("2026-08-01T00:00:00.000Z"));
+    await store.meter("session-1", new Date("2026-08-01T00:20:00.000Z"));
+
+    await store.admit({
+      userId: "user-1",
+      sessionId: "session-1",
+      operation: "resume",
+      access,
+      now: new Date("2026-08-01T00:10:00.000Z"),
+    });
+    await store.release("session-1", new Date("2026-08-01T00:30:00.000Z"));
+
+    const period = await client.query<{
+      consumed_milliseconds: number;
+      last_metered_at: Date;
+    }>(
+      "SELECT consumed_milliseconds, last_metered_at FROM sandbox_usage_periods",
+    );
+    expect(period.rows).toEqual([
+      {
+        consumed_milliseconds: 1_800_000,
+        last_metered_at: new Date("2026-08-01T00:30:00.000Z"),
+      },
+    ]);
     await client.close();
   });
 });

@@ -3,7 +3,7 @@ import type { InferenceAccountingResult } from "@open-agents/agent";
 
 mock.module("server-only", () => ({}));
 
-const { createInferenceCallAccountingService } =
+const { createInferenceCallAccountingService, retryInferenceSettlement } =
   await import("./inference-call-accounting");
 
 const period = {
@@ -19,6 +19,43 @@ const result: InferenceAccountingResult = {
 };
 
 describe("inference call accounting", () => {
+  test("retries a missing-cost settlement as a structured failed event", async () => {
+    const failures: unknown[] = [];
+    await retryInferenceSettlement(
+      {
+        context: {
+          callId: "missing-cost-retry",
+          userId: "user-1",
+          modelId: "openai/gpt-5.6-luna",
+          source: "managed",
+          agentType: "main",
+          occurredAt: "2026-08-15T12:00:00.000Z",
+        },
+        result: { ...result, cost: undefined },
+      },
+      {
+        store: {
+          reserveManaged: async () => true,
+          reconcile: async () => {
+            throw new Error("missing cost must not reconcile");
+          },
+          recordFailedAccounting: async (params) => {
+            failures.push(params);
+          },
+        },
+        now: () => new Date("2026-08-15T12:01:00.000Z"),
+      },
+    );
+
+    expect(failures).toEqual([
+      expect.objectContaining({
+        callId: "missing-cost-retry",
+        reason: "missing_cost",
+        usage: result.usage,
+      }),
+    ]);
+  });
+
   test("admits only one conservative managed call concurrently near the limit", async () => {
     let outstanding = false;
     const store = {

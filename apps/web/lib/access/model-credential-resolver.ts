@@ -8,7 +8,12 @@ import {
   type CredentialEnvelope,
 } from "@/lib/credentials/envelope-encryption";
 import { providerCredentialStore } from "@/lib/credentials/provider-credential-store";
-import type { AccessDenied, AccessFailure } from "./access-failure";
+import {
+  type AccessDenied,
+  type AccessFailure,
+  exhaustedAllowanceState,
+  serializeExhaustedAllowanceState,
+} from "./access-failure";
 import {
   evaluateInferenceAccess,
   type InferenceAccessDecision,
@@ -278,10 +283,21 @@ export function createModelCallCredentialResolver(
         });
       }
       if (resolution.source === "managed") {
+        if (!period) {
+          throw new InferenceAccessDeniedError({
+            code: "access_state_invalid",
+            remediation: ["retry_later"],
+          });
+        }
         throw new InferenceAccessDeniedError({
           code: "managed_allowance_exhausted",
           remediation: ["add_byok", "wait_for_reset"],
-          ...(period ? { resetAt: period.end } : {}),
+          resetAt: period.end,
+          allowanceState: exhaustedAllowanceState({
+            period,
+            used: MANAGED_INFERENCE_ALLOWANCE_MICROS,
+            limit: MANAGED_INFERENCE_ALLOWANCE_MICROS,
+          }),
         });
       }
       try {
@@ -346,6 +362,13 @@ export function toInferenceAccessErrorResponse(
         code: failure.code,
         remediation: failure.remediation,
         resetAt: failure.resetAt?.toISOString() ?? null,
+        ...(failure.allowanceState
+          ? {
+              allowanceState: serializeExhaustedAllowanceState(
+                failure.allowanceState,
+              ),
+            }
+          : {}),
       },
     },
     { status: 403 },

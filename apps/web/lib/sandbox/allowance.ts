@@ -3,7 +3,10 @@ import "server-only";
 import { and, eq, lte, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { evaluateSandboxAccess } from "@/lib/access/access-policy";
-import type { AccessFailure } from "@/lib/access/access-failure";
+import {
+  type AccessFailure,
+  serializeExhaustedAllowanceState,
+} from "@/lib/access/access-failure";
 import type { CredentialState } from "@/lib/access/inference-source";
 import type { SubscriptionAccessState } from "@/lib/access/subscription-state";
 import { getBillingCredentialAccessState } from "@/lib/billing/billing-access-state";
@@ -389,7 +392,12 @@ export function createSandboxAllowanceStore(
           .set({
             consumedMilliseconds,
             runningSandboxCount: periodRunningCount,
-            lastMeteredAt: params.now,
+            lastMeteredAt: new Date(
+              Math.max(
+                period.lastMeteredAt?.getTime() ?? 0,
+                params.now.getTime(),
+              ),
+            ),
             revision: period.revision + 1,
             updatedAt: params.now,
           })
@@ -583,6 +591,13 @@ export function toSandboxAccessErrorResponse(
         code: error.failure.code,
         remediation: error.failure.remediation,
         resetAt: error.failure.resetAt?.toISOString() ?? null,
+        ...(error.failure.allowanceState
+          ? {
+              allowanceState: serializeExhaustedAllowanceState(
+                error.failure.allowanceState,
+              ),
+            }
+          : {}),
       },
     },
     { status: 403 },

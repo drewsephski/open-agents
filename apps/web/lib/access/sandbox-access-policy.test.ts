@@ -96,6 +96,16 @@ describe("access policy sandbox admission", () => {
           code: "sandbox_allowance_exhausted",
           remediation: ["upgrade_to_pro", "wait_for_reset"],
           resetAt: new Date("2026-09-01T00:00:00.000Z"),
+          allowanceState: {
+            warning: "exhausted",
+            period: {
+              start: new Date("2026-08-01T00:00:00.000Z"),
+              end: new Date("2026-09-01T00:00:00.000Z"),
+            },
+            used: BYOK_SANDBOX_ALLOWANCE_MILLISECONDS,
+            limit: BYOK_SANDBOX_ALLOWANCE_MILLISECONDS,
+            remaining: 0,
+          },
         },
       });
     },

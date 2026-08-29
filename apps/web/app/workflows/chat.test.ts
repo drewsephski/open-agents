@@ -160,7 +160,9 @@ let agentStreamCalls = 0;
 let replayableToolCheckpoint: {
   responseMessage: Record<string, unknown>;
   responseMessages: Array<Record<string, unknown>>;
+  accountingSettlement?: Record<string, unknown>;
 } | null = null;
+const retriedInferenceSettlements: Array<Record<string, unknown>> = [];
 const modelCredentialCalls: Array<{
   userId: string;
   modelId: string;
@@ -392,6 +394,12 @@ mock.module("@/lib/access/model-credential-resolver", () => ({
   },
 }));
 
+mock.module("@/lib/access/inference-call-accounting", () => ({
+  retryInferenceSettlement: async (settlement: Record<string, unknown>) => {
+    retriedInferenceSettlements.push(settlement);
+  },
+}));
+
 mock.module("@/lib/db/sessions", () => ({
   getChatById: async () => testChatRecord,
   getSessionById: async () => testSessionRecord,
@@ -460,6 +468,7 @@ beforeEach(() => {
   agentCallOptions = undefined;
   agentStreamCalls = 0;
   replayableToolCheckpoint = null;
+  retriedInferenceSettlements.length = 0;
   modelCredentialCalls.length = 0;
   streamOnFinishCallback = undefined;
   testSessionRecord = {
@@ -865,8 +874,12 @@ describe("runAgentWorkflow", () => {
     });
   });
 
-  test("resumes from a durable mutating multi-tool checkpoint without replaying completed tools", async () => {
+  test("retries failed settlement before resuming without replaying completed tools", async () => {
     agentFinishReason = "tool-calls";
+    const accountingSettlement = {
+      context: { callId: "call-1", source: "managed" },
+      result: { cost: { micros: 125_000, usd: "0.125" } },
+    };
     replayableToolCheckpoint = {
       responseMessage: {
         id: "assistant-1",
@@ -890,11 +903,14 @@ describe("runAgentWorkflow", () => {
         { role: "assistant", content: [{ type: "tool-call" }] },
         { role: "tool", content: [{ type: "tool-result" }] },
       ],
+      accountingSettlement,
     };
 
     await runAgentWorkflow(makeOptions({ maxSteps: 2 }));
 
     expect(agentStreamCalls).toBe(1);
+    expect(retriedInferenceSettlements).toHaveLength(1);
+    expect(retriedInferenceSettlements[0]).toEqual(accountingSettlement);
     expect(modelCredentialCalls).toEqual([
       {
         userId: "user-1",

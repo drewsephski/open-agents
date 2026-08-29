@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { MockLanguageModelV3 } from "ai/test";
-import { withInferenceAccounting } from "./inference-accounting";
+import {
+  InferenceAccountingSettlementError,
+  withInferenceAccounting,
+} from "./inference-accounting";
 
 const usage = {
   inputTokens: { total: 2, noCache: 2, cacheRead: 0, cacheWrite: 0 },
@@ -55,6 +58,54 @@ describe("withInferenceAccounting", () => {
     await expect(metered.doGenerate({ prompt: [] })).rejects.toThrow(
       "managed_inference_cost_missing",
     );
+  });
+
+  test("carries a safe retryable settlement payload when reconciliation fails", async () => {
+    const underlying = new MockLanguageModelV3({
+      doGenerate: {
+        content: [{ type: "text", text: "done" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage,
+        providerMetadata: {
+          openrouter: { usage: { cost: "0.125" } },
+        },
+        warnings: [],
+      },
+    });
+    const metered = withInferenceAccounting(underlying, {
+      settlementContext: {
+        callId: "call-1",
+        userId: "user-1",
+        modelId: "openai/gpt-5.6-luna",
+        source: "managed",
+        agentType: "main",
+        occurredAt: "2026-08-15T12:00:00.000Z",
+      },
+      reconcile: async () => {
+        throw new Error("database unavailable");
+      },
+    });
+
+    let settlementError: unknown;
+    try {
+      await metered.doGenerate({ prompt: [] });
+    } catch (error) {
+      settlementError = error;
+    }
+
+    expect(settlementError).toBeInstanceOf(InferenceAccountingSettlementError);
+    expect(
+      (settlementError as InferenceAccountingSettlementError).settlement,
+    ).toEqual({
+      context: expect.objectContaining({
+        callId: "call-1",
+        source: "managed",
+      }),
+      result: {
+        cost: { micros: 125_000, usd: "0.125" },
+        usage,
+      },
+    });
   });
 
   test("reconciles streamed provider calls before exposing the finish part", async () => {

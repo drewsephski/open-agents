@@ -1,0 +1,1 @@
+ALTER TABLE "model_call_tool_checkpoints" ADD COLUMN "accounting_settlement" jsonb;

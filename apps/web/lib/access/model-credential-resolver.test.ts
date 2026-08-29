@@ -6,6 +6,7 @@ const {
   createModelCallCredentialResolver,
   createModelCredentialResolver,
   InferenceAccessDeniedError,
+  toInferenceAccessErrorResponse,
 } = await import("./model-credential-resolver");
 
 const NOW = new Date("2026-08-15T12:00:00.000Z");
@@ -249,6 +250,35 @@ describe("model call credential resolver", () => {
         code: "managed_allowance_exhausted",
         remediation: ["add_byok", "wait_for_reset"],
         resetAt: period.end,
+        allowanceState: {
+          warning: "exhausted",
+          period,
+          used: 10_000_000,
+          limit: 10_000_000,
+          remaining: 0,
+        },
+      },
+    });
+
+    const response = toInferenceAccessErrorResponse(
+      (
+        error as {
+          failure: Parameters<typeof toInferenceAccessErrorResponse>[0];
+        }
+      ).failure,
+    );
+    expect(await response.json()).toMatchObject({
+      error: {
+        allowanceState: {
+          warning: "exhausted",
+          period: {
+            start: period.start.toISOString(),
+            end: period.end.toISOString(),
+          },
+          used: 10_000_000,
+          limit: 10_000_000,
+          remaining: 0,
+        },
       },
     });
   });

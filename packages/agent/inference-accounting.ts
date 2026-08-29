@@ -9,9 +9,24 @@ export interface InferenceAccountingResult {
   usage: Awaited<ReturnType<LanguageModelV3["doGenerate"]>>["usage"];
 }
 
+export interface InferenceAccountingSettlementContext {
+  callId: string;
+  userId: string;
+  modelId: string;
+  source: "byok" | "managed";
+  agentType: "main" | "subagent";
+  occurredAt: string;
+}
+
+export interface InferenceAccountingSettlement {
+  context: InferenceAccountingSettlementContext;
+  result: InferenceAccountingResult;
+}
+
 type LanguageModelV3 = Extract<LanguageModel, { specificationVersion: "v3" }>;
 
 export interface InferenceAccountingCallbacks {
+  settlementContext?: InferenceAccountingSettlementContext;
   reconcile(result: InferenceAccountingResult): Promise<void>;
   fail?(reason: InferenceAccountingFailureReason): Promise<void>;
 }
@@ -22,13 +37,25 @@ export type InferenceAccountingFailureReason =
   | "stream_truncated";
 
 export class InferenceAccountingSettlementError extends Error {
-  constructor(cause: unknown) {
+  readonly settlement: InferenceAccountingSettlement | undefined;
+
+  constructor(cause: unknown, settlement?: InferenceAccountingSettlement) {
     super(
       `Inference accounting settlement failed: ${cause instanceof Error ? cause.message : String(cause)}`,
       { cause },
     );
     this.name = "InferenceAccountingSettlementError";
+    this.settlement = settlement;
   }
+}
+
+function settlementFor(
+  accounting: InferenceAccountingCallbacks,
+  result: InferenceAccountingResult,
+): InferenceAccountingSettlement | undefined {
+  return accounting.settlementContext
+    ? { context: accounting.settlementContext, result }
+    : undefined;
 }
 
 export function withInferenceAccounting(
@@ -47,13 +74,17 @@ export function withInferenceAccounting(
           await accounting.fail?.("provider_error");
           throw error;
         }
+        const accountingResult = {
+          cost: extractModelCostUsd(result.providerMetadata),
+          usage: result.usage,
+        };
         try {
-          await accounting.reconcile({
-            cost: extractModelCostUsd(result.providerMetadata),
-            usage: result.usage,
-          });
+          await accounting.reconcile(accountingResult);
         } catch (error) {
-          throw new InferenceAccountingSettlementError(error);
+          throw new InferenceAccountingSettlementError(
+            error,
+            settlementFor(accounting, accountingResult),
+          );
         }
         return result;
       },
@@ -90,14 +121,18 @@ export function withInferenceAccounting(
                 return;
               }
               if (next.value.type === "finish") {
+                const accountingResult = {
+                  cost: extractModelCostUsd(next.value.providerMetadata),
+                  usage: next.value.usage,
+                };
                 try {
-                  await accounting.reconcile({
-                    cost: extractModelCostUsd(next.value.providerMetadata),
-                    usage: next.value.usage,
-                  });
+                  await accounting.reconcile(accountingResult);
                 } catch (error) {
                   controller.error(
-                    new InferenceAccountingSettlementError(error),
+                    new InferenceAccountingSettlementError(
+                      error,
+                      settlementFor(accounting, accountingResult),
+                    ),
                   );
                   return;
                 }

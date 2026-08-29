@@ -146,6 +146,13 @@ describe("access policy inference routing", () => {
         code: "managed_allowance_exhausted",
         remediation: ["add_byok", "wait_for_reset"],
         resetAt: PERIOD_END,
+        allowanceState: {
+          warning: "exhausted",
+          period: { start: PERIOD_START, end: PERIOD_END },
+          used: 10_000_000,
+          limit: 10_000_000,
+          remaining: 0,
+        },
       },
     });
   });
