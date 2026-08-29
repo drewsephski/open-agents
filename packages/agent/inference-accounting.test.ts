@@ -98,7 +98,7 @@ describe("withInferenceAccounting", () => {
   });
 
   test("fails closed when a stream ends without provider cost metadata", async () => {
-    let failed = false;
+    const failures: string[] = [];
     const underlying = {
       specificationVersion: "v3" as const,
       provider: "openrouter",
@@ -117,14 +117,51 @@ describe("withInferenceAccounting", () => {
     };
     const metered = withInferenceAccounting(underlying, {
       reconcile: async () => undefined,
-      fail: async () => {
-        failed = true;
+      fail: async (reason) => {
+        failures.push(reason);
       },
     });
 
     const result = await metered.doStream({ prompt: [] });
     await result.stream.getReader().read();
 
-    expect(failed).toBe(true);
+    expect(failures).toEqual(["stream_truncated"]);
+  });
+
+  test("records a cancelled stream as a structured failed-accounting call", async () => {
+    const failures: string[] = [];
+    const underlying = {
+      specificationVersion: "v3" as const,
+      provider: "openrouter",
+      modelId: "test/model",
+      supportedUrls: {},
+      doGenerate: async () => {
+        throw new Error("not used");
+      },
+      doStream: async () => ({
+        stream: new ReadableStream({
+          pull(controller) {
+            controller.enqueue({
+              type: "text-delta" as const,
+              id: "1",
+              delta: "partial",
+            });
+          },
+        }),
+      }),
+    };
+    const metered = withInferenceAccounting(underlying, {
+      reconcile: async () => undefined,
+      fail: async (reason) => {
+        failures.push(reason);
+      },
+    });
+
+    const result = await metered.doStream({ prompt: [] });
+    const reader = result.stream.getReader();
+    await reader.read();
+    await reader.cancel("client disconnected");
+
+    expect(failures).toEqual(["stream_cancelled"]);
   });
 });

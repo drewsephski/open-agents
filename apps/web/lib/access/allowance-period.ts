@@ -6,6 +6,22 @@ export const PRO_SANDBOX_ALLOWANCE_MILLISECONDS = 25 * 60 * 60 * 1000;
 export const BYOK_SANDBOX_CONCURRENCY_LIMIT = 1;
 export const PRO_SANDBOX_CONCURRENCY_LIMIT = 2;
 
+export type AllowanceWarningLevel =
+  | "none"
+  | "passive"
+  | "prominent"
+  | "exhausted";
+
+export function getAllowanceWarningLevel(
+  consumed: number,
+  allowance: number,
+): AllowanceWarningLevel {
+  if (consumed >= allowance) return "exhausted";
+  if (consumed * 100 >= allowance * 90) return "prominent";
+  if (consumed * 100 >= allowance * 75) return "passive";
+  return "none";
+}
+
 export const allowancePeriodSchema = z.object({
   start: z.date(),
   end: z.date(),

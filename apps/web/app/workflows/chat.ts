@@ -1022,6 +1022,39 @@ const runAgentStep = async (
 
   const stepStartedAt = new Date();
   const { webAgent } = await import("@/app/config");
+  const { checkpointToolResults, getReplayableToolCheckpoint } =
+    await import("@/lib/ai/model-call-tool-checkpoint");
+  const replayableCheckpoint = await getReplayableToolCheckpoint({
+    workflowRunId,
+    stepNumber,
+  });
+  if (replayableCheckpoint) {
+    const stepFinishedAt = new Date();
+    const checkpointFinishReason: FinishReason = "tool-calls";
+    return {
+      responseMessage: {
+        ...replayableCheckpoint.responseMessage,
+        metadata: withModelMetadata(
+          replayableCheckpoint.responseMessage.metadata,
+          selectedModelId,
+          modelId,
+        ),
+      },
+      responseMessages: replayableCheckpoint.responseMessages,
+      finishReason: checkpointFinishReason,
+      rawFinishReason: "durable-tool-checkpoint",
+      stepUsage: undefined,
+      stepCost: undefined,
+      stepWasAborted: false,
+      stepTiming: buildStepTiming(
+        stepNumber,
+        stepStartedAt,
+        stepFinishedAt,
+        checkpointFinishReason,
+        "durable-tool-checkpoint",
+      ),
+    };
+  }
 
   const abortController = new AbortController();
   const stopMonitor = startStopMonitor(workflowRunId, abortController);
@@ -1074,7 +1107,7 @@ const runAgentStep = async (
       abortSignal: abortController.signal,
     });
 
-    for await (const part of result.toUIMessageStream<WebAgentUIMessage>({
+    const uiMessageStream = result.toUIMessageStream<WebAgentUIMessage>({
       originalMessages,
       generateMessageId: () => messageId,
       sendStart: false,
@@ -1116,10 +1149,36 @@ const runAgentStep = async (
       onFinish: ({ responseMessage: finishedResponseMessage }) => {
         responseMessage = finishedResponseMessage;
       },
-    })) {
-      const writer = writable.getWriter();
-      await writer.write(part);
-      writer.releaseLock();
+    });
+    const checkpointedStream = checkpointToolResults({
+      stream: uiMessageStream,
+      originalMessage:
+        lastOriginalMessage?.role === "assistant"
+          ? lastOriginalMessage
+          : undefined,
+      workflowRunId,
+      stepNumber,
+      chatId,
+      tools: webAgent.tools,
+    });
+    try {
+      const checkpointReader = checkpointedStream.output.getReader();
+      while (true) {
+        const nextPart = await checkpointReader.read();
+        if (nextPart.done) break;
+        const writer = writable.getWriter();
+        try {
+          await writer.write(nextPart.value);
+        } finally {
+          writer.releaseLock();
+        }
+      }
+      await checkpointedStream.settled;
+    } catch (error) {
+      await checkpointedStream.settled.catch((checkpointError: unknown) => {
+        if (checkpointError !== error) throw checkpointError;
+      });
+      throw error;
     }
 
     if (responseMessage == null) {

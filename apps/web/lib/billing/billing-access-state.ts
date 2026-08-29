@@ -11,7 +11,12 @@ import {
 } from "@/lib/db/schema";
 import type { ManagedKeyState } from "@/lib/access/inference-source";
 import type { SubscriptionAccessState } from "@/lib/access/subscription-state";
-import type { AllowancePeriod } from "@/lib/access/allowance-period";
+import {
+  getAllowanceWarningLevel,
+  MANAGED_INFERENCE_ALLOWANCE_MICROS,
+  type AllowancePeriod,
+  type AllowanceWarningLevel,
+} from "@/lib/access/allowance-period";
 import { modelCostUsdToMicros } from "@open-agents/agent";
 
 export interface BillingCredentialAccessState {
@@ -21,6 +26,8 @@ export interface BillingCredentialAccessState {
     period: AllowancePeriod | null;
     spentMicros: number;
     reservedMicros: number;
+    allowanceMicros: number;
+    warning: AllowanceWarningLevel;
     envelope: CredentialEnvelope | null;
   };
 }
@@ -32,6 +39,8 @@ const unavailableState: BillingCredentialAccessState = {
     period: null,
     spentMicros: 0,
     reservedMicros: 0,
+    allowanceMicros: MANAGED_INFERENCE_ALLOWANCE_MICROS,
+    warning: "none",
     envelope: null,
   },
 };
@@ -155,6 +164,8 @@ export async function getBillingCredentialAccessState(
       ),
   ]);
 
+  const spentMicros = toMicros(spend?.usd ?? "0");
+  const reservedMicros = Number(reservations?.micros ?? "0");
   return {
     subscription: {
       status: billing.subscriptionStatus,
@@ -169,8 +180,13 @@ export async function getBillingCredentialAccessState(
     managedInference: {
       keyState: key?.lifecycleState ?? "missing",
       period,
-      spentMicros: toMicros(spend?.usd ?? "0"),
-      reservedMicros: Number(reservations?.micros ?? "0"),
+      spentMicros,
+      reservedMicros,
+      allowanceMicros: MANAGED_INFERENCE_ALLOWANCE_MICROS,
+      warning: getAllowanceWarningLevel(
+        spentMicros + reservedMicros,
+        MANAGED_INFERENCE_ALLOWANCE_MICROS,
+      ),
       envelope,
     },
   };

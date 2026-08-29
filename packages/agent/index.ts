@@ -38,7 +38,9 @@ export {
 } from "./usage-metadata";
 export {
   type InferenceAccountingCallbacks,
+  type InferenceAccountingFailureReason,
   type InferenceAccountingResult,
+  InferenceAccountingSettlementError,
   withInferenceAccounting,
 } from "./inference-accounting";
 // Skills exports

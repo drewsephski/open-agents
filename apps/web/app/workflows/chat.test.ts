@@ -156,6 +156,11 @@ let agentResponseBody: unknown;
 let agentProviderMetadata: Record<string, unknown> | undefined;
 let agentInputMessages: unknown;
 let agentCallOptions: Record<string, unknown> | undefined;
+let agentStreamCalls = 0;
+let replayableToolCheckpoint: {
+  responseMessage: Record<string, unknown>;
+  responseMessages: Array<Record<string, unknown>>;
+} | null = null;
 const modelCredentialCalls: Array<{
   userId: string;
   modelId: string;
@@ -234,6 +239,7 @@ mock.module("@/app/config", () => ({
       messages: unknown;
       options: Record<string, unknown>;
     }) => {
+      agentStreamCalls += 1;
       agentInputMessages = messages;
       agentCallOptions = options;
       return {
@@ -352,6 +358,24 @@ mock.module("ai", () => ({
 
 mock.module("@open-agents/agent", () => ({}));
 
+mock.module("@/lib/ai/model-call-tool-checkpoint", () => ({
+  getReplayableToolCheckpoint: async (params: { stepNumber: number }) =>
+    params.stepNumber === 1 ? replayableToolCheckpoint : null,
+  checkpointToolResults: (params: {
+    stream: AsyncIterable<UIMessageChunk>;
+  }) => {
+    const iterator = params.stream[Symbol.asyncIterator]();
+    return {
+      output: {
+        getReader: () => ({ read: () => iterator.next() }),
+      },
+      settled: Promise.resolve(),
+    };
+  },
+  recordObservedToolCheckpoint: async () => {},
+  promoteToolCheckpoint: async () => {},
+}));
+
 mock.module("@/lib/access/model-credential-resolver", () => ({
   requireModelCredential: async (params: {
     userId: string;
@@ -434,6 +458,8 @@ beforeEach(() => {
   agentProviderMetadata = undefined;
   agentInputMessages = undefined;
   agentCallOptions = undefined;
+  agentStreamCalls = 0;
+  replayableToolCheckpoint = null;
   modelCredentialCalls.length = 0;
   streamOnFinishCallback = undefined;
   testSessionRecord = {
@@ -837,6 +863,48 @@ describe("runAgentWorkflow", () => {
       openRouter: { apiKey: `credential-for-${APP_DEFAULT_MODEL_ID}` },
       resolveSubagentOpenRouter: expect.any(Function),
     });
+  });
+
+  test("resumes from a durable mutating multi-tool checkpoint without replaying completed tools", async () => {
+    agentFinishReason = "tool-calls";
+    replayableToolCheckpoint = {
+      responseMessage: {
+        id: "assistant-1",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-write",
+            toolCallId: "write-1",
+            state: "output-available",
+            output: "created a.txt",
+          },
+          {
+            type: "tool-bash",
+            toolCallId: "bash-1",
+            state: "output-available",
+            output: "migration applied",
+          },
+        ],
+      },
+      responseMessages: [
+        { role: "assistant", content: [{ type: "tool-call" }] },
+        { role: "tool", content: [{ type: "tool-result" }] },
+      ],
+    };
+
+    await runAgentWorkflow(makeOptions({ maxSteps: 2 }));
+
+    expect(agentStreamCalls).toBe(1);
+    expect(modelCredentialCalls).toEqual([
+      {
+        userId: "user-1",
+        modelId: APP_DEFAULT_MODEL_ID,
+        agentType: "main",
+      },
+    ]);
+    expect(agentInputMessages).toEqual(
+      expect.arrayContaining(replayableToolCheckpoint.responseMessages),
+    );
   });
 
   test("logs full step diagnostics when the agent finishes with reason other", async () => {

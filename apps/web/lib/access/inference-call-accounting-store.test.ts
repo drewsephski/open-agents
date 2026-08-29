@@ -27,6 +27,8 @@ async function createTestDatabase() {
       model_id text,
       credential_source text,
       inference_cost_usd numeric(18, 12),
+      accounting_status text NOT NULL DEFAULT 'accounted',
+      accounting_failure_reason text,
       input_tokens integer NOT NULL DEFAULT 0,
       cached_input_tokens integer NOT NULL DEFAULT 0,
       output_tokens integer NOT NULL DEFAULT 0,
@@ -43,6 +45,7 @@ async function createTestDatabase() {
       state text NOT NULL DEFAULT 'pending',
       actual_cost_usd numeric(18, 12),
       actual_cost_micros bigint,
+      expires_at timestamp NOT NULL,
       created_at timestamp NOT NULL DEFAULT now(),
       completed_at timestamp
     );
@@ -169,7 +172,16 @@ describe("production inference accounting store", () => {
     expect(await store.reserveManaged({ ...request, callId: "call-3" })).toBe(
       true,
     );
-    await store.markMissingCost("call-3", request.now);
+    await store.recordFailedAccounting({
+      callId: "call-3",
+      userId: request.userId,
+      modelId: request.modelId,
+      source: "managed",
+      agentType: "main",
+      reason: "missing_cost",
+      occurredAt: request.now,
+      now: request.now,
+    });
     expect(await store.reserveManaged({ ...request, callId: "call-4" })).toBe(
       false,
     );
@@ -192,6 +204,65 @@ describe("production inference accounting store", () => {
         now: nextPeriod.start,
       }),
     ).toBe(true);
+    await client.close();
+  });
+
+  test("recovers a stale pending reservation without unlocking a late settlement", async () => {
+    const { client, database } = await createTestDatabase();
+    await client.query(
+      `INSERT INTO managed_inference_keys
+        (id, user_id, lifecycle_state, period_start, period_end)
+       VALUES ('key-stale', 'user-1', 'active', $1, $2)`,
+      [firstPeriod.start, firstPeriod.end],
+    );
+    const store = createInferenceCallAccountingStore(
+      database as unknown as Parameters<
+        typeof createInferenceCallAccountingStore
+      >[0],
+    );
+    const admittedAt = new Date("2026-08-15T00:00:00.000Z");
+    expect(
+      await store.reserveManaged({
+        callId: "stale-call",
+        userId: "user-1",
+        modelId: "z-ai/glm-5.3-flash",
+        period: firstPeriod,
+        now: admittedAt,
+      }),
+    ).toBe(true);
+    expect(
+      await store.reserveManaged({
+        callId: "replacement-call",
+        userId: "user-1",
+        modelId: "z-ai/glm-5.3-flash",
+        period: firstPeriod,
+        now: new Date("2026-08-15T01:00:00.000Z"),
+      }),
+    ).toBe(true);
+
+    await store.reconcile({
+      callId: "stale-call",
+      userId: "user-1",
+      modelId: "z-ai/glm-5.3-flash",
+      source: "managed",
+      agentType: "main",
+      occurredAt: admittedAt,
+      now: new Date("2026-08-15T01:00:01.000Z"),
+      result: {
+        cost: { usd: "0.5", micros: 500_000 },
+        usage: {
+          inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 1, text: 1, reasoning: 0 },
+        },
+      },
+    });
+    const reservations = await client.query<{ id: string; state: string }>(
+      "SELECT id, state FROM inference_call_reservations ORDER BY id",
+    );
+    expect(reservations.rows).toEqual([
+      { id: "replacement-call", state: "pending" },
+      { id: "stale-call", state: "reconciled" },
+    ]);
     await client.close();
   });
 });

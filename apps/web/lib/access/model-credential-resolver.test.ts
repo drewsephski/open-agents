@@ -97,7 +97,7 @@ describe("model credential resolver", () => {
             start: new Date("2026-08-01T00:00:00.000Z"),
             end: new Date("2026-09-01T00:00:00.000Z"),
           },
-          spentMicros: 0,
+          spentMicros: 9_000_000,
           reservedMicros: 0,
           envelope: {
             ciphertext: "managed-ciphertext",
@@ -120,6 +120,12 @@ describe("model credential resolver", () => {
       source: "managed",
       modelId: "z-ai/glm-5.3-flash",
       openRouter: { apiKey: "managed-subkey" },
+      allowanceState: {
+        consumedMicros: 9_000_000,
+        allowanceMicros: 10_000_000,
+        resetAt: new Date("2026-09-01T00:00:00.000Z"),
+        warning: "prominent",
+      },
     });
   });
 

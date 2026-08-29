@@ -28,7 +28,7 @@ describe("inference call accounting", () => {
         return true;
       },
       reconcile: async () => {},
-      markMissingCost: async () => {},
+      recordFailedAccounting: async () => {},
     };
     let id = 0;
     const authorize = createInferenceCallAccountingService({
@@ -64,7 +64,7 @@ describe("inference call accounting", () => {
         reconcile: async (params) => {
           reconciled.push(params);
         },
-        markMissingCost: async () => {},
+        recordFailedAccounting: async () => {},
       },
       createId: () => `subagent-${++id}`,
       now: () => new Date("2026-08-15T12:00:00.000Z"),
@@ -104,8 +104,8 @@ describe("inference call accounting", () => {
       store: {
         reserveManaged: async () => true,
         reconcile: async () => {},
-        markMissingCost: async (callId) => {
-          missing.push(callId);
+        recordFailedAccounting: async (params) => {
+          missing.push(params.callId);
         },
       },
       createId: () => "managed-call",
@@ -119,7 +119,67 @@ describe("inference call accounting", () => {
 
     await expect(
       admission?.callbacks.reconcile({ ...result, cost: undefined }),
-    ).rejects.toThrow("managed_inference_cost_missing");
+    ).rejects.toThrow("inference_cost_missing");
     expect(missing).toEqual(["managed-call"]);
+  });
+
+  test("retries durable reconciliation after a transient store failure", async () => {
+    let attempts = 0;
+    const authorize = createInferenceCallAccountingService({
+      store: {
+        reserveManaged: async () => true,
+        reconcile: async () => {
+          attempts += 1;
+          if (attempts === 1) throw new Error("database unavailable");
+        },
+        recordFailedAccounting: async () => {},
+      },
+      createId: () => "retryable-call",
+    });
+    const admission = await authorize({
+      userId: "user-1",
+      modelId: "z-ai/glm-5.3-flash",
+      source: "managed",
+      period,
+    });
+
+    await expect(admission?.callbacks.reconcile(result)).rejects.toThrow(
+      "database unavailable",
+    );
+    await expect(
+      admission?.callbacks.reconcile(result),
+    ).resolves.toBeUndefined();
+    expect(attempts).toBe(2);
+  });
+
+  test("does not silently accept missing BYOK cost metadata", async () => {
+    const failures: unknown[] = [];
+    const authorize = createInferenceCallAccountingService({
+      store: {
+        reserveManaged: async () => true,
+        reconcile: async () => {},
+        recordFailedAccounting: async (params) => {
+          failures.push(params);
+        },
+      },
+      createId: () => "byok-missing-cost",
+    });
+    const admission = await authorize({
+      userId: "user-1",
+      modelId: "openai/gpt-5.6-luna",
+      source: "byok",
+      period: null,
+    });
+
+    await expect(
+      admission?.callbacks.reconcile({ ...result, cost: undefined }),
+    ).rejects.toThrow("inference_cost_missing");
+    expect(failures).toEqual([
+      expect.objectContaining({
+        callId: "byok-missing-cost",
+        source: "byok",
+        reason: "missing_cost",
+      }),
+    ]);
   });
 });

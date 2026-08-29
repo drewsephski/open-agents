@@ -18,7 +18,12 @@ import type {
   InferenceSource,
   ManagedKeyState,
 } from "./inference-source";
-import type { AllowancePeriod } from "./allowance-period";
+import {
+  getAllowanceWarningLevel,
+  MANAGED_INFERENCE_ALLOWANCE_MICROS,
+  type AllowancePeriod,
+  type AllowanceWarningLevel,
+} from "./allowance-period";
 import type { SubscriptionAccessState } from "./subscription-state";
 import type { InferenceCallAdmission } from "./inference-call-accounting";
 
@@ -33,6 +38,8 @@ export interface ModelCredentialAccessState {
     period: AllowancePeriod | null;
     spentMicros: number;
     reservedMicros: number;
+    allowanceMicros?: number;
+    warning?: AllowanceWarningLevel;
     envelope: CredentialEnvelope | null;
   };
 }
@@ -42,6 +49,12 @@ export interface ResolvedModelCredential {
   source: InferenceSource;
   modelId: string;
   openRouter: OpenRouterConfig;
+  allowanceState?: {
+    consumedMicros: number;
+    allowanceMicros: number;
+    resetAt: Date | null;
+    warning: AllowanceWarningLevel;
+  };
 }
 
 export type ModelCredentialResolution = ResolvedModelCredential | AccessDenied;
@@ -136,11 +149,29 @@ export function createModelCredentialResolver(
       if (!apiKey.trim()) {
         return invalidAccessState();
       }
+      const allowanceMicros =
+        state.managedInference.allowanceMicros ??
+        MANAGED_INFERENCE_ALLOWANCE_MICROS;
+      const consumedMicros =
+        state.managedInference.spentMicros +
+        state.managedInference.reservedMicros;
       return {
         allowed: true,
         source: decision.source,
         modelId: decision.modelId,
         openRouter: { apiKey },
+        ...(decision.source === "managed"
+          ? {
+              allowanceState: {
+                consumedMicros,
+                allowanceMicros,
+                resetAt: state.managedInference.period?.end ?? null,
+                warning:
+                  state.managedInference.warning ??
+                  getAllowanceWarningLevel(consumedMicros, allowanceMicros),
+              },
+            }
+          : {}),
       };
     } catch {
       return invalidAccessState();

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, lte, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { evaluateSandboxAccess } from "@/lib/access/access-policy";
 import type { AccessFailure } from "@/lib/access/access-failure";
@@ -9,13 +9,18 @@ import type { SubscriptionAccessState } from "@/lib/access/subscription-state";
 import { getBillingCredentialAccessState } from "@/lib/billing/billing-access-state";
 import { providerCredentialStore } from "@/lib/credentials/provider-credential-store";
 import { db } from "@/lib/db/client";
-import { sandboxMeteringLeases, sandboxUsagePeriods } from "@/lib/db/schema";
+import {
+  sandboxMeteringLeases,
+  sandboxUsagePeriods,
+  sessions,
+} from "@/lib/db/schema";
+import { getSessionById } from "@/lib/db/sessions";
+import {
+  getAllowanceWarningLevel as getSharedAllowanceWarningLevel,
+  type AllowanceWarningLevel,
+} from "@/lib/access/allowance-period";
 
-export type AllowanceWarningLevel =
-  | "none"
-  | "passive"
-  | "prominent"
-  | "exhausted";
+export type { AllowanceWarningLevel };
 
 export interface SandboxAllowanceState {
   tier: "byok" | "pro";
@@ -49,6 +54,8 @@ export interface SandboxAllowanceStore {
   meter(sessionId: string, now: Date): Promise<void>;
 }
 
+export const SANDBOX_STARTING_LEASE_TTL_MS = 15 * 60 * 1000;
+
 export class SandboxAccessDeniedError extends Error {
   readonly failure: AccessFailure;
 
@@ -63,14 +70,10 @@ export function getAllowanceWarningLevel(
   consumedMilliseconds: number,
   allowanceMilliseconds: number,
 ): AllowanceWarningLevel {
-  if (consumedMilliseconds >= allowanceMilliseconds) return "exhausted";
-  if (consumedMilliseconds * 100 >= allowanceMilliseconds * 90) {
-    return "prominent";
-  }
-  if (consumedMilliseconds * 100 >= allowanceMilliseconds * 75) {
-    return "passive";
-  }
-  return "none";
+  return getSharedAllowanceWarningLevel(
+    consumedMilliseconds,
+    allowanceMilliseconds,
+  );
 }
 
 export function accrueRunningSandboxMilliseconds(params: {
@@ -185,6 +188,9 @@ export function createSandboxAllowanceStore(
         now,
         periodEnd: period.periodEnd,
       });
+      const meteredAt = new Date(
+        Math.max(period.lastMeteredAt?.getTime() ?? 0, now.getTime()),
+      );
       if (release) {
         await tx
           .delete(sandboxMeteringLeases)
@@ -198,7 +204,7 @@ export function createSandboxAllowanceStore(
             0,
             runningCount - (release && lease.state === "running" ? 1 : 0),
           ),
-          lastMeteredAt: now,
+          lastMeteredAt: meteredAt,
           revision: period.revision + 1,
           updatedAt: now,
         })
@@ -220,7 +226,10 @@ export function createSandboxAllowanceStore(
           runningSandboxCount: 0,
         },
       });
-      if (!preliminary.allowed) return preliminary;
+      if (!preliminary.allowed) {
+        await settleLease(params.sessionId, params.now, true);
+        return preliminary;
+      }
 
       return database.transaction(async (tx) => {
         await tx
@@ -257,11 +266,100 @@ export function createSandboxAllowanceStore(
           };
         }
 
+        const hasActiveProviderSession = sql<boolean>`exists (
+          select 1 from ${sessions}
+          where ${sessions.id} = ${sandboxMeteringLeases.sessionId}
+            and ${sessions.lifecycleState} = 'active'
+            and ${sessions.sandboxState} is not null
+        )`;
+        await tx
+          .update(sandboxMeteringLeases)
+          .set({
+            state: "running",
+            admissionExpiresAt: null,
+            updatedAt: params.now,
+          })
+          .where(
+            and(
+              eq(sandboxMeteringLeases.userId, params.userId),
+              eq(sandboxMeteringLeases.state, "starting"),
+              lte(sandboxMeteringLeases.admissionExpiresAt, params.now),
+              hasActiveProviderSession,
+            ),
+          );
+        await tx
+          .delete(sandboxMeteringLeases)
+          .where(
+            and(
+              eq(sandboxMeteringLeases.userId, params.userId),
+              eq(sandboxMeteringLeases.state, "starting"),
+              lte(sandboxMeteringLeases.admissionExpiresAt, params.now),
+              sql`not (${hasActiveProviderSession})`,
+            ),
+          );
+
         const [existingLease] = await tx
-          .select({ sessionId: sandboxMeteringLeases.sessionId })
+          .select({
+            sessionId: sandboxMeteringLeases.sessionId,
+            usagePeriodId: sandboxMeteringLeases.usagePeriodId,
+            state: sandboxMeteringLeases.state,
+          })
           .from(sandboxMeteringLeases)
           .where(eq(sandboxMeteringLeases.sessionId, params.sessionId))
-          .limit(1);
+          .limit(1)
+          .for("update");
+
+        if (existingLease && existingLease.usagePeriodId !== period.id) {
+          const [oldPeriod] = await tx
+            .select()
+            .from(sandboxUsagePeriods)
+            .where(eq(sandboxUsagePeriods.id, existingLease.usagePeriodId))
+            .limit(1)
+            .for("update");
+          if (oldPeriod) {
+            const [{ count }] = await tx
+              .select({ count: sql<number>`count(*)::integer` })
+              .from(sandboxMeteringLeases)
+              .where(
+                and(
+                  eq(sandboxMeteringLeases.usagePeriodId, oldPeriod.id),
+                  eq(sandboxMeteringLeases.state, "running"),
+                ),
+              );
+            const oldRunningCount = count ?? 0;
+            const oldConsumedMilliseconds = accrueRunningSandboxMilliseconds({
+              consumedMilliseconds: oldPeriod.consumedMilliseconds,
+              runningSandboxCount: oldRunningCount,
+              lastMeteredAt: oldPeriod.lastMeteredAt,
+              now: params.now,
+              periodEnd: oldPeriod.periodEnd,
+            });
+            await tx
+              .update(sandboxUsagePeriods)
+              .set({
+                consumedMilliseconds: oldConsumedMilliseconds,
+                runningSandboxCount: Math.max(
+                  0,
+                  oldRunningCount - (existingLease.state === "running" ? 1 : 0),
+                ),
+                lastMeteredAt: new Date(
+                  Math.max(
+                    oldPeriod.lastMeteredAt?.getTime() ?? 0,
+                    params.now.getTime(),
+                  ),
+                ),
+                revision: oldPeriod.revision + 1,
+                updatedAt: params.now,
+              })
+              .where(eq(sandboxUsagePeriods.id, oldPeriod.id));
+          }
+          await tx
+            .delete(sandboxMeteringLeases)
+            .where(eq(sandboxMeteringLeases.sessionId, params.sessionId));
+        }
+
+        const existingInCurrentPeriod =
+          existingLease?.usagePeriodId === period.id ? existingLease : null;
         const [[periodLeases], [allUserLeases]] = await Promise.all([
           tx
             .select({ count: sql<number>`count(*)::integer` })
@@ -297,20 +395,6 @@ export function createSandboxAllowanceStore(
           })
           .where(eq(sandboxUsagePeriods.id, period.id));
 
-        if (existingLease) {
-          return {
-            allowed: true,
-            state: stateFrom({
-              tier: preliminary.tier,
-              consumedMilliseconds,
-              allowanceMilliseconds: preliminary.allowanceMilliseconds,
-              concurrencyLimit: preliminary.concurrencyLimit,
-              runningSandboxCount: userRunningCount,
-              resetAt: preliminary.period.end,
-            }),
-          };
-        }
-
         const decision = evaluateSandboxAccess({
           kind: "sandbox",
           operation: params.operation,
@@ -322,17 +406,54 @@ export function createSandboxAllowanceStore(
               preliminary.tier === "byok" ? consumedMilliseconds : 0,
             proPeriodConsumedMilliseconds:
               preliminary.tier === "pro" ? consumedMilliseconds : 0,
-            runningSandboxCount: userRunningCount,
+            runningSandboxCount: Math.max(
+              0,
+              userRunningCount - (existingInCurrentPeriod ? 1 : 0),
+            ),
           },
         });
-        if (!decision.allowed) return decision;
+        if (!decision.allowed) {
+          if (existingInCurrentPeriod) {
+            await tx
+              .delete(sandboxMeteringLeases)
+              .where(eq(sandboxMeteringLeases.sessionId, params.sessionId));
+            if (existingInCurrentPeriod.state === "running") {
+              await tx
+                .update(sandboxUsagePeriods)
+                .set({
+                  runningSandboxCount: Math.max(0, periodRunningCount - 1),
+                  updatedAt: params.now,
+                })
+                .where(eq(sandboxUsagePeriods.id, period.id));
+            }
+          }
+          return decision;
+        }
+
+        if (existingInCurrentPeriod) {
+          return {
+            allowed: true,
+            state: stateFrom({
+              tier: decision.tier,
+              consumedMilliseconds,
+              allowanceMilliseconds: decision.allowanceMilliseconds,
+              concurrencyLimit: decision.concurrencyLimit,
+              runningSandboxCount: userRunningCount,
+              resetAt: decision.period.end,
+            }),
+          };
+        }
 
         await tx.insert(sandboxMeteringLeases).values({
           sessionId: params.sessionId,
           userId: params.userId,
           usagePeriodId: period.id,
-          state: "starting",
+          state: existingLease?.state ?? "starting",
           startedAt: params.now,
+          admissionExpiresAt:
+            existingLease?.state === "running"
+              ? null
+              : new Date(params.now.getTime() + SANDBOX_STARTING_LEASE_TTL_MS),
           updatedAt: params.now,
         });
 
@@ -389,14 +510,20 @@ export function createSandboxAllowanceStore(
 
         await tx
           .update(sandboxMeteringLeases)
-          .set({ state: "running", updatedAt: now })
+          .set({
+            state: "running",
+            admissionExpiresAt: null,
+            updatedAt: now,
+          })
           .where(eq(sandboxMeteringLeases.sessionId, sessionId));
         await tx
           .update(sandboxUsagePeriods)
           .set({
             consumedMilliseconds,
             runningSandboxCount: runningCount + 1,
-            lastMeteredAt: now,
+            lastMeteredAt: new Date(
+              Math.max(period.lastMeteredAt?.getTime() ?? 0, now.getTime()),
+            ),
             revision: period.revision + 1,
             updatedAt: now,
           })
@@ -433,8 +560,19 @@ export const confirmSandboxRunning = (sessionId: string) =>
   productionService.confirm(sessionId);
 export const releaseSandboxRunning = (sessionId: string) =>
   productionService.release(sessionId);
-export const meterSandboxRunning = (sessionId: string) =>
-  productionService.meter(sessionId);
+export async function meterSandboxRunning(sessionId: string): Promise<void> {
+  const session = await getSessionById(sessionId);
+  if (!session) return;
+  const admission = await productionService.admit({
+    userId: session.userId,
+    sessionId,
+    operation: "resume",
+  });
+  if (!admission.allowed) {
+    throw new SandboxAccessDeniedError(admission.failure);
+  }
+  await productionService.meter(sessionId);
+}
 
 export function toSandboxAccessErrorResponse(
   error: SandboxAccessDeniedError,

@@ -548,6 +548,7 @@ export const sandboxMeteringLeases = pgTable(
       .notNull()
       .default("starting"),
     startedAt: timestamp("started_at").notNull(),
+    admissionExpiresAt: timestamp("admission_expires_at"),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
@@ -679,6 +680,33 @@ export const workflowRunSteps = pgTable(
   ],
 );
 
+export const modelCallToolCheckpoints = pgTable(
+  "model_call_tool_checkpoints",
+  {
+    id: text("id").primaryKey(),
+    workflowRunId: text("workflow_run_id").notNull(),
+    stepNumber: integer("step_number").notNull(),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    messageId: text("message_id").notNull(),
+    state: text("state", { enum: ["observed", "replayable"] })
+      .notNull()
+      .default("observed"),
+    responseMessage: jsonb("response_message").notNull(),
+    responseMessages: jsonb("response_messages").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("model_call_tool_checkpoints_run_step_idx").on(
+      table.workflowRunId,
+      table.stepNumber,
+    ),
+    index("model_call_tool_checkpoints_chat_idx").on(table.chatId),
+  ],
+);
+
 export type Session = typeof sessions.$inferSelect;
 export type NewSession = typeof sessions.$inferInsert;
 export type VercelProjectLink = typeof vercelProjectLinks.$inferSelect;
@@ -776,6 +804,19 @@ export const usageEvents = pgTable("usage_events", {
     precision: 18,
     scale: 12,
   }),
+  accountingStatus: text("accounting_status", {
+    enum: ["accounted", "failed"],
+  })
+    .notNull()
+    .default("accounted"),
+  accountingFailureReason: text("accounting_failure_reason", {
+    enum: [
+      "missing_cost",
+      "provider_error",
+      "stream_cancelled",
+      "stream_truncated",
+    ],
+  }),
   inputTokens: integer("input_tokens").notNull().default(0),
   cachedInputTokens: integer("cached_input_tokens").notNull().default(0),
   outputTokens: integer("output_tokens").notNull().default(0),
@@ -795,7 +836,7 @@ export const inferenceCallReservations = pgTable(
     periodEnd: timestamp("period_end").notNull(),
     reservedMicros: bigint("reserved_micros", { mode: "number" }).notNull(),
     state: text("state", {
-      enum: ["pending", "reconciled", "missing_cost"],
+      enum: ["pending", "reconciled", "missing_cost", "abandoned"],
     })
       .notNull()
       .default("pending"),
@@ -804,6 +845,7 @@ export const inferenceCallReservations = pgTable(
       scale: 12,
     }),
     actualCostMicros: bigint("actual_cost_micros", { mode: "number" }),
+    expiresAt: timestamp("expires_at").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     completedAt: timestamp("completed_at"),
   },

@@ -10,7 +10,12 @@ async function createTestDatabase() {
   const client = new PGlite();
   await client.exec(`
     CREATE TABLE users (id text PRIMARY KEY);
-    CREATE TABLE sessions (id text PRIMARY KEY, user_id text NOT NULL);
+    CREATE TABLE sessions (
+      id text PRIMARY KEY,
+      user_id text NOT NULL,
+      lifecycle_state text,
+      sandbox_state jsonb
+    );
     CREATE TABLE sandbox_usage_periods (
       id text PRIMARY KEY,
       user_id text NOT NULL,
@@ -32,6 +37,7 @@ async function createTestDatabase() {
       usage_period_id text NOT NULL,
       state text NOT NULL DEFAULT 'starting',
       started_at timestamp NOT NULL,
+      admission_expires_at timestamp,
       updated_at timestamp NOT NULL DEFAULT now()
     );
     INSERT INTO users (id) VALUES ('user-1');
@@ -172,6 +178,240 @@ describe("production sandbox allowance store", () => {
         remediation: ["stop_sandbox"],
       },
     });
+    await client.close();
+  });
+
+  test("atomically rolls a running BYOK lease into the next UTC month", async () => {
+    const { client, database } = await createTestDatabase();
+    const store = createSandboxAllowanceStore(
+      database as unknown as Parameters<typeof createSandboxAllowanceStore>[0],
+    );
+    const access = {
+      byokCredentialState: "valid" as const,
+      subscription: null,
+    };
+    await store.admit({
+      userId: "user-1",
+      sessionId: "session-1",
+      operation: "create",
+      access,
+      now: new Date("2026-08-31T23:50:00.000Z"),
+    });
+    await store.confirm("session-1", new Date("2026-08-31T23:50:00.000Z"));
+
+    const rolled = await store.admit({
+      userId: "user-1",
+      sessionId: "session-1",
+      operation: "resume",
+      access,
+      now: new Date("2026-09-01T00:10:00.000Z"),
+    });
+    expect(rolled.allowed).toBe(true);
+    await store.release("session-1", new Date("2026-09-01T00:20:00.000Z"));
+
+    const periods = await client.query<{
+      period_start: Date;
+      consumed_milliseconds: number;
+      running_sandbox_count: number;
+    }>(
+      "SELECT period_start, consumed_milliseconds, running_sandbox_count FROM sandbox_usage_periods ORDER BY period_start",
+    );
+    expect(periods.rows.map((row) => row.consumed_milliseconds)).toEqual([
+      600_000, 600_000,
+    ]);
+    expect(periods.rows.map((row) => row.running_sandbox_count)).toEqual([
+      0, 0,
+    ]);
+    await client.close();
+  });
+
+  test("rolls Pro renewals and gives an upgrade a fresh paid-period allowance", async () => {
+    const { client, database } = await createTestDatabase();
+    const store = createSandboxAllowanceStore(
+      database as unknown as Parameters<typeof createSandboxAllowanceStore>[0],
+    );
+    const byokAccess = {
+      byokCredentialState: "valid" as const,
+      subscription: null,
+    };
+    await store.admit({
+      userId: "user-1",
+      sessionId: "session-1",
+      operation: "create",
+      access: byokAccess,
+      now: new Date("2026-08-10T00:00:00.000Z"),
+    });
+    await store.confirm("session-1", new Date("2026-08-10T00:00:00.000Z"));
+
+    const firstProPeriod = {
+      status: "active" as const,
+      entitlementState: "active" as const,
+      financialState: "paid" as const,
+      periodStart: new Date("2026-08-15T00:00:00.000Z"),
+      periodEnd: new Date("2026-09-15T00:00:00.000Z"),
+      cancelAtPeriodEnd: false,
+    };
+    const upgraded = await store.admit({
+      userId: "user-1",
+      sessionId: "session-1",
+      operation: "resume",
+      access: {
+        byokCredentialState: "valid",
+        subscription: firstProPeriod,
+      },
+      now: firstProPeriod.periodStart,
+    });
+    expect(upgraded.allowed && upgraded.state).toMatchObject({
+      tier: "pro",
+      consumedMilliseconds: 0,
+    });
+
+    const secondProPeriod = {
+      ...firstProPeriod,
+      periodStart: firstProPeriod.periodEnd,
+      periodEnd: new Date("2026-10-15T00:00:00.000Z"),
+    };
+    const renewed = await store.admit({
+      userId: "user-1",
+      sessionId: "session-1",
+      operation: "resume",
+      access: {
+        byokCredentialState: "valid",
+        subscription: secondProPeriod,
+      },
+      now: secondProPeriod.periodStart,
+    });
+    expect(renewed.allowed && renewed.state).toMatchObject({
+      tier: "pro",
+      consumedMilliseconds: 0,
+    });
+    await client.close();
+  });
+
+  test("re-admits a downgrade into BYOK and releases an ineligible rollover", async () => {
+    const { client, database } = await createTestDatabase();
+    const store = createSandboxAllowanceStore(
+      database as unknown as Parameters<typeof createSandboxAllowanceStore>[0],
+    );
+    const proAccess = {
+      byokCredentialState: "valid" as const,
+      subscription: {
+        status: "active" as const,
+        entitlementState: "active" as const,
+        financialState: "paid" as const,
+        periodStart: new Date("2026-08-15T00:00:00.000Z"),
+        periodEnd: new Date("2026-09-15T00:00:00.000Z"),
+        cancelAtPeriodEnd: true,
+      },
+    };
+    await store.admit({
+      userId: "user-1",
+      sessionId: "session-1",
+      operation: "create",
+      access: proAccess,
+      now: proAccess.subscription.periodStart,
+    });
+    await store.confirm("session-1", proAccess.subscription.periodStart);
+
+    const downgraded = await store.admit({
+      userId: "user-1",
+      sessionId: "session-1",
+      operation: "resume",
+      access: { byokCredentialState: "valid", subscription: null },
+      now: proAccess.subscription.periodEnd,
+    });
+    expect(downgraded.allowed && downgraded.state.tier).toBe("byok");
+
+    const denied = await store.admit({
+      userId: "user-1",
+      sessionId: "session-1",
+      operation: "resume",
+      access: { byokCredentialState: "missing", subscription: null },
+      now: new Date("2026-10-01T00:00:00.000Z"),
+    });
+    expect(denied.allowed).toBe(false);
+    const leases = await client.query("SELECT * FROM sandbox_metering_leases");
+    expect(leases.rows).toHaveLength(0);
+    await client.close();
+  });
+
+  test("recovers timed-out starting leases and keeps metering monotonic", async () => {
+    const { client, database } = await createTestDatabase();
+    const store = createSandboxAllowanceStore(
+      database as unknown as Parameters<typeof createSandboxAllowanceStore>[0],
+    );
+    const access = {
+      byokCredentialState: "valid" as const,
+      subscription: null,
+    };
+    const start = new Date("2026-08-01T00:00:00.000Z");
+    await store.admit({
+      userId: "user-1",
+      sessionId: "session-1",
+      operation: "create",
+      access,
+      now: start,
+    });
+    const recovered = await store.admit({
+      userId: "user-1",
+      sessionId: "session-2",
+      operation: "create",
+      access,
+      now: new Date("2026-08-01T00:16:00.000Z"),
+    });
+    expect(recovered.allowed).toBe(true);
+    await store.confirm("session-2", new Date("2026-08-01T00:16:00.000Z"));
+    await store.meter("session-2", new Date("2026-08-01T00:26:00.000Z"));
+    await store.meter("session-2", new Date("2026-08-01T00:21:00.000Z"));
+    await store.release("session-2", new Date("2026-08-01T00:36:00.000Z"));
+
+    const result = await client.query<{ consumed_milliseconds: number }>(
+      "SELECT consumed_milliseconds FROM sandbox_usage_periods",
+    );
+    expect(result.rows[0]?.consumed_milliseconds).toBe(1_200_000);
+    await client.close();
+  });
+
+  test("promotes a timed-out starting lease when its provider session is active", async () => {
+    const { client, database } = await createTestDatabase();
+    const store = createSandboxAllowanceStore(
+      database as unknown as Parameters<typeof createSandboxAllowanceStore>[0],
+    );
+    const access = {
+      byokCredentialState: "valid" as const,
+      subscription: null,
+    };
+    await store.admit({
+      userId: "user-1",
+      sessionId: "session-1",
+      operation: "create",
+      access,
+      now: new Date("2026-08-01T00:00:00.000Z"),
+    });
+    await client.query(
+      `UPDATE sessions
+       SET lifecycle_state = 'active', sandbox_state = '{"type":"vercel","sandboxName":"session-1"}'::jsonb
+       WHERE id = 'session-1'`,
+    );
+
+    const competingAdmission = await store.admit({
+      userId: "user-1",
+      sessionId: "session-2",
+      operation: "create",
+      access,
+      now: new Date("2026-08-01T00:16:00.000Z"),
+    });
+    expect(competingAdmission).toEqual({
+      allowed: false,
+      failure: {
+        code: "sandbox_concurrency_limit_reached",
+        remediation: ["stop_sandbox"],
+      },
+    });
+    const leases = await client.query<{ state: string }>(
+      "SELECT state FROM sandbox_metering_leases WHERE session_id = 'session-1'",
+    );
+    expect(leases.rows).toEqual([{ state: "running" }]);
     await client.close();
   });
 });

@@ -20,7 +20,14 @@ import {
   hasRuntimeSandboxState,
 } from "@/lib/sandbox/utils";
 import { connectConfiguredSandbox } from "@/lib/sandbox/connect";
-import { releaseSandboxRunning } from "@/lib/sandbox/allowance";
+import {
+  admitSandboxOperation,
+  confirmSandboxRunning,
+  releaseSandboxRunning,
+  SandboxAccessDeniedError,
+  toSandboxAccessErrorResponse,
+} from "@/lib/sandbox/allowance";
+import { hibernateSandboxAfterAllowanceDenial } from "@/lib/sandbox/allowance-hibernation";
 
 export type ReconnectStatus =
   | "connected"
@@ -119,6 +126,20 @@ export async function GET(req: Request): Promise<Response> {
     } satisfies ReconnectResponse);
   }
 
+  try {
+    await admitSandboxOperation({
+      userId: authResult.userId,
+      sessionId,
+      operation: "resume",
+    });
+  } catch (error) {
+    if (error instanceof SandboxAccessDeniedError) {
+      await hibernateSandboxAfterAllowanceDenial(sessionId);
+      return toSandboxAccessErrorResponse(error);
+    }
+    throw error;
+  }
+
   // Connect and probe the persisted runtime sandbox state.
   try {
     const sandbox = await connectConfiguredSandbox(state as SandboxState);
@@ -137,6 +158,7 @@ export async function GET(req: Request): Promise<Response> {
         ...state,
         ...(sandbox.expiresAt ? { expiresAt: sandbox.expiresAt } : {}),
       } as SandboxState);
+    await confirmSandboxRunning(sessionId);
     // Only sync sandbox state/expiry and recover stale failed lifecycle state
     // without resetting lastActivityAt/hibernateAfter, otherwise every reconnect
     // probe (including page entry) defeats the inactivity timer.
