@@ -6,12 +6,16 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Github, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  OpenRouterCredentialPanel,
+  type SafeCredentialStatus,
+} from "@/components/openrouter-credential-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/hooks/use-session";
 import { authClient } from "@/lib/auth/client";
 import { sanitizeInternalRedirect } from "@/lib/redirect-safety";
 
-type StepId = 1 | 2;
+type StepId = 1 | 2 | 3;
 
 function LaunchstackMark({ className }: { className?: string }) {
   return (
@@ -54,15 +58,15 @@ export function GetStartedFlow() {
     "/sessions",
   );
   const [activeStep, setActiveStep] = useState<StepId>(
-    isGitHubReconnect ? 2 : 1,
+    isGitHubReconnect ? 3 : 1,
   );
   const [completedSteps, setCompletedSteps] = useState<Set<StepId>>(
-    () => new Set(isGitHubReconnect ? [1] : []),
+    () => new Set(isGitHubReconnect ? [1, 2] : []),
   );
 
   const markComplete = useCallback((step: StepId) => {
     setCompletedSteps((prev) => new Set([...prev, step]));
-    if (step < 2) {
+    if (step < 3) {
       setActiveStep((step + 1) as StepId);
     }
   }, []);
@@ -83,11 +87,12 @@ export function GetStartedFlow() {
 
   const steps: { id: StepId; title: string }[] = [
     { id: 1, title: "Your account" },
-    { id: 2, title: "Connect GitHub" },
+    { id: 2, title: "Add OpenRouter key" },
+    { id: 3, title: "Connect GitHub" },
   ];
 
   return (
-    <div className="flex min-h-screen flex-col md:flex-row">
+    <div className="flex min-h-dvh flex-col md:flex-row">
       {/* left panel */}
       <div className="flex shrink-0 flex-col justify-between bg-black px-6 py-6 md:w-1/2 md:px-12 md:py-10">
         <div className="flex items-center gap-3">
@@ -173,6 +178,9 @@ export function GetStartedFlow() {
                           />
                         )}
                         {step.id === 2 && (
+                          <OpenRouterStep onComplete={() => markComplete(2)} />
+                        )}
+                        {step.id === 3 && (
                           <GitHubConnectStep
                             session={session}
                             loading={sessionLoading}
@@ -182,7 +190,7 @@ export function GetStartedFlow() {
                             connectionDisabled={isTrialUser}
                             redirectPath={redirectPath}
                             onComplete={() => {
-                              markComplete(2);
+                              markComplete(3);
                               router.push(redirectPath);
                             }}
                           />
@@ -195,6 +203,47 @@ export function GetStartedFlow() {
             })}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function OpenRouterStep({ onComplete }: { onComplete: () => void }) {
+  const [status, setStatus] = useState<SafeCredentialStatus | null>(null);
+  const hasValidKey = status?.state === "valid";
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-pretty text-sm text-zinc-300">
+          Add your own OpenRouter key to run agents on the free BYOK plan.
+        </p>
+        <p className="mt-1 text-pretty text-xs text-zinc-500">
+          This is optional during setup. Without a key or Pro, your first prompt
+          stays on this device until you choose to resend it.
+        </p>
+      </div>
+      <OpenRouterCredentialPanel compact dark onStatusChange={setStatus} />
+      <div className="flex flex-wrap gap-2">
+        {hasValidKey && (
+          <Button
+            size="sm"
+            onClick={onComplete}
+            className="bg-white text-black hover:bg-zinc-200"
+          >
+            Continue
+          </Button>
+        )}
+        {!hasValidKey && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onComplete}
+            className="text-zinc-400 hover:bg-white/5 hover:text-white"
+          >
+            Skip for now
+          </Button>
+        )}
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import { LandingBento } from "@/components/landing/bento";
 import { LandingFeatures } from "@/components/landing/features";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNav } from "@/components/landing/nav";
+import { LandingPricing } from "@/components/landing/pricing";
 import { Stage } from "@/components/landing/stage";
 import { TechSelector } from "@/components/landing/tech-selector";
 
@@ -72,6 +73,7 @@ export function SignedOutHero() {
         <AgentArchitecture />
         <TechSelector />
         <LandingBento />
+        <LandingPricing />
         <LandingFooter />
       </div>
     </div>

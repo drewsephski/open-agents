@@ -3,6 +3,7 @@
 import {
   ArrowLeft,
   Cable,
+  CreditCard,
   LogOut,
   Menu,
   Settings as SettingsIcon,
@@ -85,6 +86,12 @@ const baseSidebarItems = [
     icon: Cable,
   },
   {
+    id: "billing",
+    label: "Billing",
+    href: "/settings/billing",
+    icon: CreditCard,
+  },
+  {
     id: "models",
     label: "Models",
     href: "/settings/models",
@@ -146,7 +153,7 @@ function SettingsLayout({
   );
 
   return (
-    <div className="flex h-screen bg-background text-foreground">
+    <div className="flex h-dvh bg-background text-foreground">
       <aside className="hidden w-64 shrink-0 border-r border-sidebar-border bg-sidebar md:flex">
         <div className="flex h-full w-full flex-col overflow-y-auto">
           <div className="flex items-center gap-4 px-4 py-4">
@@ -217,6 +224,7 @@ function SettingsLayout({
         <div className="flex items-center gap-3 border-b border-border px-4 py-3 md:hidden">
           <button
             type="button"
+            aria-label="Open settings navigation"
             onClick={() => setMobileSidebarOpen(true)}
             className="text-muted-foreground hover:text-foreground"
           >
