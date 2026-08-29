@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
+import type { CheckoutRequestParameters } from "./billing-checkout-request";
 
 mock.module("server-only", () => ({}));
 
@@ -14,7 +15,13 @@ function availableCheckoutStore() {
   return {
     claimCheckout: async () => ({
       state: "claimed" as const,
+      claim: { token: "claim", generation: 0 },
+      request: null,
+    }),
+    prepareCheckout: async (input: { request: CheckoutRequestParameters }) => ({
+      accepted: true as const,
       claim: { token: "claim", generation: 1 },
+      request: input.request,
     }),
     publishCheckout: async (input: {
       session: { id: string; url: string; expiresAt: Date };
@@ -22,7 +29,7 @@ function availableCheckoutStore() {
       accepted: true,
       currentSession: input.session,
     }),
-    failCheckout: async () => true,
+    abandonCheckout: async () => true,
   };
 }
 
@@ -226,16 +233,22 @@ describe("billing sessions", () => {
           claimed = true;
           return {
             state: "claimed" as const,
-            claim: { token: "claim-1", generation: 1 },
+            claim: { token: "claim-1", generation: 0 },
+            request: null,
           };
         },
+        prepareCheckout: async (input) => ({
+          accepted: true as const,
+          claim: { token: input.claim.token, generation: 1 },
+          request: input.request,
+        }),
         publishCheckout: async (input: {
           session: { id: string; url: string; expiresAt: Date };
         }) => ({
           accepted: true,
           currentSession: input.session,
         }),
-        failCheckout: async () => true,
+        abandonCheckout: async () => true,
       },
       config,
       integrationSuffix: () => "concurre",
@@ -299,7 +312,8 @@ describe("billing sessions", () => {
           accepted: false,
           currentSession: null,
         }),
-        failCheckout: async () => false,
+        prepareCheckout: async () => ({ accepted: false as const }),
+        abandonCheckout: async () => false,
       },
       config,
     });
@@ -311,6 +325,93 @@ describe("billing sessions", () => {
       url: "https://checkout.stripe.com/c/existing",
     });
     expect(stripeCallCount).toBe(0);
+  });
+
+  test("retries an ambiguous remote create with the exact same body and idempotency key", async () => {
+    const createBodies: unknown[] = [];
+    const idempotencyKeys: string[] = [];
+    const remoteSessions = new Map<string, { id: string; url: string }>();
+    let generation = 0;
+    let persistedRequest: CheckoutRequestParameters | null = null;
+    let firstAttempt = true;
+    const suffixes = ["abcdefgh", "ijklmnop"];
+    const service = createBillingSessionService({
+      stripe: {
+        checkout: {
+          sessions: {
+            ...emptyCheckoutSessionOperations(),
+            create: async (params, options) => {
+              createBodies.push(params);
+              const idempotencyKey = options?.idempotencyKey ?? "missing";
+              idempotencyKeys.push(idempotencyKey);
+              const existing = remoteSessions.get(idempotencyKey);
+              if (
+                existing &&
+                JSON.stringify(createBodies[0]) === JSON.stringify(params)
+              ) {
+                return existing;
+              }
+              const session = {
+                id: `cs_remote_${remoteSessions.size + 1}`,
+                url: `https://checkout.stripe.com/c/${remoteSessions.size + 1}`,
+              };
+              remoteSessions.set(idempotencyKey, session);
+              if (firstAttempt) {
+                firstAttempt = false;
+                throw new Error("connection reset after Stripe committed");
+              }
+              return session;
+            },
+          },
+        },
+        subscriptions: emptySubscriptionOperations(),
+        billingPortal: {
+          sessions: {
+            create: async () => ({ url: "https://billing.stripe.com/p/new" }),
+          },
+        },
+      },
+      customerStore: { getStripeCustomerIdForUser: async () => null },
+      checkoutStore: {
+        claimCheckout: async () => {
+          return {
+            state: "claimed" as const,
+            claim: { token: `claim-${generation}`, generation },
+            request: persistedRequest,
+          };
+        },
+        prepareCheckout: async (input) => {
+          generation += 1;
+          persistedRequest = input.request;
+          return {
+            accepted: true as const,
+            claim: { token: input.claim.token, generation },
+            request: input.request,
+          };
+        },
+        publishCheckout: async (input) => ({
+          accepted: true,
+          currentSession: input.session,
+        }),
+        abandonCheckout: async () => {
+          persistedRequest = null;
+          return true;
+        },
+      },
+      config,
+      integrationSuffix: () => suffixes.shift() ?? "qrstuvwx",
+    });
+
+    await expect(
+      service.createCheckout({ userId: "user-1", email: "owner@example.com" }),
+    ).rejects.toThrow("connection reset");
+    await expect(
+      service.createCheckout({ userId: "user-1", email: "owner@example.com" }),
+    ).resolves.toMatchObject({ id: "cs_remote_1" });
+
+    expect(idempotencyKeys[1]).toBe(idempotencyKeys[0]);
+    expect(createBodies[1]).toEqual(createBodies[0]);
+    expect(remoteSessions.size).toBe(1);
   });
 
   test("denies a second Pro subscription found on the owned Stripe customer", async () => {

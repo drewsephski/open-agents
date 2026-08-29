@@ -120,6 +120,7 @@ export const billingCheckoutReservations = pgTable(
     stripeSessionId: text("stripe_session_id"),
     sessionUrl: text("session_url"),
     sessionExpiresAt: timestamp("session_expires_at"),
+    requestPayload: jsonb("request_payload").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -283,6 +284,40 @@ export const managedInferenceKeys = pgTable(
       table.providerKeyId,
     ),
     uniqueIndex("managed_inference_keys_key_hash_idx").on(table.keyHash),
+  ],
+);
+
+export const managedKeyCleanupJobs = pgTable(
+  "managed_key_cleanup_jobs",
+  {
+    providerKeyId: text("provider_key_id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    managedKeyId: text("managed_key_id").references(
+      () => managedInferenceKeys.id,
+      { onDelete: "set null" },
+    ),
+    label: text("label").notNull(),
+    state: text("state", {
+      enum: ["pending", "processing", "attached", "done"],
+    })
+      .notNull()
+      .default("pending"),
+    availableAt: timestamp("available_at").notNull(),
+    claimToken: text("claim_token"),
+    claimGeneration: integer("claim_generation").notNull().default(0),
+    leaseExpiresAt: timestamp("lease_expires_at"),
+    lastErrorCode: text("last_error_code"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("managed_key_cleanup_jobs_user_state_idx").on(
+      table.userId,
+      table.state,
+    ),
+    index("managed_key_cleanup_jobs_managed_key_id_idx").on(table.managedKeyId),
   ],
 );
 
@@ -648,6 +683,8 @@ export type NewBillingWebhookReceipt =
   typeof billingWebhookReceipts.$inferInsert;
 export type ManagedInferenceKey = typeof managedInferenceKeys.$inferSelect;
 export type NewManagedInferenceKey = typeof managedInferenceKeys.$inferInsert;
+export type ManagedKeyCleanupJob = typeof managedKeyCleanupJobs.$inferSelect;
+export type NewManagedKeyCleanupJob = typeof managedKeyCleanupJobs.$inferInsert;
 export type SandboxUsagePeriod = typeof sandboxUsagePeriods.$inferSelect;
 export type NewSandboxUsagePeriod = typeof sandboxUsagePeriods.$inferInsert;
 

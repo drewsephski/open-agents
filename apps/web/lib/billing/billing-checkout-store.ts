@@ -1,12 +1,13 @@
 import "server-only";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { db } from "@/lib/db/client";
+import { db as productionDb } from "@/lib/db/client";
 import {
   billingCheckoutReservations,
   billingSubscriptions,
 } from "@/lib/db/schema";
 import type { BillingCheckoutStore } from "./billing-sessions";
+import { checkoutRequestParametersSchema } from "./billing-checkout-request";
 
 const CHECKOUT_LEASE_MS = 5 * 60 * 1000;
 const BLOCKING_SUBSCRIPTION_STATUSES = [
@@ -32,136 +33,190 @@ function storedSession(row: {
     : null;
 }
 
-export const billingCheckoutStore: BillingCheckoutStore = {
-  async claimCheckout(userId) {
-    return db.transaction(async (tx) => {
-      const [subscription] = await tx
-        .select({ id: billingSubscriptions.id })
-        .from(billingSubscriptions)
-        .where(
-          and(
-            eq(billingSubscriptions.userId, userId),
-            inArray(
-              billingSubscriptions.status,
-              BLOCKING_SUBSCRIPTION_STATUSES,
+function storedRequest(value: Record<string, unknown> | null) {
+  if (!value) {
+    return null;
+  }
+  return checkoutRequestParametersSchema.parse(value);
+}
+
+function requiredStoredRequest(value: Record<string, unknown> | null) {
+  const request = storedRequest(value);
+  if (!request) {
+    throw new Error("Persisted Checkout request is missing");
+  }
+  return request;
+}
+
+export function createBillingCheckoutStore(
+  database: typeof productionDb = productionDb,
+): BillingCheckoutStore {
+  return {
+    async claimCheckout(userId) {
+      return database.transaction(async (tx) => {
+        const [subscription] = await tx
+          .select({ id: billingSubscriptions.id })
+          .from(billingSubscriptions)
+          .where(
+            and(
+              eq(billingSubscriptions.userId, userId),
+              inArray(
+                billingSubscriptions.status,
+                BLOCKING_SUBSCRIPTION_STATUSES,
+              ),
             ),
-          ),
-        )
-        .limit(1)
-        .for("update");
-      if (subscription) {
-        return { state: "subscription_exists" as const };
-      }
+          )
+          .limit(1)
+          .for("update");
+        if (subscription) {
+          return { state: "subscription_exists" as const };
+        }
 
-      await tx
-        .insert(billingCheckoutReservations)
-        .values({ userId, state: "failed", generation: 0 })
-        .onConflictDoNothing();
-      const [reservation] = await tx
-        .select()
-        .from(billingCheckoutReservations)
-        .where(eq(billingCheckoutReservations.userId, userId))
-        .limit(1)
-        .for("update");
-      if (!reservation) {
-        throw new Error("Checkout reservation is missing");
-      }
+        await tx
+          .insert(billingCheckoutReservations)
+          .values({ userId, state: "failed", generation: 0 })
+          .onConflictDoNothing();
+        const [reservation] = await tx
+          .select()
+          .from(billingCheckoutReservations)
+          .where(eq(billingCheckoutReservations.userId, userId))
+          .limit(1)
+          .for("update");
+        if (!reservation) {
+          throw new Error("Checkout reservation is missing");
+        }
 
-      const now = new Date();
-      const existing = storedSession(reservation);
-      if (
-        reservation.state === "open" &&
-        existing &&
-        existing.expiresAt > now
-      ) {
-        return { state: "existing" as const, session: existing };
-      }
-      if (
-        reservation.state === "creating" &&
-        reservation.leaseExpiresAt &&
-        reservation.leaseExpiresAt > now
-      ) {
-        return { state: "busy" as const };
-      }
+        const now = new Date();
+        const existing = storedSession(reservation);
+        if (
+          reservation.state === "open" &&
+          existing &&
+          existing.expiresAt > now
+        ) {
+          return { state: "existing" as const, session: existing };
+        }
+        if (
+          reservation.state === "creating" &&
+          reservation.leaseExpiresAt &&
+          reservation.leaseExpiresAt > now
+        ) {
+          return { state: "busy" as const };
+        }
 
-      const generation =
-        reservation.state === "creating"
-          ? reservation.generation
-          : reservation.generation + 1;
-      const token = nanoid();
-      await tx
+        const preserveAmbiguousRequest = reservation.state === "creating";
+        const token = nanoid();
+        await tx
+          .update(billingCheckoutReservations)
+          .set({
+            state: "creating",
+            claimToken: token,
+            leaseExpiresAt: new Date(now.getTime() + CHECKOUT_LEASE_MS),
+            stripeSessionId: null,
+            sessionUrl: null,
+            sessionExpiresAt: null,
+            requestPayload: preserveAmbiguousRequest
+              ? reservation.requestPayload
+              : null,
+            updatedAt: now,
+          })
+          .where(eq(billingCheckoutReservations.userId, userId));
+        return {
+          state: "claimed" as const,
+          claim: { token, generation: reservation.generation },
+          request: preserveAmbiguousRequest
+            ? storedRequest(reservation.requestPayload)
+            : null,
+        };
+      });
+    },
+
+    async prepareCheckout(input) {
+      const [updated] = await database
         .update(billingCheckoutReservations)
         .set({
-          state: "creating",
-          generation,
-          claimToken: token,
-          leaseExpiresAt: new Date(now.getTime() + CHECKOUT_LEASE_MS),
-          stripeSessionId: null,
-          sessionUrl: null,
-          sessionExpiresAt: null,
-          updatedAt: now,
+          generation: sql`${billingCheckoutReservations.generation} + 1`,
+          requestPayload: input.request,
+          updatedAt: new Date(),
         })
-        .where(eq(billingCheckoutReservations.userId, userId));
+        .where(
+          and(
+            eq(billingCheckoutReservations.userId, input.userId),
+            eq(billingCheckoutReservations.state, "creating"),
+            eq(billingCheckoutReservations.generation, input.claim.generation),
+            eq(billingCheckoutReservations.claimToken, input.claim.token),
+          ),
+        )
+        .returning({
+          generation: billingCheckoutReservations.generation,
+          requestPayload: billingCheckoutReservations.requestPayload,
+        });
+      if (!updated) {
+        return { accepted: false };
+      }
       return {
-        state: "claimed" as const,
-        claim: { token, generation },
+        accepted: true,
+        claim: { token: input.claim.token, generation: updated.generation },
+        request: requiredStoredRequest(updated.requestPayload),
       };
-    });
-  },
+    },
 
-  async publishCheckout(input) {
-    const [updated] = await db
-      .update(billingCheckoutReservations)
-      .set({
-        state: "open",
-        claimToken: null,
-        leaseExpiresAt: null,
-        stripeSessionId: input.session.id,
-        sessionUrl: input.session.url,
-        sessionExpiresAt: input.session.expiresAt,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(billingCheckoutReservations.userId, input.userId),
-          eq(billingCheckoutReservations.state, "creating"),
-          eq(billingCheckoutReservations.generation, input.claim.generation),
-          eq(billingCheckoutReservations.claimToken, input.claim.token),
-        ),
-      )
-      .returning();
-    if (updated) {
-      return { accepted: true, currentSession: storedSession(updated) };
-    }
-    const [current] = await db
-      .select()
-      .from(billingCheckoutReservations)
-      .where(eq(billingCheckoutReservations.userId, input.userId))
-      .limit(1);
-    return {
-      accepted: false,
-      currentSession: current ? storedSession(current) : null,
-    };
-  },
+    async publishCheckout(input) {
+      const [updated] = await database
+        .update(billingCheckoutReservations)
+        .set({
+          state: "open",
+          claimToken: null,
+          leaseExpiresAt: null,
+          stripeSessionId: input.session.id,
+          sessionUrl: input.session.url,
+          sessionExpiresAt: input.session.expiresAt,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(billingCheckoutReservations.userId, input.userId),
+            eq(billingCheckoutReservations.state, "creating"),
+            eq(billingCheckoutReservations.generation, input.claim.generation),
+            eq(billingCheckoutReservations.claimToken, input.claim.token),
+          ),
+        )
+        .returning();
+      if (updated) {
+        return { accepted: true, currentSession: storedSession(updated) };
+      }
+      const [current] = await database
+        .select()
+        .from(billingCheckoutReservations)
+        .where(eq(billingCheckoutReservations.userId, input.userId))
+        .limit(1);
+      return {
+        accepted: false,
+        currentSession: current ? storedSession(current) : null,
+      };
+    },
 
-  async failCheckout(input) {
-    const [updated] = await db
-      .update(billingCheckoutReservations)
-      .set({
-        state: "failed",
-        claimToken: null,
-        leaseExpiresAt: null,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(billingCheckoutReservations.userId, input.userId),
-          eq(billingCheckoutReservations.state, "creating"),
-          eq(billingCheckoutReservations.generation, input.claim.generation),
-          eq(billingCheckoutReservations.claimToken, input.claim.token),
-        ),
-      )
-      .returning({ userId: billingCheckoutReservations.userId });
-    return updated !== undefined;
-  },
-};
+    async abandonCheckout(input) {
+      const [updated] = await database
+        .update(billingCheckoutReservations)
+        .set({
+          state: "failed",
+          claimToken: null,
+          leaseExpiresAt: null,
+          requestPayload: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(billingCheckoutReservations.userId, input.userId),
+            eq(billingCheckoutReservations.state, "creating"),
+            eq(billingCheckoutReservations.generation, input.claim.generation),
+            eq(billingCheckoutReservations.claimToken, input.claim.token),
+          ),
+        )
+        .returning({ userId: billingCheckoutReservations.userId });
+      return updated !== undefined;
+    },
+  };
+}
+
+export const billingCheckoutStore = createBillingCheckoutStore();

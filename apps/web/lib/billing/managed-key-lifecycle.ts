@@ -24,8 +24,42 @@ export interface StoredManagedInferenceKey {
   provisioningErrorCode: string | null;
 }
 
+export interface StoredManagedKeyCleanupJob {
+  providerKeyId: string;
+  userId: string;
+  managedKeyId: string | null;
+  label: string;
+  state: "pending" | "processing" | "attached" | "done";
+}
+
 export interface ManagedInferenceKeyStore {
   listForUser(userId: string): Promise<StoredManagedInferenceKey[]>;
+  listCleanupForUser(userId: string): Promise<StoredManagedKeyCleanupJob[]>;
+  trackRemoteKey(input: {
+    providerKeyId: string;
+    userId: string;
+    managedKeyId: string | null;
+    label: string;
+  }): Promise<void>;
+  requireCleanup(providerKeyId: string): Promise<boolean>;
+  claimCleanup(providerKeyId: string): Promise<
+    | { state: "attached" }
+    | { state: "done" }
+    | { state: "busy" }
+    | {
+        state: "claimed";
+        claim: { token: string; generation: number };
+      }
+  >;
+  finishCleanup(input: {
+    providerKeyId: string;
+    claim: { token: string; generation: number };
+  }): Promise<boolean>;
+  failCleanup(input: {
+    providerKeyId: string;
+    claim: { token: string; generation: number };
+    errorCode: string;
+  }): Promise<boolean>;
   beginProvisioning(input: {
     id: string;
     userId: string;
@@ -123,6 +157,49 @@ function isSamePeriod(
 export function createManagedKeyLifecycle(
   dependencies: ManagedKeyLifecycleDependencies,
 ) {
+  async function cleanupTrackedKey(
+    providerKeyId: string,
+    force: boolean,
+  ): Promise<void> {
+    if (force) {
+      await dependencies.store.requireCleanup(providerKeyId);
+    }
+    const cleanup = await dependencies.store.claimCleanup(providerKeyId);
+    if (cleanup.state === "attached" || cleanup.state === "done") {
+      return;
+    }
+    if (cleanup.state === "busy") {
+      if (!force) {
+        return;
+      }
+      throw new ManagedKeyLifecycleError("managed_key_revocation_failed");
+    }
+    try {
+      await dependencies.managementClient.disableKey(providerKeyId);
+      const finished = await dependencies.store.finishCleanup({
+        providerKeyId,
+        claim: cleanup.claim,
+      });
+      if (!finished) {
+        throw new Error("Managed key cleanup claim was lost");
+      }
+    } catch {
+      await dependencies.store.failCleanup({
+        providerKeyId,
+        claim: cleanup.claim,
+        errorCode: "management_unavailable",
+      });
+      throw new ManagedKeyLifecycleError("managed_key_revocation_failed");
+    }
+  }
+
+  async function cleanupTrackedKeys(userId: string): Promise<void> {
+    const jobs = await dependencies.store.listCleanupForUser(userId);
+    for (const job of jobs) {
+      await cleanupTrackedKey(job.providerKeyId, false);
+    }
+  }
+
   async function revokeKey(key: StoredManagedInferenceKey): Promise<void> {
     if (key.lifecycleState === "revoked") {
       return;
@@ -175,6 +252,7 @@ export function createManagedKeyLifecycle(
 
   return {
     async sync(entitlement: ManagedEntitlementState): Promise<void> {
+      await cleanupTrackedKeys(entitlement.userId);
       const keys = await dependencies.store.listForUser(entitlement.userId);
       if (entitlement.state === "inactive") {
         await revokeStaleKeys(keys, null);
@@ -212,17 +290,29 @@ export function createManagedKeyLifecycle(
         const orphanedProviderKeyIds =
           await dependencies.managementClient.findKeyIdsByName(identity.label);
         for (const providerKeyId of orphanedProviderKeyIds) {
-          await dependencies.managementClient.disableKey(providerKeyId);
+          await dependencies.store.trackRemoteKey({
+            providerKeyId,
+            userId: entitlement.userId,
+            managedKeyId: null,
+            label: identity.label,
+          });
+          await cleanupTrackedKey(providerKeyId, true);
         }
         const created = await dependencies.managementClient.createKey({
           name: identity.label,
           expiresAt: entitlement.periodEnd,
         });
         createdProviderKeyId = created.providerKeyId;
+        await dependencies.store.trackRemoteKey({
+          providerKeyId: created.providerKeyId,
+          userId: entitlement.userId,
+          managedKeyId: provisioningRecord.id,
+          label: identity.label,
+        });
         if (
           !(await dependencies.store.shouldKeyRemainActive(provisioningRecord))
         ) {
-          await dependencies.managementClient.disableKey(created.providerKeyId);
+          await cleanupTrackedKey(created.providerKeyId, true);
           remoteKeyDisabled = true;
           await dependencies.store.discardProvisioning({
             id: provisioningRecord.id,
@@ -242,20 +332,16 @@ export function createManagedKeyLifecycle(
           envelope,
         });
         if (!activated) {
-          await dependencies.managementClient.disableKey(created.providerKeyId);
+          await cleanupTrackedKey(created.providerKeyId, true);
           remoteKeyDisabled = true;
-          throw new ManagedKeyLifecycleError(
-            "managed_key_provisioning_in_progress",
-          );
+          return;
         }
-      } catch (error) {
+      } catch {
         if (createdProviderKeyId && !remoteKeyDisabled) {
           try {
-            await dependencies.managementClient.disableKey(
-              createdProviderKeyId,
-            );
+            await cleanupTrackedKey(createdProviderKeyId, true);
           } catch {
-            // The deterministic name is reconciled before the next create.
+            // The durable cleanup job is retried before later lifecycle work.
           }
         }
         await dependencies.store.markFailed({
@@ -263,12 +349,6 @@ export function createManagedKeyLifecycle(
           claim: provisioning.claim,
           errorCode: "management_unavailable",
         });
-        if (
-          error instanceof ManagedKeyLifecycleError &&
-          error.message === "managed_key_provisioning_in_progress"
-        ) {
-          return;
-        }
         throw new ManagedKeyLifecycleError("managed_key_provisioning_failed");
       }
 

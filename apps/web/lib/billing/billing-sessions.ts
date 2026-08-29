@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash, randomInt } from "node:crypto";
 import type StripeSdk from "stripe";
+import type { CheckoutRequestParameters } from "./billing-checkout-request";
 
 const INTEGRATION_ALPHABET = "abcdefghijklmnopqrstuvwxyz";
 const INTEGRATION_SUFFIX_LENGTH = 8;
@@ -64,6 +65,19 @@ export interface BillingCheckoutStore {
     | {
         state: "claimed";
         claim: { token: string; generation: number };
+        request: CheckoutRequestParameters | null;
+      }
+  >;
+  prepareCheckout(input: {
+    userId: string;
+    claim: { token: string; generation: number };
+    request: CheckoutRequestParameters;
+  }): Promise<
+    | { accepted: false }
+    | {
+        accepted: true;
+        claim: { token: string; generation: number };
+        request: CheckoutRequestParameters;
       }
   >;
   publishCheckout(input: {
@@ -74,7 +88,7 @@ export interface BillingCheckoutStore {
     accepted: boolean;
     currentSession: CheckoutSessionReference | null;
   }>;
-  failCheckout(input: {
+  abandonCheckout(input: {
     userId: string;
     claim: { token: string; generation: number };
   }): Promise<boolean>;
@@ -146,67 +160,75 @@ export function createBillingSessionService(
         };
       }
 
-      const claim = reservation.claim;
+      let claim = reservation.claim;
       const stripeCustomerId =
         await dependencies.customerStore.getStripeCustomerIdForUser(
           input.userId,
         );
       const ownershipMetadata = {
-        launchstack_plan: "pro",
+        launchstack_plan: "pro" as const,
         launchstack_user_id: input.userId,
       };
-      try {
-        if (stripeCustomerId) {
-          const subscriptions = await dependencies.stripe.subscriptions.list({
-            customer: stripeCustomerId,
-            price: dependencies.config.proPriceId,
-            status: "all",
-            limit: 10,
+      if (stripeCustomerId) {
+        const subscriptions = await dependencies.stripe.subscriptions.list({
+          customer: stripeCustomerId,
+          price: dependencies.config.proPriceId,
+          status: "all",
+          limit: 10,
+        });
+        if (
+          subscriptions.data.some(
+            (subscription) =>
+              subscription.status !== "canceled" &&
+              subscription.status !== "incomplete_expired",
+          )
+        ) {
+          await dependencies.checkoutStore.abandonCheckout({
+            userId: input.userId,
+            claim,
           });
-          if (
-            subscriptions.data.some(
-              (subscription) =>
-                subscription.status !== "canceled" &&
-                subscription.status !== "incomplete_expired",
-            )
-          ) {
-            throw new BillingSessionError("pro_subscription_exists");
-          }
-          const sessions = await dependencies.stripe.checkout.sessions.list({
-            customer: stripeCustomerId,
-            status: "open",
-            limit: 10,
-          });
-          const reusable = sessions.data.find(
-            (session) =>
-              session.url !== null &&
-              session.mode === "subscription" &&
-              session.client_reference_id === input.userId &&
-              session.metadata?.launchstack_plan === "pro" &&
-              session.metadata.launchstack_user_id === input.userId,
-          );
-          if (reusable?.url) {
-            const published = await dependencies.checkoutStore.publishCheckout({
-              userId: input.userId,
-              claim,
-              session: {
-                id: reusable.id,
-                url: reusable.url,
-                expiresAt: new Date(reusable.expires_at * 1000),
-              },
-            });
-            if (published.accepted || published.currentSession) {
-              const current = published.currentSession ?? {
-                id: reusable.id,
-                url: reusable.url,
-              };
-              return { id: current.id, url: current.url };
-            }
-            throw new BillingSessionError("billing_checkout_in_progress");
-          }
+          throw new BillingSessionError("pro_subscription_exists");
         }
-        const session = await dependencies.stripe.checkout.sessions.create(
-          {
+        const sessions = await dependencies.stripe.checkout.sessions.list({
+          customer: stripeCustomerId,
+          status: "open",
+          limit: 10,
+        });
+        const reusable = sessions.data.find(
+          (session) =>
+            session.url !== null &&
+            session.mode === "subscription" &&
+            session.client_reference_id === input.userId &&
+            session.metadata?.launchstack_plan === "pro" &&
+            session.metadata.launchstack_user_id === input.userId,
+        );
+        if (reusable?.url) {
+          const published = await dependencies.checkoutStore.publishCheckout({
+            userId: input.userId,
+            claim,
+            session: {
+              id: reusable.id,
+              url: reusable.url,
+              expiresAt: new Date(reusable.expires_at * 1000),
+            },
+          });
+          if (published.accepted || published.currentSession) {
+            const current = published.currentSession ?? {
+              id: reusable.id,
+              url: reusable.url,
+            };
+            return { id: current.id, url: current.url };
+          }
+          throw new BillingSessionError("billing_checkout_in_progress");
+        }
+      }
+
+      let checkoutRequest = reservation.request;
+      if (!checkoutRequest) {
+        const prepared = await dependencies.checkoutStore.prepareCheckout({
+          userId: input.userId,
+          claim,
+          request: {
             mode: "subscription",
             ...(stripeCustomerId
               ? { customer: stripeCustomerId }
@@ -223,49 +245,52 @@ export function createBillingSessionService(
             success_url: `${appOrigin}/settings/billing?checkout=success`,
             cancel_url: `${appOrigin}/settings/billing?checkout=cancelled`,
           },
-          {
-            idempotencyKey: checkoutIdempotencyKey(
-              input.userId,
-              claim.generation,
-            ),
-          },
-        );
-        if (!session.url) {
-          throw new Error("billing_session_unavailable");
-        }
-        const published = await dependencies.checkoutStore.publishCheckout({
-          userId: input.userId,
-          claim,
-          session: {
-            id: session.id,
-            url: session.url,
-            expiresAt: new Date(
-              (session.expires_at ??
-                Math.floor(Date.now() / 1000) + 24 * 60 * 60) * 1000,
-            ),
-          },
         });
-        if (!published.accepted) {
-          if (published.currentSession) {
-            if (published.currentSession.id !== session.id) {
-              await dependencies.stripe.checkout.sessions.expire(session.id);
-            }
-            return {
-              id: published.currentSession.id,
-              url: published.currentSession.url,
-            };
-          }
-          await dependencies.stripe.checkout.sessions.expire(session.id);
+        if (!prepared.accepted) {
           throw new BillingSessionError("billing_checkout_in_progress");
         }
-        return { id: session.id, url: session.url };
-      } catch (error) {
-        await dependencies.checkoutStore.failCheckout({
-          userId: input.userId,
-          claim,
-        });
-        throw error;
+        claim = prepared.claim;
+        checkoutRequest = prepared.request;
       }
+
+      const session = await dependencies.stripe.checkout.sessions.create(
+        checkoutRequest,
+        {
+          idempotencyKey: checkoutIdempotencyKey(
+            input.userId,
+            claim.generation,
+          ),
+        },
+      );
+      if (!session.url) {
+        throw new Error("billing_session_unavailable");
+      }
+      const published = await dependencies.checkoutStore.publishCheckout({
+        userId: input.userId,
+        claim,
+        session: {
+          id: session.id,
+          url: session.url,
+          expiresAt: new Date(
+            (session.expires_at ??
+              Math.floor(Date.now() / 1000) + 24 * 60 * 60) * 1000,
+          ),
+        },
+      });
+      if (!published.accepted) {
+        if (published.currentSession) {
+          if (published.currentSession.id !== session.id) {
+            await dependencies.stripe.checkout.sessions.expire(session.id);
+          }
+          return {
+            id: published.currentSession.id,
+            url: published.currentSession.url,
+          };
+        }
+        await dependencies.stripe.checkout.sessions.expire(session.id);
+        throw new BillingSessionError("billing_checkout_in_progress");
+      }
+      return { id: session.id, url: session.url };
     },
 
     async createPortal(input: { userId: string }) {

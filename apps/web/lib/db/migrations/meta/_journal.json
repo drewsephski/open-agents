@@ -302,6 +302,13 @@
       "when": 1787966866943,
       "tag": "0042_mean_guardsmen",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1787968502869,
+      "tag": "0043_safe_king_bedlam",
+      "breakpoints": true
     }
   ]
 }

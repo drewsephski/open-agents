@@ -31,18 +31,84 @@ function createHarness() {
   const keys: TestKey[] = [];
   const createCalls: Array<{ name: string; expiresAt: Date }> = [];
   const disableCalls: string[] = [];
+  const activeRemoteKeyIds = new Set<string>();
   let createError: Error | null = null;
+  let disableError: Error | null = null;
   let provisioningClaimed = true;
   let claimGeneration = 0;
   let authoritativeEntitlement = entitlement;
   let creationGate: Promise<void> | null = null;
   let releaseCreation: (() => void) | null = null;
   const claims = new Map<string, { token: string; generation: number }>();
+  const cleanupJobs = new Map<
+    string,
+    {
+      providerKeyId: string;
+      userId: string;
+      managedKeyId: string | null;
+      label: string;
+      state: "pending" | "processing" | "attached" | "done";
+      claim: { token: string; generation: number } | null;
+      generation: number;
+    }
+  >();
 
   const lifecycle = createManagedKeyLifecycle({
     store: {
       listForUser: async (userId) =>
         keys.filter((key) => key.userId === userId),
+      listCleanupForUser: async (userId) =>
+        [...cleanupJobs.values()].filter(
+          (job) =>
+            job.userId === userId &&
+            (job.state === "pending" || job.state === "processing"),
+        ),
+      trackRemoteKey: async (input) => {
+        if (!cleanupJobs.has(input.providerKeyId)) {
+          cleanupJobs.set(input.providerKeyId, {
+            ...input,
+            state: "pending",
+            claim: null,
+            generation: 0,
+          });
+        }
+      },
+      requireCleanup: async (providerKeyId) =>
+        cleanupJobs.get(providerKeyId)?.state === "pending",
+      claimCleanup: async (providerKeyId) => {
+        const job = cleanupJobs.get(providerKeyId);
+        if (!job) {
+          return { state: "busy" as const };
+        }
+        if (job.state === "attached" || job.state === "done") {
+          return { state: job.state };
+        }
+        job.generation += 1;
+        job.claim = {
+          token: `cleanup-${providerKeyId}-${job.generation}`,
+          generation: job.generation,
+        };
+        job.state = "processing";
+        return { state: "claimed" as const, claim: job.claim };
+      },
+      finishCleanup: async (input) => {
+        const job = cleanupJobs.get(input.providerKeyId);
+        if (job?.claim?.token !== input.claim.token) {
+          return false;
+        }
+        job.state = "done";
+        job.claim = null;
+        return true;
+      },
+      failCleanup: async (input) => {
+        const job = cleanupJobs.get(input.providerKeyId);
+        if (job?.claim?.token !== input.claim.token) {
+          return false;
+        }
+        job.state = "pending";
+        job.claim = null;
+        return true;
+      },
       beginProvisioning: async (input) => {
         if (!provisioningClaimed) {
           return { state: "busy" as const };
@@ -87,10 +153,15 @@ function createHarness() {
         ) {
           return false;
         }
+        const cleanup = cleanupJobs.get(input.providerKeyId);
+        if (!cleanup || cleanup.state !== "pending") {
+          return false;
+        }
         Object.assign(key, input, {
           lifecycleState: "active",
           provisioningErrorCode: null,
         });
+        cleanup.state = "attached";
         claims.delete(input.id);
         return true;
       },
@@ -166,6 +237,7 @@ function createHarness() {
           releaseCreation = null;
         }
         const suffix = String(createCalls.length);
+        activeRemoteKeyIds.add(`provider-hash-${suffix}`);
         return {
           providerKeyId: `provider-hash-${suffix}`,
           plaintext: `sk-or-v1-managed-${suffix}`,
@@ -174,6 +246,10 @@ function createHarness() {
       },
       disableKey: async (providerKeyId) => {
         disableCalls.push(providerKeyId);
+        if (disableError) {
+          throw disableError;
+        }
+        activeRemoteKeyIds.delete(providerKeyId);
       },
       findKeyIdsByName: async () => [],
     },
@@ -187,11 +263,15 @@ function createHarness() {
 
   return {
     keys,
+    activeRemoteKeyIds,
     createCalls,
     disableCalls,
     lifecycle,
     failCreation(error: Error) {
       createError = error;
+    },
+    failDisable(error: Error | null) {
+      disableError = error;
     },
     setProvisioningClaimed(claimed: boolean) {
       provisioningClaimed = claimed;
@@ -311,6 +391,30 @@ describe("managed OpenRouter key lifecycle", () => {
     expect(harness.keys[0]?.providerKeyId).toBeNull();
   });
 
+  test("durably retries cleanup when entitlement is lost and remote disable fails", async () => {
+    const harness = createHarness();
+    const releaseCreation = harness.blockCreation();
+    harness.failDisable(new Error("management timeout"));
+
+    const provisioning = harness.lifecycle.sync(entitlement);
+    while (harness.createCalls.length === 0) {
+      await Promise.resolve();
+    }
+    const inactiveEntitlement = { ...entitlement, state: "inactive" as const };
+    harness.setAuthoritativeEntitlement(inactiveEntitlement);
+    releaseCreation();
+    await expect(provisioning).rejects.toThrow(
+      "managed_key_provisioning_failed",
+    );
+    expect(harness.activeRemoteKeyIds.has("provider-hash-1")).toBe(true);
+
+    harness.failDisable(null);
+    await harness.lifecycle.sync(inactiveEntitlement);
+
+    expect(harness.activeRemoteKeyIds.has("provider-hash-1")).toBe(false);
+    expect(harness.disableCalls).toContain("provider-hash-1");
+  });
+
   test("fences a stale provisioner after its lease is reclaimed", async () => {
     let generation = 0;
     let activeClaim: { token: string; generation: number } | null = null;
@@ -337,8 +441,33 @@ describe("managed OpenRouter key lifecycle", () => {
       releaseFirstCreate = resolve;
     });
     const disabled: string[] = [];
+    const cleanupStates = new Map<
+      string,
+      "pending" | "processing" | "attached" | "done"
+    >();
     const store = {
       listForUser: async () => [key],
+      listCleanupForUser: async () => [],
+      trackRemoteKey: async (input: { providerKeyId: string }) => {
+        cleanupStates.set(input.providerKeyId, "pending");
+      },
+      requireCleanup: async () => true,
+      claimCleanup: async (providerKeyId: string) => {
+        const state = cleanupStates.get(providerKeyId);
+        if (state === "attached" || state === "done") {
+          return { state };
+        }
+        cleanupStates.set(providerKeyId, "processing");
+        return {
+          state: "claimed" as const,
+          claim: { token: `cleanup-${providerKeyId}`, generation: 1 },
+        };
+      },
+      finishCleanup: async (input: { providerKeyId: string }) => {
+        cleanupStates.set(input.providerKeyId, "done");
+        return true;
+      },
+      failCleanup: async () => true,
       beginProvisioning: async () => {
         generation += 1;
         activeClaim = { token: `claim-${generation}`, generation };
@@ -361,6 +490,7 @@ describe("managed OpenRouter key lifecycle", () => {
         }
         key.providerKeyId = input.providerKeyId;
         key.lifecycleState = "active";
+        cleanupStates.set(input.providerKeyId, "attached");
         return true;
       },
       discardProvisioning: async () => false,
