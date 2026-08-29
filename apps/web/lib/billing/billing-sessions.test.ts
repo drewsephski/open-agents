@@ -2,13 +2,40 @@ import { describe, expect, mock, test } from "bun:test";
 
 mock.module("server-only", () => ({}));
 
-const { BillingCustomerRequiredError, createBillingSessionService } =
+const { BillingSessionError, createBillingSessionService } =
   await import("./billing-sessions");
 
 const config = {
   proPriceId: "price_pro_monthly",
   appOrigin: "https://launchstack.sh",
 };
+
+function availableCheckoutStore() {
+  return {
+    claimCheckout: async () => ({
+      state: "claimed" as const,
+      claim: { token: "claim", generation: 1 },
+    }),
+    publishCheckout: async (input: {
+      session: { id: string; url: string; expiresAt: Date };
+    }) => ({
+      accepted: true,
+      currentSession: input.session,
+    }),
+    failCheckout: async () => true,
+  };
+}
+
+function emptyCheckoutSessionOperations() {
+  return {
+    list: async () => ({ data: [] }),
+    expire: async () => undefined,
+  };
+}
+
+function emptySubscriptionOperations() {
+  return { list: async () => ({ data: [] }) };
+}
 
 describe("billing sessions", () => {
   test("creates an owned monthly Pro Checkout Session with dynamic payment methods", async () => {
@@ -17,12 +44,14 @@ describe("billing sessions", () => {
       stripe: {
         checkout: {
           sessions: {
+            ...emptyCheckoutSessionOperations(),
             create: async (params) => {
               checkoutCalls.push(params);
               return { id: "cs_123", url: "https://checkout.stripe.com/c/123" };
             },
           },
         },
+        subscriptions: emptySubscriptionOperations(),
         billingPortal: {
           sessions: {
             create: async () => ({ url: "https://billing.stripe.com/p/123" }),
@@ -32,6 +61,7 @@ describe("billing sessions", () => {
       customerStore: {
         getStripeCustomerIdForUser: async () => "cus_owned",
       },
+      checkoutStore: availableCheckoutStore(),
       config,
       integrationSuffix: () => "abcdefgh",
     });
@@ -78,12 +108,14 @@ describe("billing sessions", () => {
       stripe: {
         checkout: {
           sessions: {
+            ...emptyCheckoutSessionOperations(),
             create: async (params) => {
               checkoutCalls.push(params);
               return { id: "cs_new", url: "https://checkout.stripe.com/c/new" };
             },
           },
         },
+        subscriptions: emptySubscriptionOperations(),
         billingPortal: {
           sessions: {
             create: async () => ({ url: "https://billing.stripe.com/p/new" }),
@@ -93,6 +125,7 @@ describe("billing sessions", () => {
       customerStore: {
         getStripeCustomerIdForUser: async () => null,
       },
+      checkoutStore: availableCheckoutStore(),
       config,
       integrationSuffix: () => "ijklmnop",
     });
@@ -113,9 +146,11 @@ describe("billing sessions", () => {
       stripe: {
         checkout: {
           sessions: {
+            ...emptyCheckoutSessionOperations(),
             create: async () => ({ id: "cs_unused", url: null }),
           },
         },
+        subscriptions: emptySubscriptionOperations(),
         billingPortal: {
           sessions: {
             create: async (params) => {
@@ -129,6 +164,7 @@ describe("billing sessions", () => {
         getStripeCustomerIdForUser: async (userId) =>
           userId === "user-1" ? "cus_owned" : null,
       },
+      checkoutStore: availableCheckoutStore(),
       config,
       integrationSuffix: () => "qrstuvwx",
     });
@@ -144,6 +180,178 @@ describe("billing sessions", () => {
     ]);
     await expect(
       service.createPortal({ userId: "user-2" }),
-    ).rejects.toBeInstanceOf(BillingCustomerRequiredError);
+    ).rejects.toBeInstanceOf(BillingSessionError);
+  });
+
+  test("allows only one concurrent first-time Checkout creation", async () => {
+    let checkoutCreateCount = 0;
+    let releaseFirstCreate: (() => void) | undefined;
+    const firstCreateBlocked = new Promise<void>((resolve) => {
+      releaseFirstCreate = resolve;
+    });
+    let claimed = false;
+    const service = createBillingSessionService({
+      stripe: {
+        checkout: {
+          sessions: {
+            ...emptyCheckoutSessionOperations(),
+            create: async () => {
+              checkoutCreateCount += 1;
+              if (checkoutCreateCount === 1) {
+                await firstCreateBlocked;
+              }
+              return {
+                id: `cs_${checkoutCreateCount}`,
+                url: `https://checkout.stripe.com/c/${checkoutCreateCount}`,
+                expires_at: 1_788_220_800,
+              };
+            },
+          },
+        },
+        subscriptions: emptySubscriptionOperations(),
+        billingPortal: {
+          sessions: {
+            create: async () => ({ url: "https://billing.stripe.com/p/new" }),
+          },
+        },
+      },
+      customerStore: {
+        getStripeCustomerIdForUser: async () => null,
+      },
+      checkoutStore: {
+        claimCheckout: async () => {
+          if (claimed) {
+            return { state: "busy" as const };
+          }
+          claimed = true;
+          return {
+            state: "claimed" as const,
+            claim: { token: "claim-1", generation: 1 },
+          };
+        },
+        publishCheckout: async (input: {
+          session: { id: string; url: string; expiresAt: Date };
+        }) => ({
+          accepted: true,
+          currentSession: input.session,
+        }),
+        failCheckout: async () => true,
+      },
+      config,
+      integrationSuffix: () => "concurre",
+    });
+
+    const first = service.createCheckout({
+      userId: "user-concurrent",
+      email: "owner@example.com",
+    });
+    while (checkoutCreateCount === 0) {
+      await Promise.resolve();
+    }
+    await expect(
+      service.createCheckout({
+        userId: "user-concurrent",
+        email: "owner@example.com",
+      }),
+    ).rejects.toThrow("billing_checkout_in_progress");
+    expect(checkoutCreateCount).toBe(1);
+
+    releaseFirstCreate?.();
+    await expect(first).resolves.toMatchObject({ id: "cs_1" });
+  });
+
+  test("reuses the authoritative open Checkout reservation on repeat requests", async () => {
+    let stripeCallCount = 0;
+    const service = createBillingSessionService({
+      stripe: {
+        checkout: {
+          sessions: {
+            ...emptyCheckoutSessionOperations(),
+            create: async () => {
+              stripeCallCount += 1;
+              return { id: "cs_unexpected", url: null };
+            },
+          },
+        },
+        subscriptions: emptySubscriptionOperations(),
+        billingPortal: {
+          sessions: {
+            create: async () => ({ url: "https://billing.stripe.com/p/new" }),
+          },
+        },
+      },
+      customerStore: {
+        getStripeCustomerIdForUser: async () => {
+          stripeCallCount += 1;
+          return null;
+        },
+      },
+      checkoutStore: {
+        claimCheckout: async () => ({
+          state: "existing" as const,
+          session: {
+            id: "cs_existing",
+            url: "https://checkout.stripe.com/c/existing",
+            expiresAt: new Date("2026-09-01T00:00:00.000Z"),
+          },
+        }),
+        publishCheckout: async () => ({
+          accepted: false,
+          currentSession: null,
+        }),
+        failCheckout: async () => false,
+      },
+      config,
+    });
+
+    await expect(
+      service.createCheckout({ userId: "user-1", email: "owner@example.com" }),
+    ).resolves.toEqual({
+      id: "cs_existing",
+      url: "https://checkout.stripe.com/c/existing",
+    });
+    expect(stripeCallCount).toBe(0);
+  });
+
+  test("denies a second Pro subscription found on the owned Stripe customer", async () => {
+    let checkoutCreateCount = 0;
+    const service = createBillingSessionService({
+      stripe: {
+        checkout: {
+          sessions: {
+            create: async () => {
+              checkoutCreateCount += 1;
+              return {
+                id: "cs_duplicate",
+                url: "https://checkout.stripe.com/c",
+              };
+            },
+            list: async () => ({ data: [] }),
+            expire: async () => undefined,
+          },
+        },
+        subscriptions: {
+          list: async () => ({
+            data: [{ id: "sub_existing", status: "active" }],
+          }),
+        },
+        billingPortal: {
+          sessions: {
+            create: async () => ({ url: "https://billing.stripe.com/p/owned" }),
+          },
+        },
+      },
+      customerStore: {
+        getStripeCustomerIdForUser: async () => "cus_owned",
+      },
+      checkoutStore: availableCheckoutStore(),
+      config,
+      integrationSuffix: () => "existing",
+    });
+
+    await expect(
+      service.createCheckout({ userId: "user-1", email: "owner@example.com" }),
+    ).rejects.toThrow("pro_subscription_exists");
+    expect(checkoutCreateCount).toBe(0);
   });
 });

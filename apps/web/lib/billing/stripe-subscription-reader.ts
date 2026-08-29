@@ -48,9 +48,7 @@ export function createStripeSubscriptionReader(
       };
     },
 
-    async resolveSubscriptionIdForPaymentIntent(
-      paymentIntentId: string,
-    ): Promise<string | null> {
+    async resolveSubscriptionPeriodForPaymentIntent(paymentIntentId: string) {
       const invoicePayments = await dependencies.stripe.invoicePayments.list({
         payment: {
           type: "payment_intent",
@@ -73,7 +71,22 @@ export function createStripeSubscriptionReader(
         return null;
       }
       const subscription = invoice.parent?.subscription_details?.subscription;
-      return subscription ? resourceId(subscription) : null;
+      const line = invoice.lines.data.find(
+        (candidate) =>
+          candidate.pricing?.type === "price_details" &&
+          candidate.pricing.price_details !== undefined &&
+          resourceId(candidate.pricing.price_details.price) ===
+            dependencies.proPriceId,
+      );
+      return subscription && line
+        ? {
+            subscriptionId: resourceId(subscription),
+            period: {
+              start: new Date(line.period.start * 1000),
+              end: new Date(line.period.end * 1000),
+            },
+          }
+        : null;
     },
   };
 }

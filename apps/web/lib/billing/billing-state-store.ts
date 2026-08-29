@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, lt, or } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { db } from "@/lib/db/client";
 import {
@@ -9,8 +9,40 @@ import {
   billingWebhookReceipts,
 } from "@/lib/db/schema";
 import type { ManagedEntitlementState } from "./managed-key-lifecycle";
+import type { StripeBillingPeriod } from "./billing-reconciliation";
 
 const EVENT_PROCESSING_LEASE_MS = 5 * 60 * 1000;
+
+function samePeriod(
+  left: { start: Date | null; end: Date | null },
+  right: StripeBillingPeriod,
+): boolean {
+  return (
+    left.start?.getTime() === right.start.getTime() &&
+    left.end?.getTime() === right.end.getTime()
+  );
+}
+
+function isPaidPeriod(input: {
+  financialState:
+    | "unpaid"
+    | "paid"
+    | "partially_refunded"
+    | "fully_refunded"
+    | "disputed";
+  paidPeriodStart: Date | null;
+  paidPeriodEnd: Date | null;
+  period: StripeBillingPeriod;
+}): boolean {
+  return (
+    (input.financialState === "paid" ||
+      input.financialState === "partially_refunded") &&
+    samePeriod(
+      { start: input.paidPeriodStart, end: input.paidPeriodEnd },
+      input.period,
+    )
+  );
+}
 
 function toManagedEntitlementState(row: {
   id: string;
@@ -34,6 +66,8 @@ function toManagedEntitlementState(row: {
 export const billingStateStore = {
   async claimEvent(event: { id: string; type: string; createdAt: Date }) {
     const now = new Date();
+    const claimToken = nanoid();
+    const leaseExpiresAt = new Date(now.getTime() + EVENT_PROCESSING_LEASE_MS);
     const [inserted] = await db
       .insert(billingWebhookReceipts)
       .values({
@@ -41,12 +75,29 @@ export const billingStateStore = {
         eventType: event.type,
         eventCreatedAt: event.createdAt,
         processingState: "processing",
+        claimToken,
+        claimGeneration: 1,
+        leaseExpiresAt,
         receivedAt: now,
       })
       .onConflictDoNothing()
-      .returning({ stripeEventId: billingWebhookReceipts.stripeEventId });
+      .returning({
+        stripeEventId: billingWebhookReceipts.stripeEventId,
+        claimToken: billingWebhookReceipts.claimToken,
+        claimGeneration: billingWebhookReceipts.claimGeneration,
+      });
     if (inserted) {
-      return "claimed" as const;
+      if (!inserted.claimToken) {
+        throw new Error("Webhook receipt claim token is missing");
+      }
+      return {
+        state: "claimed" as const,
+        claim: {
+          eventId: inserted.stripeEventId,
+          token: inserted.claimToken,
+          generation: inserted.claimGeneration,
+        },
+      };
     }
 
     const [receipt] = await db
@@ -55,15 +106,17 @@ export const billingStateStore = {
       .where(eq(billingWebhookReceipts.stripeEventId, event.id))
       .limit(1);
     if (receipt?.processingState === "processed") {
-      return "duplicate" as const;
+      return { state: "duplicate" as const };
     }
 
-    const leaseCutoff = new Date(now.getTime() - EVENT_PROCESSING_LEASE_MS);
     const [reclaimed] = await db
       .update(billingWebhookReceipts)
       .set({
         processingState: "processing",
         processingErrorCode: null,
+        claimToken,
+        claimGeneration: sql`${billingWebhookReceipts.claimGeneration} + 1`,
+        leaseExpiresAt,
         receivedAt: now,
         processedAt: null,
       })
@@ -74,35 +127,84 @@ export const billingStateStore = {
             eq(billingWebhookReceipts.processingState, "failed"),
             and(
               eq(billingWebhookReceipts.processingState, "processing"),
-              lt(billingWebhookReceipts.receivedAt, leaseCutoff),
+              or(
+                isNull(billingWebhookReceipts.leaseExpiresAt),
+                lt(billingWebhookReceipts.leaseExpiresAt, now),
+              ),
             ),
           ),
         ),
       )
-      .returning({ stripeEventId: billingWebhookReceipts.stripeEventId });
-    return reclaimed ? ("claimed" as const) : ("busy" as const);
+      .returning({
+        stripeEventId: billingWebhookReceipts.stripeEventId,
+        claimToken: billingWebhookReceipts.claimToken,
+        claimGeneration: billingWebhookReceipts.claimGeneration,
+      });
+    if (!reclaimed) {
+      return { state: "busy" as const };
+    }
+    if (!reclaimed.claimToken) {
+      throw new Error("Webhook receipt claim token is missing");
+    }
+    return {
+      state: "claimed" as const,
+      claim: {
+        eventId: reclaimed.stripeEventId,
+        token: reclaimed.claimToken,
+        generation: reclaimed.claimGeneration,
+      },
+    };
   },
 
-  async markEventProcessed(eventId: string) {
-    await db
+  async markEventProcessed(claim: {
+    eventId: string;
+    token: string;
+    generation: number;
+  }) {
+    const [updated] = await db
       .update(billingWebhookReceipts)
       .set({
         processingState: "processed",
         processingErrorCode: null,
+        claimToken: null,
+        leaseExpiresAt: null,
         processedAt: new Date(),
       })
-      .where(eq(billingWebhookReceipts.stripeEventId, eventId));
+      .where(
+        and(
+          eq(billingWebhookReceipts.stripeEventId, claim.eventId),
+          eq(billingWebhookReceipts.processingState, "processing"),
+          eq(billingWebhookReceipts.claimToken, claim.token),
+          eq(billingWebhookReceipts.claimGeneration, claim.generation),
+        ),
+      )
+      .returning({ stripeEventId: billingWebhookReceipts.stripeEventId });
+    return Boolean(updated);
   },
 
-  async markEventFailed(eventId: string, errorCode: string) {
-    await db
+  async markEventFailed(input: {
+    claim: { eventId: string; token: string; generation: number };
+    errorCode: string;
+  }) {
+    const [updated] = await db
       .update(billingWebhookReceipts)
       .set({
         processingState: "failed",
-        processingErrorCode: errorCode,
+        processingErrorCode: input.errorCode,
+        claimToken: null,
+        leaseExpiresAt: null,
         processedAt: null,
       })
-      .where(eq(billingWebhookReceipts.stripeEventId, eventId));
+      .where(
+        and(
+          eq(billingWebhookReceipts.stripeEventId, input.claim.eventId),
+          eq(billingWebhookReceipts.processingState, "processing"),
+          eq(billingWebhookReceipts.claimToken, input.claim.token),
+          eq(billingWebhookReceipts.claimGeneration, input.claim.generation),
+        ),
+      )
+      .returning({ stripeEventId: billingWebhookReceipts.stripeEventId });
+    return Boolean(updated);
   },
 
   async getUserIdForStripeCustomer(stripeCustomerId: string) {
@@ -205,10 +307,36 @@ export const billingStateStore = {
         return toManagedEntitlementState(existingEntitlement);
       }
 
-      const financialState = existingSubscription?.financialState ?? "paid";
+      const subscriptionPeriod = {
+        start: input.subscription.periodStart,
+        end: input.subscription.periodEnd,
+      };
+      const periodUnchanged = existingSubscription
+        ? samePeriod(
+            {
+              start: existingSubscription.currentPeriodStart,
+              end: existingSubscription.currentPeriodEnd,
+            },
+            subscriptionPeriod,
+          )
+        : false;
+      const financialState = periodUnchanged
+        ? (existingSubscription?.financialState ?? "unpaid")
+        : "unpaid";
+      const paidPeriodStart = periodUnchanged
+        ? (existingSubscription?.paidPeriodStart ?? null)
+        : null;
+      const paidPeriodEnd = periodUnchanged
+        ? (existingSubscription?.paidPeriodEnd ?? null)
+        : null;
       const entitlementState =
         input.subscription.status === "active" &&
-        (financialState === "paid" || financialState === "partially_refunded")
+        isPaidPeriod({
+          financialState,
+          paidPeriodStart,
+          paidPeriodEnd,
+          period: subscriptionPeriod,
+        })
           ? "active"
           : "inactive";
       const now = new Date();
@@ -223,6 +351,8 @@ export const billingStateStore = {
           stripePriceId: input.subscription.stripePriceId,
           status: input.subscription.status,
           financialState,
+          paidPeriodStart,
+          paidPeriodEnd,
           cancelAtPeriodEnd: input.subscription.cancelAtPeriodEnd,
           currentPeriodStart: input.subscription.periodStart,
           currentPeriodEnd: input.subscription.periodEnd,
@@ -237,6 +367,14 @@ export const billingStateStore = {
             stripePriceId: input.subscription.stripePriceId,
             status: input.subscription.status,
             financialState,
+            paidPeriodStart,
+            paidPeriodEnd,
+            latestFinancialEventCreatedAt: periodUnchanged
+              ? existingSubscription?.latestFinancialEventCreatedAt
+              : null,
+            latestFinancialEventId: periodUnchanged
+              ? existingSubscription?.latestFinancialEventId
+              : null,
             cancelAtPeriodEnd: input.subscription.cancelAtPeriodEnd,
             currentPeriodStart: input.subscription.periodStart,
             currentPeriodEnd: input.subscription.periodEnd,
@@ -281,11 +419,14 @@ export const billingStateStore = {
   async reconcileFinancialState(input: {
     subscriptionId: string;
     financialState:
+      | "unpaid"
       | "paid"
       | "partially_refunded"
       | "fully_refunded"
       | "disputed";
+    period: StripeBillingPeriod;
     eventCreatedAt: Date;
+    eventId: string;
   }): Promise<ManagedEntitlementState> {
     return db.transaction(async (tx) => {
       const [subscription] = await tx
@@ -313,16 +454,37 @@ export const billingStateStore = {
         throw new Error("Managed entitlement is missing");
       }
       if (
+        !samePeriod(
+          {
+            start: subscription.currentPeriodStart,
+            end: subscription.currentPeriodEnd,
+          },
+          input.period,
+        )
+      ) {
+        return toManagedEntitlementState(entitlement);
+      }
+      if (
         subscription.latestFinancialEventCreatedAt &&
-        input.eventCreatedAt < subscription.latestFinancialEventCreatedAt
+        (input.eventCreatedAt < subscription.latestFinancialEventCreatedAt ||
+          (input.eventCreatedAt.getTime() ===
+            subscription.latestFinancialEventCreatedAt.getTime() &&
+            subscription.latestFinancialEventId !== null &&
+            input.eventId <= subscription.latestFinancialEventId))
       ) {
         return toManagedEntitlementState(entitlement);
       }
 
       const entitlementState =
         subscription.status === "active" &&
-        (input.financialState === "paid" ||
-          input.financialState === "partially_refunded")
+        isPaidPeriod({
+          financialState: input.financialState,
+          paidPeriodStart:
+            input.financialState === "unpaid" ? null : input.period.start,
+          paidPeriodEnd:
+            input.financialState === "unpaid" ? null : input.period.end,
+          period: input.period,
+        })
           ? "active"
           : "inactive";
       const now = new Date();
@@ -330,7 +492,12 @@ export const billingStateStore = {
         .update(billingSubscriptions)
         .set({
           financialState: input.financialState,
+          paidPeriodStart:
+            input.financialState === "unpaid" ? null : input.period.start,
+          paidPeriodEnd:
+            input.financialState === "unpaid" ? null : input.period.end,
           latestFinancialEventCreatedAt: input.eventCreatedAt,
+          latestFinancialEventId: input.eventId,
           updatedAt: now,
         })
         .where(eq(billingSubscriptions.id, subscription.id));

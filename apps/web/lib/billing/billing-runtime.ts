@@ -4,6 +4,7 @@ import {
   loadCredentialKeyring,
 } from "@/lib/credentials/envelope-encryption";
 import { billingCustomerStore } from "./billing-customer-store";
+import { billingCheckoutStore } from "./billing-checkout-store";
 import {
   getStripeSessionConfig,
   getStripeWebhookConfig,
@@ -26,6 +27,7 @@ export async function createProCheckoutSession(input: {
   const service = createBillingSessionService({
     stripe: getStripeClient(config.secretKey),
     customerStore: billingCustomerStore,
+    checkoutStore: billingCheckoutStore,
     config,
   });
   return service.createCheckout(input);
@@ -36,6 +38,7 @@ export async function createCustomerPortalSession(input: { userId: string }) {
   const service = createBillingSessionService({
     stripe: getStripeClient(config.secretKey),
     customerStore: billingCustomerStore,
+    checkoutStore: billingCheckoutStore,
     config,
   });
   return service.createPortal(input);

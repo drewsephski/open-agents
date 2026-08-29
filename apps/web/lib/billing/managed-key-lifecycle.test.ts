@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { CredentialEnvelope } from "@/lib/credentials/envelope-encryption";
+import type { ManagedEntitlementState } from "./managed-key-lifecycle";
 
 mock.module("server-only", () => ({}));
 
@@ -18,23 +19,45 @@ interface TestKey {
   provisioningErrorCode: string | null;
 }
 
+const entitlement: ManagedEntitlementState = {
+  id: "entitlement-1",
+  userId: "user-1",
+  state: "active",
+  periodStart: new Date("2026-08-01T00:00:00.000Z"),
+  periodEnd: new Date("2026-09-01T00:00:00.000Z"),
+};
+
 function createHarness() {
   const keys: TestKey[] = [];
   const createCalls: Array<{ name: string; expiresAt: Date }> = [];
   const disableCalls: string[] = [];
   let createError: Error | null = null;
   let provisioningClaimed = true;
+  let claimGeneration = 0;
+  let authoritativeEntitlement = entitlement;
+  let creationGate: Promise<void> | null = null;
+  let releaseCreation: (() => void) | null = null;
+  const claims = new Map<string, { token: string; generation: number }>();
 
   const lifecycle = createManagedKeyLifecycle({
     store: {
       listForUser: async (userId) =>
         keys.filter((key) => key.userId === userId),
       beginProvisioning: async (input) => {
+        if (!provisioningClaimed) {
+          return { state: "busy" as const };
+        }
         const existing = keys.find((key) => key.id === input.id);
+        claimGeneration += 1;
+        const claim = {
+          token: `claim-${claimGeneration}`,
+          generation: claimGeneration,
+        };
+        claims.set(input.id, claim);
         if (existing) {
           existing.lifecycleState = "provisioning";
           existing.provisioningErrorCode = null;
-          return { record: existing, claimed: provisioningClaimed };
+          return { state: "claimed" as const, record: existing, claim };
         }
         const key: TestKey = {
           ...input,
@@ -44,36 +67,91 @@ function createHarness() {
           provisioningErrorCode: null,
         };
         keys.push(key);
-        return { record: key, claimed: provisioningClaimed };
+        return { state: "claimed" as const, record: key, claim };
       },
+      shouldKeyRemainActive: async (key) =>
+        authoritativeEntitlement.state === "active" &&
+        key.entitlementId === authoritativeEntitlement.id &&
+        key.periodStart.getTime() ===
+          authoritativeEntitlement.periodStart.getTime() &&
+        key.periodEnd.getTime() ===
+          authoritativeEntitlement.periodEnd.getTime(),
       activate: async (input) => {
         const key = keys.find((candidate) => candidate.id === input.id);
-        if (!key) {
-          throw new Error("missing test key");
+        const claim = claims.get(input.id);
+        if (
+          !key ||
+          !claim ||
+          claim.token !== input.claim.token ||
+          claim.generation !== input.claim.generation
+        ) {
+          return false;
         }
         Object.assign(key, input, {
           lifecycleState: "active",
           provisioningErrorCode: null,
         });
+        claims.delete(input.id);
+        return true;
       },
-      markFailed: async (id, errorCode) => {
-        const key = keys.find((candidate) => candidate.id === id);
-        if (key) {
-          key.lifecycleState = "failed";
-          key.provisioningErrorCode = errorCode;
-        }
-      },
-      markRevoking: async (id) => {
-        const key = keys.find((candidate) => candidate.id === id);
-        if (key) {
-          key.lifecycleState = "revoking";
-        }
-      },
-      markRevoked: async (id) => {
-        const key = keys.find((candidate) => candidate.id === id);
-        if (key) {
+      discardProvisioning: async (input) => {
+        const key = keys.find((candidate) => candidate.id === input.id);
+        const claim = claims.get(input.id);
+        if (key && claim?.token === input.claim.token) {
           key.lifecycleState = "revoked";
+          claims.delete(input.id);
+          return true;
         }
+        return false;
+      },
+      markFailed: async (input) => {
+        const key = keys.find((candidate) => candidate.id === input.id);
+        const claim = claims.get(input.id);
+        if (
+          key &&
+          claim?.token === input.claim.token &&
+          claim.generation === input.claim.generation
+        ) {
+          key.lifecycleState = "failed";
+          key.provisioningErrorCode = input.errorCode;
+          claims.delete(input.id);
+          return true;
+        }
+        return false;
+      },
+      claimRevocation: async (key) => {
+        if (key.lifecycleState === "revoked") {
+          return { state: "revoked" as const };
+        }
+        claimGeneration += 1;
+        const claim = {
+          token: `claim-${claimGeneration}`,
+          generation: claimGeneration,
+        };
+        claims.set(key.id, claim);
+        key.lifecycleState = "revoking";
+        return { state: "claimed" as const, claim };
+      },
+      finishRevocation: async (input) => {
+        const key = keys.find((candidate) => candidate.id === input.id);
+        const claim = claims.get(input.id);
+        if (key && claim?.token === input.claim.token) {
+          key.lifecycleState = "revoked";
+          key.envelope = null;
+          claims.delete(input.id);
+          return true;
+        }
+        return false;
+      },
+      releaseRevocation: async (input) => {
+        const key = keys.find((candidate) => candidate.id === input.id);
+        const claim = claims.get(input.id);
+        if (key && claim?.token === input.claim.token) {
+          key.lifecycleState = "active";
+          claims.delete(input.id);
+          return true;
+        }
+        return false;
       },
     },
     managementClient: {
@@ -81,6 +159,11 @@ function createHarness() {
         createCalls.push(input);
         if (createError) {
           throw createError;
+        }
+        if (creationGate) {
+          await creationGate;
+          creationGate = null;
+          releaseCreation = null;
         }
         const suffix = String(createCalls.length);
         return {
@@ -113,16 +196,17 @@ function createHarness() {
     setProvisioningClaimed(claimed: boolean) {
       provisioningClaimed = claimed;
     },
+    setAuthoritativeEntitlement(value: ManagedEntitlementState) {
+      authoritativeEntitlement = value;
+    },
+    blockCreation() {
+      creationGate = new Promise<void>((resolve) => {
+        releaseCreation = resolve;
+      });
+      return () => releaseCreation?.();
+    },
   };
 }
-
-const entitlement = {
-  id: "entitlement-1",
-  userId: "user-1",
-  state: "active" as const,
-  periodStart: new Date("2026-08-01T00:00:00.000Z"),
-  periodEnd: new Date("2026-09-01T00:00:00.000Z"),
-};
 
 describe("managed OpenRouter key lifecycle", () => {
   test("provisions and encrypts one period-bound key for an entitled user", async () => {
@@ -158,11 +242,13 @@ describe("managed OpenRouter key lifecycle", () => {
     const harness = createHarness();
     await harness.lifecycle.sync(entitlement);
 
-    await harness.lifecycle.sync({
+    const renewedEntitlement = {
       ...entitlement,
       periodStart: new Date("2026-09-01T00:00:00.000Z"),
       periodEnd: new Date("2026-10-01T00:00:00.000Z"),
-    });
+    };
+    harness.setAuthoritativeEntitlement(renewedEntitlement);
+    await harness.lifecycle.sync(renewedEntitlement);
 
     expect(harness.createCalls).toHaveLength(2);
     expect(harness.disableCalls).toEqual(["provider-hash-1"]);
@@ -176,7 +262,9 @@ describe("managed OpenRouter key lifecycle", () => {
     const harness = createHarness();
     await harness.lifecycle.sync(entitlement);
 
-    await harness.lifecycle.sync({ ...entitlement, state: "inactive" });
+    const inactiveEntitlement = { ...entitlement, state: "inactive" as const };
+    harness.setAuthoritativeEntitlement(inactiveEntitlement);
+    await harness.lifecycle.sync(inactiveEntitlement);
 
     expect(harness.disableCalls).toEqual(["provider-hash-1"]);
     expect(harness.keys[0]?.lifecycleState).toBe("revoked");
@@ -204,5 +292,120 @@ describe("managed OpenRouter key lifecycle", () => {
       "managed_key_provisioning_in_progress",
     );
     expect(harness.createCalls).toHaveLength(0);
+  });
+
+  test("revokes a remotely created key when entitlement is lost mid-provision", async () => {
+    const harness = createHarness();
+    const releaseCreation = harness.blockCreation();
+
+    const provisioning = harness.lifecycle.sync(entitlement);
+    while (harness.createCalls.length === 0) {
+      await Promise.resolve();
+    }
+    harness.setAuthoritativeEntitlement({ ...entitlement, state: "inactive" });
+    releaseCreation();
+    await provisioning;
+
+    expect(harness.disableCalls).toEqual(["provider-hash-1"]);
+    expect(harness.keys[0]?.lifecycleState).toBe("revoked");
+    expect(harness.keys[0]?.providerKeyId).toBeNull();
+  });
+
+  test("fences a stale provisioner after its lease is reclaimed", async () => {
+    let generation = 0;
+    let activeClaim: { token: string; generation: number } | null = null;
+    const key: TestKey & {
+      claimToken: string | null;
+      claimGeneration: number;
+    } = {
+      id: "managed-overlap",
+      userId: entitlement.userId,
+      entitlementId: entitlement.id,
+      providerKeyId: null,
+      lifecycleState: "provisioning",
+      label: "overlap",
+      periodStart: entitlement.periodStart,
+      periodEnd: entitlement.periodEnd,
+      envelope: null,
+      provisioningErrorCode: null,
+      claimToken: null,
+      claimGeneration: 0,
+    };
+    let createCount = 0;
+    let releaseFirstCreate: (() => void) | undefined;
+    const firstCreateBlocked = new Promise<void>((resolve) => {
+      releaseFirstCreate = resolve;
+    });
+    const disabled: string[] = [];
+    const store = {
+      listForUser: async () => [key],
+      beginProvisioning: async () => {
+        generation += 1;
+        activeClaim = { token: `claim-${generation}`, generation };
+        key.claimToken = activeClaim.token;
+        key.claimGeneration = activeClaim.generation;
+        key.lifecycleState = "provisioning";
+        return { state: "claimed" as const, record: key, claim: activeClaim };
+      },
+      shouldKeyRemainActive: async () => true,
+      activate: async (input: {
+        claim?: { token: string; generation: number };
+        providerKeyId: string;
+      }) => {
+        if (
+          !input.claim ||
+          input.claim.token !== activeClaim?.token ||
+          input.claim.generation !== activeClaim.generation
+        ) {
+          return false;
+        }
+        key.providerKeyId = input.providerKeyId;
+        key.lifecycleState = "active";
+        return true;
+      },
+      discardProvisioning: async () => false,
+      markFailed: async () => false,
+      claimRevocation: async () => ({ state: "busy" as const }),
+      finishRevocation: async () => true,
+      releaseRevocation: async () => true,
+    };
+    const lifecycle = createManagedKeyLifecycle({
+      store: store as never,
+      managementClient: {
+        createKey: async (input) => {
+          createCount += 1;
+          const suffix = String(createCount);
+          if (createCount === 1) {
+            await firstCreateBlocked;
+          }
+          return {
+            providerKeyId: `provider-${suffix}`,
+            plaintext: `secret-${suffix}`,
+            label: input.name,
+          };
+        },
+        disableKey: async (providerKeyId) => {
+          disabled.push(providerKeyId);
+        },
+        findKeyIdsByName: async () => [],
+      },
+      encrypt: () => ({
+        ciphertext: "ciphertext",
+        nonce: "nonce",
+        authenticationTag: "tag",
+        encryptionKeyVersion: 1,
+      }),
+    });
+
+    const first = lifecycle.sync(entitlement);
+    while (createCount === 0) {
+      await Promise.resolve();
+    }
+    await lifecycle.sync(entitlement);
+    releaseFirstCreate?.();
+    await first;
+
+    expect(key.providerKeyId).toBe("provider-2");
+    expect(disabled).toEqual(["provider-1"]);
   });
 });

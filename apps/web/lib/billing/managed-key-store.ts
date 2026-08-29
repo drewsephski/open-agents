@@ -1,13 +1,14 @@
 import "server-only";
-import { and, eq, lt, or } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import { db } from "@/lib/db/client";
-import { managedInferenceKeys } from "@/lib/db/schema";
+import { billingEntitlements, managedInferenceKeys } from "@/lib/db/schema";
 import type {
   ManagedInferenceKeyStore,
   StoredManagedInferenceKey,
 } from "./managed-key-lifecycle";
 
-const PROVISIONING_LEASE_MS = 5 * 60 * 1000;
+const KEY_OPERATION_LEASE_MS = 5 * 60 * 1000;
 
 function toStoredManagedInferenceKey(
   row: typeof managedInferenceKeys.$inferSelect,
@@ -38,6 +39,13 @@ function toStoredManagedInferenceKey(
   };
 }
 
+function claimFromRow(row: typeof managedInferenceKeys.$inferSelect) {
+  if (!row.claimToken) {
+    throw new Error("Managed key operation claim is missing");
+  }
+  return { token: row.claimToken, generation: row.claimGeneration };
+}
+
 export const managedInferenceKeyStore: ManagedInferenceKeyStore = {
   async listForUser(userId) {
     const rows = await db
@@ -49,8 +57,9 @@ export const managedInferenceKeyStore: ManagedInferenceKeyStore = {
 
   async beginProvisioning(input) {
     const now = new Date();
-    const values = {
-      id: input.id,
+    const claimToken = nanoid();
+    const leaseExpiresAt = new Date(now.getTime() + KEY_OPERATION_LEASE_MS);
+    const baseValues = {
       userId: input.userId,
       entitlementId: input.entitlementId,
       label: input.label,
@@ -58,25 +67,37 @@ export const managedInferenceKeyStore: ManagedInferenceKeyStore = {
       spendLimitMicros: 10_000_000,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
+      providerKeyId: null,
+      ciphertext: null,
+      nonce: null,
+      authenticationTag: null,
+      encryptionKeyVersion: null,
+      keyHash: null,
       provisioningErrorCode: null,
+      claimToken,
+      leaseExpiresAt,
+      revokedAt: null,
       updatedAt: now,
     };
     const [inserted] = await db
       .insert(managedInferenceKeys)
-      .values(values)
+      .values({ id: input.id, ...baseValues, claimGeneration: 1 })
       .onConflictDoNothing()
       .returning();
     if (inserted) {
       return {
+        state: "claimed",
         record: toStoredManagedInferenceKey(inserted),
-        claimed: true,
+        claim: claimFromRow(inserted),
       };
     }
 
-    const leaseCutoff = new Date(now.getTime() - PROVISIONING_LEASE_MS);
     const [reclaimed] = await db
       .update(managedInferenceKeys)
-      .set(values)
+      .set({
+        ...baseValues,
+        claimGeneration: sql`${managedInferenceKeys.claimGeneration} + 1`,
+      })
       .where(
         and(
           eq(managedInferenceKeys.id, input.id),
@@ -86,34 +107,54 @@ export const managedInferenceKeyStore: ManagedInferenceKeyStore = {
             eq(managedInferenceKeys.lifecycleState, "revoked"),
             and(
               eq(managedInferenceKeys.lifecycleState, "provisioning"),
-              lt(managedInferenceKeys.updatedAt, leaseCutoff),
+              or(
+                isNull(managedInferenceKeys.leaseExpiresAt),
+                lt(managedInferenceKeys.leaseExpiresAt, now),
+              ),
             ),
           ),
         ),
       )
       .returning();
     if (reclaimed) {
-      if (reclaimed.userId !== input.userId) {
-        throw new Error("Managed key ownership conflict");
-      }
       return {
+        state: "claimed",
         record: toStoredManagedInferenceKey(reclaimed),
-        claimed: true,
+        claim: claimFromRow(reclaimed),
       };
     }
 
     const [existing] = await db
-      .select()
+      .select({ userId: managedInferenceKeys.userId })
       .from(managedInferenceKeys)
       .where(eq(managedInferenceKeys.id, input.id))
       .limit(1);
     if (!existing || existing.userId !== input.userId) {
       throw new Error("Managed key ownership conflict");
     }
-    return {
-      record: toStoredManagedInferenceKey(existing),
-      claimed: false,
-    };
+    return { state: "busy" };
+  },
+
+  async shouldKeyRemainActive(key) {
+    if (!key.entitlementId) {
+      return false;
+    }
+    const [entitlement] = await db
+      .select({
+        userId: billingEntitlements.userId,
+        state: billingEntitlements.state,
+        periodStart: billingEntitlements.periodStart,
+        periodEnd: billingEntitlements.periodEnd,
+      })
+      .from(billingEntitlements)
+      .where(eq(billingEntitlements.id, key.entitlementId))
+      .limit(1);
+    return (
+      entitlement?.userId === key.userId &&
+      entitlement.state === "active" &&
+      entitlement.periodStart?.getTime() === key.periodStart.getTime() &&
+      entitlement.periodEnd?.getTime() === key.periodEnd.getTime()
+    );
   },
 
   async activate(input) {
@@ -127,50 +168,178 @@ export const managedInferenceKeyStore: ManagedInferenceKeyStore = {
         encryptionKeyVersion: input.envelope.encryptionKeyVersion,
         keyHash: input.keyHash,
         lifecycleState: "active",
+        claimToken: null,
+        leaseExpiresAt: null,
         provisioningErrorCode: null,
         provisionedAt: new Date(),
         rotatedAt: new Date(),
         revokedAt: null,
         updatedAt: new Date(),
       })
-      .where(eq(managedInferenceKeys.id, input.id))
+      .where(
+        and(
+          eq(managedInferenceKeys.id, input.id),
+          eq(managedInferenceKeys.lifecycleState, "provisioning"),
+          eq(managedInferenceKeys.claimToken, input.claim.token),
+          eq(managedInferenceKeys.claimGeneration, input.claim.generation),
+        ),
+      )
       .returning({ id: managedInferenceKeys.id });
-    if (!row) {
-      throw new Error("Managed key activation target is missing");
-    }
+    return Boolean(row);
   },
 
-  async markFailed(id, errorCode) {
-    await db
-      .update(managedInferenceKeys)
-      .set({
-        lifecycleState: "failed",
-        provisioningErrorCode: errorCode,
-        updatedAt: new Date(),
-      })
-      .where(eq(managedInferenceKeys.id, id));
-  },
-
-  async markRevoking(id) {
-    await db
-      .update(managedInferenceKeys)
-      .set({ lifecycleState: "revoking", updatedAt: new Date() })
-      .where(eq(managedInferenceKeys.id, id));
-  },
-
-  async markRevoked(id) {
-    await db
+  async discardProvisioning(input) {
+    const [row] = await db
       .update(managedInferenceKeys)
       .set({
         lifecycleState: "revoked",
+        providerKeyId: null,
         ciphertext: null,
         nonce: null,
         authenticationTag: null,
         encryptionKeyVersion: null,
+        keyHash: null,
+        claimToken: null,
+        leaseExpiresAt: null,
         provisioningErrorCode: null,
         revokedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(managedInferenceKeys.id, id));
+      .where(
+        and(
+          eq(managedInferenceKeys.id, input.id),
+          eq(managedInferenceKeys.lifecycleState, "provisioning"),
+          eq(managedInferenceKeys.claimToken, input.claim.token),
+          eq(managedInferenceKeys.claimGeneration, input.claim.generation),
+        ),
+      )
+      .returning({ id: managedInferenceKeys.id });
+    return Boolean(row);
+  },
+
+  async claimRevocation(key) {
+    if (key.lifecycleState === "revoked") {
+      return { state: "revoked" };
+    }
+    const now = new Date();
+    const claimToken = nanoid();
+    const [claimed] = await db
+      .update(managedInferenceKeys)
+      .set({
+        lifecycleState: "revoking",
+        claimToken,
+        claimGeneration: sql`${managedInferenceKeys.claimGeneration} + 1`,
+        leaseExpiresAt: new Date(now.getTime() + KEY_OPERATION_LEASE_MS),
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(managedInferenceKeys.id, key.id),
+          eq(managedInferenceKeys.userId, key.userId),
+          or(
+            eq(managedInferenceKeys.lifecycleState, "active"),
+            eq(managedInferenceKeys.lifecycleState, "failed"),
+            and(
+              eq(managedInferenceKeys.lifecycleState, "revoking"),
+              or(
+                isNull(managedInferenceKeys.leaseExpiresAt),
+                lt(managedInferenceKeys.leaseExpiresAt, now),
+              ),
+            ),
+          ),
+        ),
+      )
+      .returning();
+    if (!claimed) {
+      const [current] = await db
+        .select({ lifecycleState: managedInferenceKeys.lifecycleState })
+        .from(managedInferenceKeys)
+        .where(
+          and(
+            eq(managedInferenceKeys.id, key.id),
+            eq(managedInferenceKeys.userId, key.userId),
+          ),
+        )
+        .limit(1);
+      return {
+        state: current?.lifecycleState === "revoked" ? "revoked" : "busy",
+      };
+    }
+    return { state: "claimed", claim: claimFromRow(claimed) };
+  },
+
+  async finishRevocation(input) {
+    const [row] = await db
+      .update(managedInferenceKeys)
+      .set({
+        lifecycleState: "revoked",
+        providerKeyId: null,
+        ciphertext: null,
+        nonce: null,
+        authenticationTag: null,
+        encryptionKeyVersion: null,
+        keyHash: null,
+        claimToken: null,
+        leaseExpiresAt: null,
+        provisioningErrorCode: null,
+        revokedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(managedInferenceKeys.id, input.id),
+          eq(managedInferenceKeys.lifecycleState, "revoking"),
+          eq(managedInferenceKeys.claimToken, input.claim.token),
+          eq(managedInferenceKeys.claimGeneration, input.claim.generation),
+        ),
+      )
+      .returning({ id: managedInferenceKeys.id });
+    return Boolean(row);
+  },
+
+  async releaseRevocation(input) {
+    const [row] = await db
+      .update(managedInferenceKeys)
+      .set({
+        lifecycleState: "active",
+        claimToken: null,
+        leaseExpiresAt: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(managedInferenceKeys.id, input.id),
+          eq(managedInferenceKeys.lifecycleState, "revoking"),
+          eq(managedInferenceKeys.claimToken, input.claim.token),
+          eq(managedInferenceKeys.claimGeneration, input.claim.generation),
+        ),
+      )
+      .returning({ id: managedInferenceKeys.id });
+    return Boolean(row);
+  },
+
+  async markFailed(input) {
+    const [row] = await db
+      .update(managedInferenceKeys)
+      .set({
+        lifecycleState: "failed",
+        claimToken: null,
+        leaseExpiresAt: null,
+        provisioningErrorCode: input.errorCode,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(managedInferenceKeys.id, input.id),
+          or(
+            eq(managedInferenceKeys.lifecycleState, "provisioning"),
+            eq(managedInferenceKeys.lifecycleState, "revoking"),
+          ),
+          eq(managedInferenceKeys.claimToken, input.claim.token),
+          eq(managedInferenceKeys.claimGeneration, input.claim.generation),
+        ),
+      )
+      .returning({ id: managedInferenceKeys.id });
+    return Boolean(row);
   },
 };

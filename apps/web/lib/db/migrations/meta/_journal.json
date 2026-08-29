@@ -295,6 +295,13 @@
       "when": 1787963575951,
       "tag": "0041_free_swordsman",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1787966866943,
+      "tag": "0042_mean_guardsmen",
+      "breakpoints": true
     }
   ]
 }

@@ -53,6 +53,8 @@ export async function getBillingCredentialAccessState(
       entitlementPeriodEnd: billingEntitlements.periodEnd,
       subscriptionStatus: billingSubscriptions.status,
       financialState: billingSubscriptions.financialState,
+      paidPeriodStart: billingSubscriptions.paidPeriodStart,
+      paidPeriodEnd: billingSubscriptions.paidPeriodEnd,
       cancelAtPeriodEnd: billingSubscriptions.cancelAtPeriodEnd,
       subscriptionPeriodStart: billingSubscriptions.currentPeriodStart,
       subscriptionPeriodEnd: billingSubscriptions.currentPeriodEnd,
@@ -87,6 +89,9 @@ export async function getBillingCredentialAccessState(
     start: billing.entitlementPeriodStart,
     end: billing.entitlementPeriodEnd,
   };
+  const hasCurrentPaymentProof =
+    billing.paidPeriodStart?.getTime() === period.start.getTime() &&
+    billing.paidPeriodEnd?.getTime() === period.end.getTime();
   const [key] = await db
     .select({
       lifecycleState: managedInferenceKeys.lifecycleState,
@@ -137,7 +142,9 @@ export async function getBillingCredentialAccessState(
     subscription: {
       status: billing.subscriptionStatus,
       entitlementState: billing.entitlementState,
-      financialState: billing.financialState,
+      financialState: hasCurrentPaymentProof
+        ? billing.financialState
+        : "unpaid",
       periodStart: billing.subscriptionPeriodStart,
       periodEnd: billing.subscriptionPeriodEnd,
       cancelAtPeriodEnd: billing.cancelAtPeriodEnd,

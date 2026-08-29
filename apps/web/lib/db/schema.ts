@@ -105,6 +105,31 @@ export const billingCustomers = pgTable(
   ],
 );
 
+export const billingCheckoutReservations = pgTable(
+  "billing_checkout_reservations",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    state: text("state", { enum: ["creating", "open", "failed"] })
+      .notNull()
+      .default("failed"),
+    generation: integer("generation").notNull().default(0),
+    claimToken: text("claim_token"),
+    leaseExpiresAt: timestamp("lease_expires_at"),
+    stripeSessionId: text("stripe_session_id"),
+    sessionUrl: text("session_url"),
+    sessionExpiresAt: timestamp("session_expires_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("billing_checkout_reservations_session_id_idx").on(
+      table.stripeSessionId,
+    ),
+  ],
+);
+
 export const billingSubscriptions = pgTable(
   "billing_subscriptions",
   {
@@ -128,10 +153,16 @@ export const billingSubscriptions = pgTable(
       ],
     }).notNull(),
     financialState: text("financial_state", {
-      enum: ["paid", "partially_refunded", "fully_refunded", "disputed"],
+      enum: [
+        "unpaid",
+        "paid",
+        "partially_refunded",
+        "fully_refunded",
+        "disputed",
+      ],
     })
       .notNull()
-      .default("paid"),
+      .default("unpaid"),
     cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
     currentPeriodStart: timestamp("current_period_start"),
     currentPeriodEnd: timestamp("current_period_end"),
@@ -140,6 +171,9 @@ export const billingSubscriptions = pgTable(
     latestFinancialEventCreatedAt: timestamp(
       "latest_financial_event_created_at",
     ),
+    latestFinancialEventId: text("latest_financial_event_id"),
+    paidPeriodStart: timestamp("paid_period_start"),
+    paidPeriodEnd: timestamp("paid_period_end"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -188,6 +222,9 @@ export const billingWebhookReceipts = pgTable(
       .notNull()
       .default("processing"),
     processingErrorCode: text("processing_error_code"),
+    claimToken: text("claim_token"),
+    claimGeneration: integer("claim_generation").notNull().default(0),
+    leaseExpiresAt: timestamp("lease_expires_at"),
     receivedAt: timestamp("received_at").defaultNow().notNull(),
     processedAt: timestamp("processed_at"),
   },
@@ -224,6 +261,9 @@ export const managedInferenceKeys = pgTable(
     })
       .notNull()
       .default("provisioning"),
+    claimToken: text("claim_token"),
+    claimGeneration: integer("claim_generation").notNull().default(0),
+    leaseExpiresAt: timestamp("lease_expires_at"),
     spendLimitMicros: integer("spend_limit_micros")
       .notNull()
       .default(10_000_000),

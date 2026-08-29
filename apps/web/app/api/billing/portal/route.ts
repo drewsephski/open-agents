@@ -1,5 +1,5 @@
 import { createCustomerPortalSession } from "@/lib/billing/billing-runtime";
-import { BillingCustomerRequiredError } from "@/lib/billing/billing-sessions";
+import { BillingSessionError } from "@/lib/billing/billing-sessions";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 function errorResponse(code: string, status: number) {
@@ -17,7 +17,10 @@ export async function POST() {
       await createCustomerPortalSession({ userId: session.user.id }),
     );
   } catch (error) {
-    if (error instanceof BillingCustomerRequiredError) {
+    if (
+      error instanceof BillingSessionError &&
+      error.code === "billing_customer_required"
+    ) {
       return errorResponse("billing_customer_required", 409);
     }
     console.error("Customer Portal Session creation failed");

@@ -17,6 +17,7 @@ export const entitlementStateSchema = z.enum(["active", "inactive"]);
 export type EntitlementState = z.infer<typeof entitlementStateSchema>;
 
 export const financialStateSchema = z.enum([
+  "unpaid",
   "paid",
   "partially_refunded",
   "fully_refunded",

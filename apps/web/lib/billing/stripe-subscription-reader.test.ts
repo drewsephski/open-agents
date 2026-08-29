@@ -68,6 +68,20 @@ describe("Stripe subscription reader", () => {
                   parent: {
                     subscription_details: { subscription: "sub_1" },
                   },
+                  lines: {
+                    data: [
+                      {
+                        period: {
+                          start: 1_785_542_400,
+                          end: 1_788_220_800,
+                        },
+                        pricing: {
+                          type: "price_details",
+                          price_details: { price: "price_pro" },
+                        },
+                      },
+                    ],
+                  },
                 },
               },
             ],
@@ -82,8 +96,14 @@ describe("Stripe subscription reader", () => {
     });
 
     await expect(
-      reader.resolveSubscriptionIdForPaymentIntent("pi_1"),
-    ).resolves.toBe("sub_1");
+      reader.resolveSubscriptionPeriodForPaymentIntent("pi_1"),
+    ).resolves.toEqual({
+      subscriptionId: "sub_1",
+      period: {
+        start: new Date("2026-08-01T00:00:00.000Z"),
+        end: new Date("2026-09-01T00:00:00.000Z"),
+      },
+    });
     expect(listCalls).toEqual([
       {
         payment: { type: "payment_intent", payment_intent: "pi_1" },

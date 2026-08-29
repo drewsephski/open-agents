@@ -39,8 +39,10 @@ const disputeSchema = z.object({
   status: z.string(),
 });
 
-const paidInvoiceSchema = z.object({
+const subscriptionInvoiceSchema = z.object({
+  id: z.string().min(1),
   object: z.literal("invoice"),
+  status: z.enum(["draft", "open", "paid", "uncollectible", "void"]).nullable(),
   parent: z
     .object({
       subscription_details: z
@@ -48,7 +50,35 @@ const paidInvoiceSchema = z.object({
         .nullable(),
     })
     .nullable(),
+  lines: z.object({
+    data: z.array(
+      z.object({
+        period: z.object({
+          start: z.number().int().nonnegative(),
+          end: z.number().int().nonnegative(),
+        }),
+        pricing: z
+          .object({
+            type: z.literal("price_details"),
+            price_details: z.object({ price: expandableIdSchema }),
+          })
+          .nullable(),
+      }),
+    ),
+  }),
 });
+
+type FinancialState =
+  | "unpaid"
+  | "paid"
+  | "partially_refunded"
+  | "fully_refunded"
+  | "disputed";
+
+export interface StripeBillingPeriod {
+  start: Date;
+  end: Date;
+}
 
 export type ReconciledSubscriptionStatus =
   | "incomplete"
@@ -74,13 +104,23 @@ export interface StripeSubscriptionSnapshot {
 }
 
 interface BillingEventStore {
-  claimEvent(event: {
-    id: string;
-    type: string;
-    createdAt: Date;
-  }): Promise<"claimed" | "duplicate" | "busy">;
-  markEventProcessed(eventId: string): Promise<void>;
-  markEventFailed(eventId: string, errorCode: string): Promise<void>;
+  claimEvent(event: { id: string; type: string; createdAt: Date }): Promise<
+    | { state: "duplicate" }
+    | { state: "busy" }
+    | {
+        state: "claimed";
+        claim: { eventId: string; token: string; generation: number };
+      }
+  >;
+  markEventProcessed(claim: {
+    eventId: string;
+    token: string;
+    generation: number;
+  }): Promise<boolean>;
+  markEventFailed(input: {
+    claim: { eventId: string; token: string; generation: number };
+    errorCode: string;
+  }): Promise<boolean>;
   getUserIdForStripeCustomer(stripeCustomerId: string): Promise<string | null>;
   linkCustomer(input: {
     userId: string;
@@ -93,12 +133,10 @@ interface BillingEventStore {
   }): Promise<ManagedEntitlementState>;
   reconcileFinancialState(input: {
     subscriptionId: string;
-    financialState:
-      | "paid"
-      | "partially_refunded"
-      | "fully_refunded"
-      | "disputed";
+    financialState: FinancialState;
+    period: StripeBillingPeriod;
     eventCreatedAt: Date;
+    eventId: string;
   }): Promise<ManagedEntitlementState>;
 }
 
@@ -109,9 +147,12 @@ interface BillingEventProcessorDependencies {
     retrieveSubscription(
       subscriptionId: string,
     ): Promise<StripeSubscriptionSnapshot>;
-    resolveSubscriptionIdForPaymentIntent(
+    resolveSubscriptionPeriodForPaymentIntent(
       paymentIntentId: string,
-    ): Promise<string | null>;
+    ): Promise<{
+      subscriptionId: string;
+      period: StripeBillingPeriod;
+    } | null>;
   };
   managedKeys: {
     sync(entitlement: ManagedEntitlementState): Promise<void>;
@@ -129,7 +170,9 @@ function isSubscriptionEvent(type: StripeSdk.Event.Type): boolean {
   return (
     type === "customer.subscription.created" ||
     type === "customer.subscription.updated" ||
-    type === "customer.subscription.deleted"
+    type === "customer.subscription.deleted" ||
+    type === "customer.subscription.paused" ||
+    type === "customer.subscription.resumed"
   );
 }
 
@@ -193,12 +236,10 @@ export function createBillingEventProcessor(
 
   async function reconcileSubscriptionFinancialState(input: {
     subscriptionId: string;
-    financialState:
-      | "paid"
-      | "partially_refunded"
-      | "fully_refunded"
-      | "disputed";
+    financialState: FinancialState;
+    period: StripeBillingPeriod;
     eventCreatedAt: Date;
+    eventId: string;
   }): Promise<void> {
     const owned = await loadOwnedSubscription(input.subscriptionId);
     if (!owned) {
@@ -212,31 +253,32 @@ export function createBillingEventProcessor(
     const entitlement = await dependencies.store.reconcileFinancialState({
       subscriptionId: input.subscriptionId,
       financialState: input.financialState,
+      period: input.period,
       eventCreatedAt: input.eventCreatedAt,
+      eventId: input.eventId,
     });
     await dependencies.managedKeys.sync(entitlement);
   }
 
   async function reconcilePaymentIntentFinancialState(input: {
     paymentIntentId: string;
-    financialState:
-      | "paid"
-      | "partially_refunded"
-      | "fully_refunded"
-      | "disputed";
+    financialState: FinancialState;
     eventCreatedAt: Date;
+    eventId: string;
   }): Promise<void> {
-    const subscriptionId =
-      await dependencies.stripe.resolveSubscriptionIdForPaymentIntent(
+    const target =
+      await dependencies.stripe.resolveSubscriptionPeriodForPaymentIntent(
         input.paymentIntentId,
       );
-    if (!subscriptionId) {
+    if (!target) {
       return;
     }
     await reconcileSubscriptionFinancialState({
-      subscriptionId,
+      subscriptionId: target.subscriptionId,
       financialState: input.financialState,
+      period: target.period,
       eventCreatedAt: input.eventCreatedAt,
+      eventId: input.eventId,
     });
   }
 
@@ -244,9 +286,40 @@ export function createBillingEventProcessor(
     return typeof value === "string" ? value : value.id;
   }
 
+  function subscriptionInvoiceTarget(object: unknown) {
+    const parsed = subscriptionInvoiceSchema.safeParse(object);
+    const subscription = parsed.success
+      ? parsed.data.parent?.subscription_details?.subscription
+      : null;
+    if (!parsed.success || !subscription) {
+      return null;
+    }
+    const line = parsed.data.lines.data.find(
+      (candidate) =>
+        candidate.pricing?.type === "price_details" &&
+        expandableId(candidate.pricing.price_details.price) ===
+          dependencies.proPriceId,
+    );
+    if (!line) {
+      return null;
+    }
+    return {
+      invoice: parsed.data,
+      subscriptionId: expandableId(subscription),
+      period: {
+        start: new Date(line.period.start * 1000),
+        end: new Date(line.period.end * 1000),
+      },
+    };
+  }
+
   async function handleEvent(event: StripeSdk.Event): Promise<void> {
     const eventCreatedAt = new Date(event.created * 1000);
-    if (event.type === "checkout.session.completed") {
+    if (
+      event.type === "checkout.session.completed" ||
+      event.type === "checkout.session.async_payment_succeeded" ||
+      event.type === "checkout.session.async_payment_failed"
+    ) {
       const parsed = checkoutSessionSchema.safeParse(event.data.object);
       if (
         !parsed.success ||
@@ -255,12 +328,42 @@ export function createBillingEventProcessor(
       ) {
         throw new BillingEventProcessingError();
       }
-      await reconcileSubscription(
-        expandableId(parsed.data.subscription),
-        eventCreatedAt,
-        parsed.data.metadata.launchstack_user_id,
-        expandableId(parsed.data.customer),
-      );
+      const subscriptionId = expandableId(parsed.data.subscription);
+      const checkoutUserId = parsed.data.metadata.launchstack_user_id;
+      const checkoutCustomerId = expandableId(parsed.data.customer);
+      if (event.type === "checkout.session.async_payment_failed") {
+        const owned = await loadOwnedSubscription(
+          subscriptionId,
+          checkoutUserId,
+          checkoutCustomerId,
+        );
+        if (!owned) {
+          return;
+        }
+        await dependencies.store.reconcileSubscription({
+          userId: owned.userId,
+          subscription: owned.subscription,
+          eventCreatedAt,
+        });
+        const entitlement = await dependencies.store.reconcileFinancialState({
+          subscriptionId,
+          financialState: "unpaid",
+          period: {
+            start: owned.subscription.periodStart,
+            end: owned.subscription.periodEnd,
+          },
+          eventCreatedAt,
+          eventId: event.id,
+        });
+        await dependencies.managedKeys.sync(entitlement);
+      } else {
+        await reconcileSubscription(
+          subscriptionId,
+          eventCreatedAt,
+          checkoutUserId,
+          checkoutCustomerId,
+        );
+      }
       return;
     }
 
@@ -285,6 +388,7 @@ export function createBillingEventProcessor(
             ? "fully_refunded"
             : "partially_refunded",
         eventCreatedAt,
+        eventId: event.id,
       });
       return;
     }
@@ -306,46 +410,63 @@ export function createBillingEventProcessor(
         paymentIntentId: expandableId(parsed.data.payment_intent),
         financialState: restored ? "paid" : "disputed",
         eventCreatedAt,
+        eventId: event.id,
       });
       return;
     }
 
-    if (event.type === "invoice.paid") {
-      const parsed = paidInvoiceSchema.safeParse(event.data.object);
-      const subscription = parsed.success
-        ? parsed.data.parent?.subscription_details?.subscription
-        : null;
-      if (!subscription) {
+    if (
+      event.type === "invoice.paid" ||
+      event.type === "invoice.payment_failed" ||
+      event.type === "invoice.voided" ||
+      event.type === "invoice.finalization_failed" ||
+      event.type === "invoice.marked_uncollectible"
+    ) {
+      const target = subscriptionInvoiceTarget(event.data.object);
+      if (!target) {
         return;
       }
       await reconcileSubscriptionFinancialState({
-        subscriptionId: expandableId(subscription),
-        financialState: "paid",
+        subscriptionId: target.subscriptionId,
+        financialState:
+          event.type === "invoice.paid" && target.invoice.status === "paid"
+            ? "paid"
+            : "unpaid",
+        period: target.period,
         eventCreatedAt,
+        eventId: event.id,
       });
     }
   }
 
   return {
     async process(event: StripeSdk.Event): Promise<{ duplicate: boolean }> {
-      const claim = await dependencies.store.claimEvent({
+      const receipt = await dependencies.store.claimEvent({
         id: event.id,
         type: event.type,
         createdAt: new Date(event.created * 1000),
       });
-      if (claim === "duplicate") {
+      if (receipt.state === "duplicate") {
         return { duplicate: true };
       }
-      if (claim === "busy") {
+      if (receipt.state === "busy") {
         throw new BillingEventProcessingError();
       }
 
       try {
         await handleEvent(event);
-        await dependencies.store.markEventProcessed(event.id);
+        const completed = await dependencies.store.markEventProcessed(
+          receipt.claim,
+        );
+        if (!completed) {
+          throw new BillingEventProcessingError();
+        }
         return { duplicate: false };
       } catch {
-        await dependencies.store.markEventFailed(event.id, "processing_failed");
+        await dependencies.store.markEventFailed({
+          claim: receipt.claim,
+          errorCode: "processing_failed",
+        });
         throw new BillingEventProcessingError();
       }
     },

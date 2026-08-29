@@ -33,16 +33,47 @@ export interface ManagedInferenceKeyStore {
     label: string;
     periodStart: Date;
     periodEnd: Date;
-  }): Promise<{ record: StoredManagedInferenceKey; claimed: boolean }>;
+  }): Promise<
+    | { state: "busy" }
+    | {
+        state: "claimed";
+        record: StoredManagedInferenceKey;
+        claim: { token: string; generation: number };
+      }
+  >;
+  shouldKeyRemainActive(key: StoredManagedInferenceKey): Promise<boolean>;
   activate(input: {
     id: string;
+    claim: { token: string; generation: number };
     providerKeyId: string;
     keyHash: string;
     envelope: CredentialEnvelope;
-  }): Promise<void>;
-  markFailed(id: string, errorCode: string): Promise<void>;
-  markRevoking(id: string): Promise<void>;
-  markRevoked(id: string): Promise<void>;
+  }): Promise<boolean>;
+  discardProvisioning(input: {
+    id: string;
+    claim: { token: string; generation: number };
+  }): Promise<boolean>;
+  claimRevocation(key: StoredManagedInferenceKey): Promise<
+    | { state: "revoked" }
+    | { state: "busy" }
+    | {
+        state: "claimed";
+        claim: { token: string; generation: number };
+      }
+  >;
+  finishRevocation(input: {
+    id: string;
+    claim: { token: string; generation: number };
+  }): Promise<boolean>;
+  releaseRevocation(input: {
+    id: string;
+    claim: { token: string; generation: number };
+  }): Promise<boolean>;
+  markFailed(input: {
+    id: string;
+    claim: { token: string; generation: number };
+    errorCode: string;
+  }): Promise<boolean>;
 }
 
 interface ManagedKeyLifecycleDependencies {
@@ -96,14 +127,37 @@ export function createManagedKeyLifecycle(
     if (key.lifecycleState === "revoked") {
       return;
     }
-    await dependencies.store.markRevoking(key.id);
+    const revocation = await dependencies.store.claimRevocation(key);
+    if (revocation.state === "revoked") {
+      return;
+    }
+    if (revocation.state === "busy") {
+      throw new ManagedKeyLifecycleError("managed_key_revocation_failed");
+    }
+    if (await dependencies.store.shouldKeyRemainActive(key)) {
+      await dependencies.store.releaseRevocation({
+        id: key.id,
+        claim: revocation.claim,
+      });
+      return;
+    }
     try {
       if (key.providerKeyId) {
         await dependencies.managementClient.disableKey(key.providerKeyId);
       }
-      await dependencies.store.markRevoked(key.id);
+      const finished = await dependencies.store.finishRevocation({
+        id: key.id,
+        claim: revocation.claim,
+      });
+      if (!finished) {
+        throw new ManagedKeyLifecycleError("managed_key_revocation_failed");
+      }
     } catch {
-      await dependencies.store.markFailed(key.id, "management_unavailable");
+      await dependencies.store.markFailed({
+        id: key.id,
+        claim: revocation.claim,
+        errorCode: "management_unavailable",
+      });
       throw new ManagedKeyLifecycleError("managed_key_revocation_failed");
     }
   }
@@ -145,12 +199,14 @@ export function createManagedKeyLifecycle(
         periodStart: entitlement.periodStart,
         periodEnd: entitlement.periodEnd,
       });
-      if (!provisioning.claimed) {
+      if (provisioning.state === "busy") {
         throw new ManagedKeyLifecycleError(
           "managed_key_provisioning_in_progress",
         );
       }
       const provisioningRecord = provisioning.record;
+      let createdProviderKeyId: string | null = null;
+      let remoteKeyDisabled = false;
 
       try {
         const orphanedProviderKeyIds =
@@ -162,21 +218,57 @@ export function createManagedKeyLifecycle(
           name: identity.label,
           expiresAt: entitlement.periodEnd,
         });
+        createdProviderKeyId = created.providerKeyId;
+        if (
+          !(await dependencies.store.shouldKeyRemainActive(provisioningRecord))
+        ) {
+          await dependencies.managementClient.disableKey(created.providerKeyId);
+          remoteKeyDisabled = true;
+          await dependencies.store.discardProvisioning({
+            id: provisioningRecord.id,
+            claim: provisioning.claim,
+          });
+          return;
+        }
         const envelope = dependencies.encrypt(created.plaintext, {
           userId: entitlement.userId,
           source: "managed",
         });
-        await dependencies.store.activate({
+        const activated = await dependencies.store.activate({
           id: provisioningRecord.id,
+          claim: provisioning.claim,
           providerKeyId: created.providerKeyId,
           keyHash: stableHash(created.plaintext),
           envelope,
         });
-      } catch {
-        await dependencies.store.markFailed(
-          provisioningRecord.id,
-          "management_unavailable",
-        );
+        if (!activated) {
+          await dependencies.managementClient.disableKey(created.providerKeyId);
+          remoteKeyDisabled = true;
+          throw new ManagedKeyLifecycleError(
+            "managed_key_provisioning_in_progress",
+          );
+        }
+      } catch (error) {
+        if (createdProviderKeyId && !remoteKeyDisabled) {
+          try {
+            await dependencies.managementClient.disableKey(
+              createdProviderKeyId,
+            );
+          } catch {
+            // The deterministic name is reconciled before the next create.
+          }
+        }
+        await dependencies.store.markFailed({
+          id: provisioningRecord.id,
+          claim: provisioning.claim,
+          errorCode: "management_unavailable",
+        });
+        if (
+          error instanceof ManagedKeyLifecycleError &&
+          error.message === "managed_key_provisioning_in_progress"
+        ) {
+          return;
+        }
         throw new ManagedKeyLifecycleError("managed_key_provisioning_failed");
       }
 
