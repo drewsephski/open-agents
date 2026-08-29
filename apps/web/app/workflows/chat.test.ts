@@ -785,23 +785,36 @@ describe("runAgentWorkflow", () => {
     ]);
     expect(agentCallOptions).toMatchObject({
       openRouter: { apiKey: `credential-for-${APP_DEFAULT_MODEL_ID}` },
+      resolveSubagentOpenRouter: expect.any(Function),
     });
   });
 
-  test("resolves a separate explicit credential for the selected subagent model", async () => {
+  test("provides a fresh authorization resolver for every selected subagent call", async () => {
     testPreferences.defaultSubagentModelId = "openai/gpt-5.6-luna";
 
     await runAgentWorkflow(makeOptions());
 
+    const resolveSubagentOpenRouter = agentCallOptions?.[
+      "resolveSubagentOpenRouter"
+    ] as
+      | ((params: { modelId: string }) => Promise<{ apiKey: string }>)
+      | undefined;
+    expect(resolveSubagentOpenRouter).toBeFunction();
+    await expect(
+      resolveSubagentOpenRouter?.({ modelId: "openai/gpt-5.6-luna" }),
+    ).resolves.toEqual({ apiKey: "credential-for-openai/gpt-5.6-luna" });
+    await expect(
+      resolveSubagentOpenRouter?.({ modelId: "openai/gpt-5.6-luna" }),
+    ).resolves.toEqual({ apiKey: "credential-for-openai/gpt-5.6-luna" });
+
     expect(modelCredentialCalls).toEqual([
       { userId: "user-1", modelId: APP_DEFAULT_MODEL_ID },
+      { userId: "user-1", modelId: "openai/gpt-5.6-luna" },
       { userId: "user-1", modelId: "openai/gpt-5.6-luna" },
     ]);
     expect(agentCallOptions).toMatchObject({
       openRouter: { apiKey: `credential-for-${APP_DEFAULT_MODEL_ID}` },
-      subagentOpenRouter: {
-        apiKey: "credential-for-openai/gpt-5.6-luna",
-      },
+      resolveSubagentOpenRouter: expect.any(Function),
     });
   });
 

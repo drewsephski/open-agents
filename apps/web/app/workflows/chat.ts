@@ -60,7 +60,7 @@ import { resolveChatSandboxRuntime } from "./chat-sandbox-runtime";
 type AuthSessionContext = Pick<AuthSession, "authProvider" | "user"> | null;
 type UnresolvedOpenAgentCallOptions = Omit<
   OpenAgentCallOptions,
-  "openRouter" | "subagentOpenRouter"
+  "openRouter" | "resolveSubagentOpenRouter"
 >;
 
 type Options = {
@@ -1053,18 +1053,16 @@ const runAgentStep = async (
       userId,
       modelId: mainModelId,
     });
-    const subagentModelId = agentOptions.subagentModel
-      ? getAgentModelId(agentOptions.subagentModel, mainModelId)
-      : null;
-    const subagentCredential = subagentModelId
-      ? await requireModelCredential({ userId, modelId: subagentModelId })
-      : null;
     const authorizedAgentOptions: OpenAgentCallOptions = {
       ...agentOptions,
       openRouter: mainCredential.openRouter,
-      ...(subagentCredential
-        ? { subagentOpenRouter: subagentCredential.openRouter }
-        : {}),
+      resolveSubagentOpenRouter: async ({ modelId: subagentModelId }) => {
+        const credential = await requireModelCredential({
+          userId,
+          modelId: subagentModelId,
+        });
+        return credential.openRouter;
+      },
     };
 
     const result = await webAgent.stream({

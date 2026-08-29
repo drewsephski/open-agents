@@ -41,7 +41,6 @@ delete process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL;
 
 const {
   DEFAULT_OPENROUTER_MODEL_ID,
-  MissingOpenRouterApiKeyError,
   defaultLanguageModel,
   getProviderOptionsForModel,
   mergeProviderOptions,
@@ -210,9 +209,9 @@ describe("model factory", () => {
     try {
       expect(() =>
         model("z-ai/glm-5.3-flash", {
-          config: undefined as never,
+          config: { apiKey: undefined as never },
         }),
-      ).toThrow(MissingOpenRouterApiKeyError);
+      ).toThrow("Explicit OpenRouter API key configuration is required.");
     } finally {
       process.env.OPENROUTER_API_KEY = previous;
     }
@@ -236,6 +235,19 @@ describe("model factory", () => {
       appName: "Launchstack",
       appUrl: "https://launchstack.sh",
     });
+  });
+
+  test("does not retain user-scoped providers between model factory calls", () => {
+    createOpenRouterCalls.length = 0;
+
+    model("z-ai/glm-5.3-flash", {
+      config: { apiKey: "user-scoped-key-no-cache" },
+    });
+    model("z-ai/glm-5.3-flash", {
+      config: { apiKey: "user-scoped-key-no-cache" },
+    });
+
+    expect(createOpenRouterCalls).toHaveLength(2);
   });
 
   test("passes canonical app URL when available", () => {

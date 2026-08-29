@@ -20,7 +20,12 @@ export interface AgentContext {
   sandbox: AgentSandboxContext;
   skills?: SkillMetadata[];
   model: LanguageModel;
-  subagentModel?: LanguageModel;
+  subagentModelRuntime?: SubagentModelRuntime;
+}
+
+export interface SubagentModelRuntime {
+  modelId: string;
+  resolveModel(): Promise<LanguageModel>;
 }
 
 export interface SandboxExecutionContext {

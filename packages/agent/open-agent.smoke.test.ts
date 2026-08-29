@@ -231,9 +231,9 @@ async function runAgentUntilStop(prompt: string, sandbox: LocalSandbox) {
       messages: messages as never,
       options: {
         openRouter: { apiKey: process.env.OPENROUTER_API_KEY ?? "" },
-        subagentOpenRouter: {
+        resolveSubagentOpenRouter: async () => ({
           apiKey: process.env.OPENROUTER_API_KEY ?? "",
-        },
+        }),
         sandbox: {
           state: { type: "vercel", sandboxId: sandbox.sandboxId },
           workingDirectory: sandbox.workingDirectory,
@@ -340,9 +340,11 @@ describeSmoke("GLM 5.3 Flash Open Agents runtime smoke", () => {
             state: { type: "vercel", sandboxId: sandbox.sandboxId },
             workingDirectory: sandbox.workingDirectory,
           },
-          model: defaultLanguageModel({
-            config: { apiKey: process.env.OPENROUTER_API_KEY ?? "" },
-          }),
+          modelId: resolveDefaultModelId(),
+          resolveModel: async () =>
+            defaultLanguageModel({
+              config: { apiKey: process.env.OPENROUTER_API_KEY ?? "" },
+            }),
         },
       });
 

@@ -6,9 +6,7 @@ export type ModelId = string;
 
 export class MissingOpenRouterApiKeyError extends Error {
   constructor() {
-    super(
-      "OPENROUTER_API_KEY is not configured. Set OPENROUTER_API_KEY to use OpenRouter as the model provider.",
-    );
+    super("Explicit OpenRouter API key configuration is required.");
     this.name = "MissingOpenRouterApiKeyError";
   }
 }
@@ -23,9 +21,7 @@ export function resolveDefaultModelId(
   return DEFAULT_OPENROUTER_MODEL_ID;
 }
 
-export function requireOpenRouterApiKey(
-  apiKey: string | undefined = process.env.OPENROUTER_API_KEY,
-): string {
+export function requireOpenRouterApiKey(apiKey: string | undefined): string {
   const trimmed = apiKey?.trim();
   if (!trimmed) {
     throw new MissingOpenRouterApiKeyError();

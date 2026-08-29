@@ -47,17 +47,6 @@ export interface ModelFactoryOptions {
   appUrl?: string;
 }
 
-const providerCache = new Map<string, ReturnType<typeof createOpenRouter>>();
-
-function getProviderCacheKey(parts: {
-  apiKey: string;
-  baseURL?: string;
-  appName: string;
-  appUrl?: string;
-}): string {
-  return JSON.stringify(parts);
-}
-
 function getOpenRouterProvider(
   options: ModelFactoryOptions,
 ): ReturnType<typeof createOpenRouter> {
@@ -67,28 +56,14 @@ function getOpenRouterProvider(
   const apiKey = requireOpenRouterApiKey(options.config.apiKey);
   const appName = options.appName ?? OPENROUTER_APP_NAME;
   const appUrl = resolveCanonicalAppUrl(options.appUrl);
-  const cacheKey = getProviderCacheKey({
-    apiKey,
-    baseURL: options.config.baseURL,
-    appName,
-    appUrl,
-  });
 
-  const cached = providerCache.get(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  const provider = createOpenRouter({
+  return createOpenRouter({
     apiKey,
     ...(options.config.baseURL ? { baseURL: options.config.baseURL } : {}),
     compatibility: "strict",
     appName,
     ...(appUrl ? { appUrl } : {}),
   });
-
-  providerCache.set(cacheKey, provider);
-  return provider;
 }
 
 /**

@@ -12,7 +12,7 @@ import {
 } from "../subagents/registry";
 import { SUBAGENT_STEP_LIMIT } from "../subagents/constants";
 import { sumLanguageModelUsage } from "../usage";
-import { getSandboxContext, getSubagentModel } from "./utils";
+import { getSandboxContext, getSubagentModelRuntime } from "./utils";
 
 const subagentTypeSchema = z.enum(SUBAGENT_TYPES);
 
@@ -90,8 +90,7 @@ IMPORTANT:
     { experimental_context, abortSignal },
   ) {
     const sandboxContext = getSandboxContext(experimental_context, "task");
-    const model = getSubagentModel(experimental_context, "task");
-    const subagentModelId = typeof model === "string" ? model : model.modelId;
+    const modelRuntime = getSubagentModelRuntime(experimental_context, "task");
 
     const subagent = SUBAGENT_REGISTRY[subagentType].agent;
 
@@ -102,7 +101,8 @@ IMPORTANT:
         task,
         instructions,
         sandbox: sandboxContext.sandbox,
-        model,
+        modelId: modelRuntime.modelId,
+        resolveModel: modelRuntime.resolveModel,
       },
       abortSignal,
     });
@@ -113,7 +113,7 @@ IMPORTANT:
     let usage: LanguageModelUsage | undefined;
 
     // Emit an initial state so UIs can show elapsed time from a stable timestamp.
-    yield { toolCallCount, startedAt, modelId: subagentModelId };
+    yield { toolCallCount, startedAt, modelId: modelRuntime.modelId };
 
     for await (const part of result.fullStream) {
       if (part.type === "tool-call") {
@@ -124,7 +124,7 @@ IMPORTANT:
           toolCallCount,
           usage,
           startedAt,
-          modelId: subagentModelId,
+          modelId: modelRuntime.modelId,
         };
       }
 
@@ -137,7 +137,7 @@ IMPORTANT:
           toolCallCount,
           usage,
           startedAt,
-          modelId: subagentModelId,
+          modelId: modelRuntime.modelId,
         };
       }
     }
@@ -149,7 +149,7 @@ IMPORTANT:
       toolCallCount,
       usage: finalUsage,
       startedAt,
-      modelId: subagentModelId,
+      modelId: modelRuntime.modelId,
     };
   },
   toModelOutput: ({ output: { final: messages } }) => {

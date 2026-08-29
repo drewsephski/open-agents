@@ -33,6 +33,9 @@ export interface AgentModelSelection {
 }
 
 export type OpenAgentModelInput = ModelId | AgentModelSelection;
+export type ResolveSubagentOpenRouterConfig = (params: {
+  modelId: ModelId;
+}) => Promise<OpenRouterConfig>;
 
 export interface AgentSandboxContext {
   state: SandboxState;
@@ -46,20 +49,18 @@ const openRouterConfigSchema: z.ZodType<OpenRouterConfig> = z.object({
   baseURL: z.string().optional(),
 });
 
-const callOptionsSchema = z
-  .object({
-    sandbox: z.custom<AgentSandboxContext>(),
-    openRouter: openRouterConfigSchema,
-    subagentOpenRouter: openRouterConfigSchema.optional(),
-    model: z.custom<OpenAgentModelInput>().optional(),
-    subagentModel: z.custom<OpenAgentModelInput>().optional(),
-    customInstructions: z.string().optional(),
-    skills: z.custom<SkillMetadata[]>().optional(),
-  })
-  .refine(
-    (options) => !options.subagentModel || options.subagentOpenRouter,
-    "A subagent model requires explicit OpenRouter configuration.",
-  );
+const callOptionsSchema = z.object({
+  sandbox: z.custom<AgentSandboxContext>(),
+  openRouter: openRouterConfigSchema,
+  resolveSubagentOpenRouter: z.custom<ResolveSubagentOpenRouterConfig>(
+    (value) => typeof value === "function",
+    "A subagent OpenRouter authorization resolver is required.",
+  ),
+  model: z.custom<OpenAgentModelInput>().optional(),
+  subagentModel: z.custom<OpenAgentModelInput>().optional(),
+  customInstructions: z.string().optional(),
+  skills: z.custom<SkillMetadata[]>().optional(),
+});
 
 export type OpenAgentCallOptions = z.infer<typeof callOptionsSchema>;
 
@@ -117,18 +118,22 @@ export const openAgent = new ToolLoopAgent({
     );
     const subagentSelection = options.subagentModel
       ? normalizeAgentModelSelection(options.subagentModel, fallbackModelId)
-      : undefined;
+      : mainSelection;
 
     const callModel = model(mainSelection.id, {
       config: options.openRouter,
       providerOptionsOverrides: mainSelection.providerOptionsOverrides,
     });
-    const subagentModel = subagentSelection
-      ? model(subagentSelection.id, {
-          config: options.subagentOpenRouter as OpenRouterConfig,
+    const subagentModelRuntime = {
+      modelId: subagentSelection.id,
+      resolveModel: async () =>
+        model(subagentSelection.id, {
+          config: await options.resolveSubagentOpenRouter({
+            modelId: subagentSelection.id,
+          }),
           providerOptionsOverrides: subagentSelection.providerOptionsOverrides,
-        })
-      : undefined;
+        }),
+    };
     const customInstructions = options.customInstructions;
     const sandbox = options.sandbox;
     const skills = options.skills ?? [];
@@ -154,7 +159,7 @@ export const openAgent = new ToolLoopAgent({
         sandbox,
         skills,
         model: callModel,
-        subagentModel,
+        subagentModelRuntime,
       },
     };
   },
