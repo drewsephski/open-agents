@@ -1,6 +1,7 @@
 import "server-only";
 import type { OpenRouterConfig } from "@open-agents/agent";
-import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
+import { getBillingCredentialAccessState } from "@/lib/billing/billing-access-state";
+import { getManagedModelIds } from "@/lib/billing/managed-model-catalog";
 import {
   decryptCredential,
   loadCredentialKeyring,
@@ -149,21 +150,18 @@ export function createModelCredentialResolver(
 async function loadCurrentAccessState(
   userId: string,
 ): Promise<ModelCredentialAccessState> {
-  const byokCredential = await providerCredentialStore.getForUser(userId);
+  const [byokCredential, billing] = await Promise.all([
+    providerCredentialStore.getForUser(userId),
+    getBillingCredentialAccessState(userId),
+  ]);
 
   return {
     byokCredential: {
       state: byokCredential?.validationState ?? "missing",
       envelope: byokCredential,
     },
-    subscription: null,
-    managedInference: {
-      keyState: "missing",
-      period: null,
-      spentMicros: 0,
-      reservedMicros: 0,
-      envelope: null,
-    },
+    subscription: billing.subscription,
+    managedInference: billing.managedInference,
   };
 }
 
@@ -175,7 +173,7 @@ const productionResolver = createModelCredentialResolver({
       userId: context.userId,
       provider: "openrouter",
     }),
-  managedModelIds: [APP_DEFAULT_MODEL_ID],
+  managedModelIds: getManagedModelIds(),
 });
 
 export async function resolveModelCredential(params: {

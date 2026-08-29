@@ -137,6 +137,9 @@ export const billingSubscriptions = pgTable(
     currentPeriodEnd: timestamp("current_period_end"),
     canceledAt: timestamp("canceled_at"),
     latestEventCreatedAt: timestamp("latest_event_created_at").notNull(),
+    latestFinancialEventCreatedAt: timestamp(
+      "latest_financial_event_created_at",
+    ),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
