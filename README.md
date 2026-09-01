@@ -173,6 +173,16 @@ ELEVENLABS_API_KEY=
 
 If you already have a linked Vercel project, you can pull env vars locally with `vc env pull`.
 
+### Development checks
+
+Use Node.js 24.x and pnpm 11.5.1, supplied through Corepack. Run the canonical full check with:
+
+```bash
+pnpm run ci
+```
+
+This runs code-quality checks, type checking, isolated tests, and the web database schema check.
+
 ## OAuth and integration setup
 
 ### Vercel OAuth
