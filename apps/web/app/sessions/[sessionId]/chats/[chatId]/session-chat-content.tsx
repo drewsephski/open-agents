@@ -72,6 +72,7 @@ import { SlashCommandDropdown } from "@/components/slash-command-dropdown";
 import { SnippetChip } from "@/components/snippet-chip";
 import { AssistantMessageGroups } from "@/components/assistant-message-groups";
 import { MessageModelPill } from "@/components/message-model-pill";
+import { MissionEvidenceCard } from "@/components/mission-evidence-card";
 import {
   PinnedTodoPanel,
   getLatestTodos,
@@ -115,6 +116,11 @@ import {
   shouldUseChatListStreamingState,
 } from "@/lib/chat-streaming-state";
 import { ACCEPT_IMAGE_TYPES, isValidImageType } from "@/lib/image-utils";
+import {
+  deriveMissionEvidence,
+  derivePreviewEvidence,
+} from "@/lib/mission-evidence";
+import { normalizeMissionType } from "@/lib/missions";
 import { isLargeText } from "@/lib/text-attachment-utils";
 import {
   type AvailableModelCost,
@@ -1358,6 +1364,13 @@ export function SessionChatContent({
   const renderMessages = useMemo(
     () => (hasMounted ? messages : initialMessages),
     [hasMounted, messages, initialMessages],
+  );
+  const repositoryMissionType = session.cloneUrl
+    ? normalizeMissionType(session.missionType)
+    : "custom";
+  const missionEvidence = useMemo(
+    () => deriveMissionEvidence(renderMessages),
+    [renderMessages],
   );
   // Track explicit user-initiated stops so the UI can immediately reflect the
   // idle state even if the AI SDK `status` is stuck (common on iOS/Safari where
@@ -2866,6 +2879,18 @@ export function SessionChatContent({
     !buildingDeploymentUrl &&
     !hasExistingPr &&
     Boolean(failedDeploymentUrl);
+  const hasCurrentDelivery = Boolean(
+    missionEvidence?.delivery.commit?.pushed ||
+    missionEvidence?.delivery.pullRequest?.status === "observed",
+  );
+  const missionPreviewEvidence = derivePreviewEvidence({
+    hasLinkedProject: Boolean(session.vercelProjectId),
+    hasCurrentDelivery,
+    deploymentUrl: prDeploymentUrl,
+    buildingDeploymentUrl,
+    failedDeploymentUrl,
+    isDeploymentStale,
+  });
   const previewDeploymentTargetUrl =
     (isDeploymentStale ? buildingDeploymentUrl : null) ??
     prDeploymentUrl ??
@@ -3710,24 +3735,40 @@ export function SessionChatContent({
 
                             if (m.role === "assistant") {
                               return (
-                                <AssistantMessageGroups
-                                  key={m.id}
-                                  message={m}
-                                  isStreaming={isMessageStreaming}
-                                  durationMs={messageDurationMap[m.id] ?? null}
-                                  startedAt={
-                                    messageStartedAtMap[m.id] ??
-                                    (isMessageStreaming
-                                      ? lastSendTimestampRef.current
-                                        ? new Date(
-                                            lastSendTimestampRef.current,
-                                          ).toISOString()
-                                        : lastUserMessageSentAt
-                                      : null)
-                                  }
-                                >
-                                  {renderGroups}
-                                </AssistantMessageGroups>
+                                <div key={m.id}>
+                                  <AssistantMessageGroups
+                                    message={m}
+                                    isStreaming={isMessageStreaming}
+                                    durationMs={
+                                      messageDurationMap[m.id] ?? null
+                                    }
+                                    startedAt={
+                                      messageStartedAtMap[m.id] ??
+                                      (isMessageStreaming
+                                        ? lastSendTimestampRef.current
+                                          ? new Date(
+                                              lastSendTimestampRef.current,
+                                            ).toISOString()
+                                          : lastUserMessageSentAt
+                                        : null)
+                                    }
+                                  >
+                                    {renderGroups}
+                                  </AssistantMessageGroups>
+                                  {missionEvidence?.anchorAssistantMessageId ===
+                                    m.id && (
+                                    <MissionEvidenceCard
+                                      missionType={repositoryMissionType}
+                                      evidence={missionEvidence}
+                                      preview={missionPreviewEvidence}
+                                      isStreaming={
+                                        isMessageStreaming ||
+                                        shouldUseChatListStreaming ||
+                                        hasPendingResponse
+                                      }
+                                    />
+                                  )}
+                                </div>
                               );
                             }
 

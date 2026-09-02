@@ -49,7 +49,8 @@ import {
 } from "@/lib/model-access";
 import { getAllVariants } from "@/lib/model-variants";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
-import { getMissionInstructions, normalizeMissionType } from "@/lib/missions";
+import { getMissionInstructions } from "@/lib/mission-guidance.server";
+import { normalizeMissionType } from "@/lib/missions";
 import type { Session as AuthSession } from "@/lib/session/types";
 import type {
   WorkflowRunStatus,

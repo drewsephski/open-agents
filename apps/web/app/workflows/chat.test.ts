@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 
+mock.module("server-only", () => ({}));
+
 // ── Spy state ──────────────────────────────────────────────────────
 
 const writtenChunks: UIMessageChunk[] = [];
