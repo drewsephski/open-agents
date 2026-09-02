@@ -151,7 +151,7 @@ describe("GET /api/auth/info", () => {
     });
   });
 
-  test("reports local development managed template trial users", async () => {
+  test("does not apply hosted demo restrictions in local development", async () => {
     Object.assign(process.env, { NODE_ENV: "development" });
     const { GET } = await routeModulePromise;
 
@@ -163,7 +163,7 @@ describe("GET /api/auth/info", () => {
       authProvider: "vercel",
       hasVercelAccount: true,
       isAdmin: false,
-      isManagedTemplateTrialUser: true,
+      isManagedTemplateTrialUser: false,
       hasGitHub: false,
       hasGitHubAccount: false,
       hasGitHubInstallations: false,

@@ -181,7 +181,6 @@ describe("/api/sessions POST vercel project linking", () => {
   });
 
   test("blocks repo-backed sessions for trial users", async () => {
-    Object.assign(process.env, { NODE_ENV: "development" });
     const { POST } = await routeModulePromise;
 
     currentSession = {
@@ -195,12 +194,15 @@ describe("/api/sessions POST vercel project linking", () => {
     };
 
     const response = await POST(
-      createJsonRequest({
-        branch: "main",
-        cloneUrl: "https://github.com/vercel-labs/open-agents",
-        repoOwner: "vercel-labs",
-        repoName: "open-agents",
-      }),
+      createJsonRequest(
+        {
+          branch: "main",
+          cloneUrl: "https://github.com/vercel-labs/open-agents",
+          repoOwner: "vercel-labs",
+          repoName: "open-agents",
+        },
+        "https://open-agents.dev/api/sessions",
+      ),
     );
     const body = (await response.json()) as { error: string };
 

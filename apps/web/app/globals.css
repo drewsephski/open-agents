@@ -209,46 +209,33 @@
   --l-nav-bg: rgb(250, 250, 250);
 }
 
-.agent-architecture-paths path {
-  animation: none;
-  stroke-dasharray: none;
-}
-
-.agent-architecture-card > rect:first-of-type,
-.agent-architecture-card > text:first-of-type {
-  transition:
-    stroke 180ms ease,
-    stroke-opacity 180ms ease,
-    fill 180ms ease;
-}
-
-.agent-architecture-card:focus-visible > rect:first-of-type {
-  stroke: rgba(255, 255, 255, 0.9);
-  stroke-width: 0.9;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .agent-architecture-card:hover > rect:first-of-type {
-    stroke: rgba(255, 255, 255, 0.5);
+@keyframes agent-architecture-path-draw {
+  from {
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dashoffset: 0;
   }
 }
 
+.agent-architecture-paths path {
+  stroke-dasharray: 100;
+  animation: agent-architecture-path-draw 1.2s cubic-bezier(0.25, 0.1, 0.5, 1)
+    both;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .agent-architecture-paths path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+
   .agent-architecture-particles {
     display: none;
   }
 
   .agent-architecture-border-flow {
     display: none;
-  }
-
-  .agent-architecture-stage-example {
-    display: none;
-  }
-
-  .agent-architecture-card > rect:first-of-type,
-  .agent-architecture-card > text:first-of-type {
-    transition: none;
   }
 }
 

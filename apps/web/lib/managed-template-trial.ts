@@ -51,7 +51,7 @@ export function isManagedTemplateDeployment(url: string | URL) {
     requestHost &&
     LOCAL_DEVELOPMENT_HOSTS.has(requestHost)
   ) {
-    return true;
+    return false;
   }
 
   return [

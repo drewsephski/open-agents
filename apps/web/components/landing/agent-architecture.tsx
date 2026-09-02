@@ -1,8 +1,3 @@
-"use client";
-
-/* eslint-disable jsx-a11y/prefer-tag-over-role -- SVG has no native button element. */
-
-import { useEffect, useRef, useState } from "react";
 import { Stage } from "./stage";
 
 const steps = [
@@ -11,83 +6,58 @@ const steps = [
     eyebrow: "YOUR TASK",
     title: "Describe the work",
     detail: "Prompt + repository",
-    example: "“Add CSV export”",
     accent: "#00d4ff",
     x: 5,
   },
   {
     number: "02",
-    eyebrow: "CLOUD WORKSPACE",
-    title: "Prepare workspace",
-    detail: "Provision · clone · branch",
-    example: "Starting an isolated sandbox",
-    accent: "#22c55e",
+    eyebrow: "CODING AGENT",
+    title: "Build and verify",
+    detail: "Plan · edit · test",
+    accent: "#a855f7",
     x: 69,
   },
   {
     number: "03",
-    eyebrow: "CODING AGENT",
-    title: "Build and verify",
-    detail: "Inspect · edit · test",
-    example: "Editing files · running tests",
-    accent: "#a855f7",
+    eyebrow: "CLOUD WORKSPACE",
+    title: "Run in isolation",
+    detail: "Branch + preview",
+    accent: "#22c55e",
     x: 133,
   },
   {
     number: "04",
     eyebrow: "READY TO REVIEW",
     title: "Ship the change",
-    detail: "Diff · preview · PR",
-    example: "Preparing the diff and preview",
+    detail: "Diff · commit · PR",
     accent: "#ffd800",
     x: 197,
   },
 ] as const;
 
 const connections = [
-  { id: "task-workspace", d: "M 57 54 H 69" },
-  { id: "workspace-agent", d: "M 121 54 H 133" },
-  { id: "agent-review", d: "M 185 54 H 197" },
+  { id: "task-agent", d: "M 57 54 H 69" },
+  { id: "agent-cloud", d: "M 121 54 H 133" },
+  { id: "cloud-review", d: "M 185 54 H 197" },
 ] as const;
 
 function FlowCard({
   step,
   index,
-  flowStart,
-  repeatCount,
-  onSelect,
 }: {
   readonly step: (typeof steps)[number];
   readonly index: number;
-  readonly flowStart: number;
-  readonly repeatCount: "1" | "indefinite";
-  readonly onSelect: (index: number) => void;
 }) {
   const center = step.x + 26;
-  const isInFlow = index >= flowStart;
-  const relativeIndex = index - flowStart;
-  const start = relativeIndex === 0 ? 0.001 : relativeIndex * 0.25;
+  const start = index === 0 ? 0.001 : index * 0.25;
   const end = start + 0.14;
   const upperBorder = `M ${step.x} 52 V 36 Q ${step.x} 32 ${step.x + 4} 32 H ${step.x + 48} Q ${step.x + 52} 32 ${step.x + 52} 36 V 52`;
   const lowerBorder = `M ${step.x} 52 V 68 Q ${step.x} 72 ${step.x + 4} 72 H ${step.x + 48} Q ${step.x + 52} 72 ${step.x + 52} 68 V 52`;
 
   return (
-    <g
-      aria-label={`Start the workflow from ${step.title}`}
-      className="agent-architecture-card cursor-pointer outline-none"
-      onClick={() => onSelect(index)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onSelect(index);
-        }
-      }}
-      role="button"
-      tabIndex={0}
-    >
+    <g>
       <text
-        className="font-mono"
-        fill="rgba(255,255,255,0.35)"
+        className="fill-(--l-fg-4) font-mono"
         fontSize="2.5"
         letterSpacing="0.14em"
         textAnchor="middle"
@@ -101,44 +71,41 @@ function FlowCard({
         height="40"
         rx="2.5"
         stroke="rgba(255,255,255,0.14)"
-        strokeWidth="0.45"
         width="52"
         x={step.x}
         y="32"
       />
-      {isInFlow
-        ? [upperBorder, lowerBorder].map((path) => (
-            <path
-              className="agent-architecture-border-flow"
-              d={path}
-              fill="none"
-              filter="url(#architecture-particle-glow)"
-              key={path}
-              opacity="0"
-              pathLength="100"
-              stroke={step.accent}
-              strokeDasharray="100"
-              strokeDashoffset="100"
-              strokeLinecap="round"
-              strokeWidth="0.85"
-            >
-              <animate
-                attributeName="stroke-dashoffset"
-                dur="10s"
-                keyTimes={`0;${start};${end};1`}
-                repeatCount={repeatCount}
-                values="100;100;0;0"
-              />
-              <animate
-                attributeName="opacity"
-                dur="10s"
-                keyTimes={`0;${start};${end};${end + 0.08};1`}
-                repeatCount={repeatCount}
-                values="0;1;1;0;0"
-              />
-            </path>
-          ))
-        : null}
+      {[upperBorder, lowerBorder].map((path) => (
+        <path
+          className="agent-architecture-border-flow"
+          d={path}
+          fill="none"
+          filter="url(#architecture-particle-glow)"
+          key={path}
+          opacity="0"
+          pathLength="100"
+          stroke={step.accent}
+          strokeDasharray="100"
+          strokeDashoffset="100"
+          strokeLinecap="round"
+          strokeWidth="0.85"
+        >
+          <animate
+            attributeName="stroke-dashoffset"
+            dur="10s"
+            keyTimes={`0;${start};${end};1`}
+            repeatCount="indefinite"
+            values="100;100;0;0"
+          />
+          <animate
+            attributeName="opacity"
+            dur="10s"
+            keyTimes={`0;${start};${end};${end + 0.08};1`}
+            repeatCount="indefinite"
+            values="0;1;1;0;0"
+          />
+        </path>
+      ))}
       <rect
         fill={step.accent}
         height="1.5"
@@ -176,64 +143,11 @@ function FlowCard({
       >
         {step.detail}
       </text>
-      {isInFlow ? (
-        <text
-          className="agent-architecture-stage-example font-mono"
-          fill={step.accent}
-          fontSize="2.35"
-          opacity="0"
-          textAnchor="middle"
-          x={center}
-          y="82"
-        >
-          {step.example}
-          <animate
-            attributeName="opacity"
-            dur="10s"
-            keyTimes={`0;${start};${start + 0.015};${end};${end + 0.08};1`}
-            repeatCount={repeatCount}
-            values="0;0;1;1;0;0"
-          />
-        </text>
-      ) : null}
     </g>
   );
 }
 
 export function AgentArchitecture() {
-  const [flow, setFlow] = useState({ start: 0, loops: true, runId: 0 });
-  const resetTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  useEffect(
-    () => () => {
-      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-    },
-    [],
-  );
-
-  function startFlow(index: number) {
-    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-    setFlow((current) => ({
-      start: index,
-      loops: false,
-      runId: current.runId + 1,
-    }));
-    const prefersReducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    resetTimerRef.current = setTimeout(
-      () =>
-        setFlow((current) => ({
-          start: 0,
-          loops: true,
-          runId: current.runId + 1,
-        })),
-      prefersReducedMotion
-        ? 800
-        : ((steps.length - 1 - index) * 0.25 + 0.22) * 10_000 + 150,
-    );
-  }
-
   return (
     <section className="border-y border-(--l-border-subtle)">
       <div className="mx-auto max-w-[1320px] px-6 py-20 sm:px-10 md:py-28">
@@ -242,8 +156,8 @@ export function AgentArchitecture() {
             From task to pull request.
           </h2>
           <p className="mx-auto mt-5 max-w-2xl text-balance text-base leading-relaxed text-(--l-fg-2)">
-            Launchstack prepares an isolated workspace first, lets the agent
-            build and test inside it, then brings you back a reviewable change.
+            Launchstack gives the agent everything it needs to do the work in
+            the cloud, then brings you back a tested, reviewable change.
           </p>
         </div>
 
@@ -263,23 +177,15 @@ export function AgentArchitecture() {
               />
               <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 font-mono text-[9px] uppercase tracking-[0.16em] text-white/40 sm:px-5 sm:text-[10px]">
                 <span>Launchstack workflow</span>
-                <span className="hidden text-white/25 sm:inline">
-                  Select a phase to restart
-                </span>
                 <span className="flex items-center gap-2">
                   <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(74,222,128,.65)]" />
-                  Flowing
+                  Connected
                 </span>
               </div>
               <div className="px-4 py-6 sm:hidden">
                 {steps.map((step, index) => (
                   <div key={step.number}>
-                    <button
-                      aria-label={`Start the workflow from ${step.title}`}
-                      className="grid w-full grid-cols-[2rem_1fr] items-center gap-3 border border-white/12 bg-[linear-gradient(180deg,#20201e_0%,#161614_100%)] px-4 py-4 text-left transition-colors duration-200 ease-out hover:border-white/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70"
-                      onClick={() => startFlow(index)}
-                      type="button"
-                    >
+                    <div className="grid grid-cols-[2rem_1fr] items-center gap-3 border border-white/12 bg-[linear-gradient(180deg,#20201e_0%,#161614_100%)] px-4 py-4">
                       <span className="font-mono text-[10px] text-white/35">
                         {step.number}
                       </span>
@@ -300,7 +206,7 @@ export function AgentArchitecture() {
                           {step.detail}
                         </p>
                       </div>
-                    </button>
+                    </div>
                     {index < steps.length - 1 ? (
                       <div className="mx-auto flex h-7 w-px items-center justify-center bg-white/15">
                         <span
@@ -313,11 +219,10 @@ export function AgentArchitecture() {
                 ))}
               </div>
               <svg
-                key={flow.runId}
                 aria-label="Launchstack workflow: describe a coding task, let an agent build and verify it in an isolated cloud workspace, then review the resulting pull request"
                 className="relative hidden h-auto w-full text-white/30 sm:block"
                 role="img"
-                viewBox="0 0 254 94"
+                viewBox="0 0 254 88"
               >
                 <title>From coding task to review-ready pull request</title>
                 <defs>
@@ -382,10 +287,8 @@ export function AgentArchitecture() {
                   aria-hidden="true"
                 >
                   {connections.map((connection, index) => {
-                    if (index < flow.start) return null;
-                    const relativeIndex = index - flow.start;
-                    const start = 0.15 + relativeIndex * 0.25;
-                    const end = 0.24 + relativeIndex * 0.25;
+                    const start = 0.15 + index * 0.25;
+                    const end = 0.24 + index * 0.25;
                     return (
                       <circle
                         fill={steps[index + 1].accent}
@@ -397,14 +300,14 @@ export function AgentArchitecture() {
                           attributeName="opacity"
                           dur="10s"
                           keyTimes={`0;${start};${start + 0.005};${end - 0.005};${end};1`}
-                          repeatCount={flow.loops ? "indefinite" : "1"}
+                          repeatCount="indefinite"
                           values="0;0;1;1;0;0"
                         />
                         <animateMotion
                           dur="10s"
                           keyPoints="0;0;1;1"
                           keyTimes={`0;${start};${end};1`}
-                          repeatCount={flow.loops ? "indefinite" : "1"}
+                          repeatCount="indefinite"
                         >
                           <mpath href={`#agent-route-${connection.id}`} />
                         </animateMotion>
@@ -414,14 +317,7 @@ export function AgentArchitecture() {
                 </g>
 
                 {steps.map((step, index) => (
-                  <FlowCard
-                    flowStart={flow.start}
-                    index={index}
-                    key={step.number}
-                    onSelect={startFlow}
-                    repeatCount={flow.loops ? "indefinite" : "1"}
-                    step={step}
-                  />
+                  <FlowCard index={index} key={step.number} step={step} />
                 ))}
 
                 <g
@@ -430,10 +326,10 @@ export function AgentArchitecture() {
                   fontSize="2.35"
                 >
                   <text textAnchor="middle" x="63" y="49">
-                    prepare
+                    handoff
                   </text>
                   <text textAnchor="middle" x="127" y="49">
-                    build
+                    execute
                   </text>
                   <text textAnchor="middle" x="191" y="49">
                     deliver
