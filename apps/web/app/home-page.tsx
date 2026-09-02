@@ -5,14 +5,13 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { SignedOutHero } from "@/components/auth/signed-out-hero";
 import { HomeSkeleton } from "@/components/home-skeleton";
-import type { SandboxType } from "@/components/sandbox-selector-compact";
 import { SessionDrawer } from "@/components/session-drawer";
 import { SessionStarter } from "@/components/session-starter";
+import type { SessionStarterSubmitInput } from "@/components/session-starter-submission";
 import { UserAvatarDropdown } from "@/components/user-avatar-dropdown";
 import { useSession } from "@/hooks/use-session";
 import { useSessions } from "@/hooks/use-sessions";
 import { startInitialMessage } from "@/lib/chat/start-initial-message";
-import type { VercelProjectSelection } from "@/lib/vercel/types";
 
 interface HomePageProps {
   hasSessionCookie: boolean;
@@ -32,18 +31,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const handleCreateSession = async (input: {
-    repoOwner?: string;
-    repoName?: string;
-    branch?: string;
-    cloneUrl?: string;
-    isNewBranch: boolean;
-    sandboxType: SandboxType;
-    autoCommitPush: boolean;
-    autoCreatePr: boolean;
-    initialMessage?: string;
-    vercelProject?: VercelProjectSelection | null;
-  }) => {
+  const handleCreateSession = async (input: SessionStarterSubmitInput) => {
     setIsCreating(true);
     try {
       const { session: createdSession, chat } = await createSession({
@@ -55,6 +43,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
         sandboxType: input.sandboxType,
         autoCommitPush: input.autoCommitPush,
         autoCreatePr: input.autoCreatePr,
+        missionType: input.missionType,
         vercelProject: input.vercelProject,
       });
 

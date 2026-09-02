@@ -347,6 +347,7 @@ export interface BuildSystemPromptOptions {
   cwd?: string;
   currentBranch?: string;
   customInstructions?: string;
+  missionInstructions?: string;
   environmentDetails?: string;
   skills?: SkillMetadata[];
   modelId?: string;
@@ -407,15 +408,20 @@ npx skills --help                      # all options
  * Assembly order:
  * 1. Core system prompt (shared across all models)
  * 2. Model-family overlay (persistence, verbosity, tool-use patterns)
- * 3. Environment details (cwd, platform, etc.)
- * 4. Cloud sandbox instructions
- * 5. Custom instructions (AGENTS.md, user config)
- * 6. Skills section (if skills registered)
+ * 3. Mission instructions (when the session has a specialized Mission)
+ * 4. Environment details (cwd, platform, etc.)
+ * 5. Cloud sandbox instructions
+ * 6. Custom instructions (AGENTS.md, user config)
+ * 7. Skills section (if skills registered)
  */
 export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
   const family = detectModelFamily(options.modelId);
 
   const parts = [CORE_SYSTEM_PROMPT, getModelOverlay(family, options.modelId)];
+
+  if (options.missionInstructions) {
+    parts.push(`\n${options.missionInstructions}`);
+  }
 
   if (options.cwd) {
     parts.push(

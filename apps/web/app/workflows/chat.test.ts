@@ -111,6 +111,7 @@ const spies = {
 let testSessionRecord: {
   id: string;
   userId: string;
+  missionType: string;
   autoCommitPushOverride: boolean | null;
   autoCreatePrOverride: boolean | null;
   repoOwner: string | null;
@@ -155,6 +156,7 @@ let agentResponseHeaders: Record<string, string> | undefined;
 let agentResponseBody: unknown;
 let agentProviderMetadata: Record<string, unknown> | undefined;
 let agentInputMessages: unknown;
+let agentCallOptions: Record<string, unknown> | undefined;
 
 function buildAgentSteps() {
   return [
@@ -221,8 +223,15 @@ mock.module("./chat-post-finish", () => spies);
 mock.module("@/app/config", () => ({
   webAgent: {
     tools: {},
-    stream: async ({ messages }: { messages: unknown }) => {
+    stream: async ({
+      messages,
+      options,
+    }: {
+      messages: unknown;
+      options: Record<string, unknown>;
+    }) => {
       agentInputMessages = messages;
+      agentCallOptions = options;
       return {
         toUIMessageStream: (opts: {
           sendStart?: boolean;
@@ -404,10 +413,12 @@ beforeEach(() => {
   agentResponseBody = undefined;
   agentProviderMetadata = undefined;
   agentInputMessages = undefined;
+  agentCallOptions = undefined;
   streamOnFinishCallback = undefined;
   testSessionRecord = {
     id: "session-1",
     userId: "user-1",
+    missionType: "custom",
     autoCommitPushOverride: null,
     autoCreatePrOverride: null,
     repoOwner: "acme",
@@ -436,6 +447,36 @@ beforeEach(() => {
 });
 
 describe("runAgentWorkflow", () => {
+  test("passes Ship Feature guidance without rewriting the visible user message", async () => {
+    testSessionRecord.missionType = "ship_feature";
+
+    await runAgentWorkflow(makeOptions());
+
+    expect(agentCallOptions?.missionInstructions).toEqual(
+      expect.stringContaining("# Mission: Ship a feature"),
+    );
+    expect(agentCallOptions?.missionInstructions).toEqual(
+      expect.stringContaining("package.json"),
+    );
+    expect(agentCallOptions?.missionInstructions).toEqual(
+      expect.stringContaining("agent-browser"),
+    );
+    expect(agentInputMessages).toEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "Hello" }],
+      },
+    ]);
+  });
+
+  test("keeps custom Missions on the generic agent path", async () => {
+    testSessionRecord.missionType = "custom";
+
+    await runAgentWorkflow(makeOptions());
+
+    expect(agentCallOptions?.missionInstructions).toBeUndefined();
+  });
+
   test("throws when no messages provided", async () => {
     try {
       await runAgentWorkflow(makeOptions({ messages: [] }));

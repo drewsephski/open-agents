@@ -49,6 +49,7 @@ import {
 } from "@/lib/model-access";
 import { getAllVariants } from "@/lib/model-variants";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
+import { getMissionInstructions, normalizeMissionType } from "@/lib/missions";
 import type { Session as AuthSession } from "@/lib/session/types";
 import type {
   WorkflowRunStatus,
@@ -214,6 +215,9 @@ async function resolveChatModelRuntime(params: {
   const autoCreatePrEnabled =
     autoCommitEnabled &&
     (sessionRecord.autoCreatePrOverride ?? preferences?.autoCreatePr ?? false);
+  const missionInstructions = getMissionInstructions(
+    normalizeMissionType(sessionRecord.missionType),
+  );
 
   return {
     selectedModelId: selectedModelId ?? mainModelSelection.id,
@@ -224,6 +228,7 @@ async function resolveChatModelRuntime(params: {
         ? { subagentModel: subagentModelSelection }
         : {}),
       customInstructions: assistantFileLinkPrompt,
+      ...(missionInstructions ? { missionInstructions } : {}),
     },
     autoCommitEnabled,
     autoCreatePrEnabled,

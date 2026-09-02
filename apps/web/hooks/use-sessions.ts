@@ -4,6 +4,7 @@ import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import useSWR, { useSWRConfig } from "swr";
 import type { Chat, Session } from "@/lib/db/schema";
+import type { MissionType } from "@/lib/missions";
 import type { VercelProjectSelection } from "@/lib/vercel/types";
 import { fetcher } from "@/lib/swr";
 
@@ -12,6 +13,7 @@ export type SessionWithUnread = Pick<
   | "id"
   | "title"
   | "status"
+  | "missionType"
   | "repoOwner"
   | "repoName"
   | "branch"
@@ -37,6 +39,7 @@ interface CreateSessionInput {
   sandboxType: "vercel";
   autoCommitPush: boolean;
   autoCreatePr: boolean;
+  missionType?: MissionType;
   vercelProject?: VercelProjectSelection | null;
 }
 
@@ -71,6 +74,7 @@ function mergeSessionWithSummary(
     id: updatedSession.id,
     title: updatedSession.title,
     status: updatedSession.status,
+    missionType: updatedSession.missionType,
     repoOwner: updatedSession.repoOwner,
     repoName: updatedSession.repoName,
     branch: updatedSession.branch,

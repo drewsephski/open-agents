@@ -2,9 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { SandboxType } from "@/components/sandbox-selector-compact";
 import { SessionStarter } from "@/components/session-starter";
-import type { VercelProjectSelection } from "@/lib/vercel/types";
+import type { SessionStarterSubmitInput } from "@/components/session-starter-submission";
 import { startInitialMessage } from "@/lib/chat/start-initial-message";
 import {
   Dialog,
@@ -14,24 +13,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-type CreateSessionInput = {
-  repoOwner?: string;
-  repoName?: string;
-  branch?: string;
-  cloneUrl?: string;
-  isNewBranch: boolean;
-  sandboxType: SandboxType;
-  autoCommitPush: boolean;
-  autoCreatePr: boolean;
-  initialMessage?: string;
-  vercelProject?: VercelProjectSelection | null;
-};
-
 interface NewSessionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   lastRepo: { owner: string; repo: string } | null;
-  createSession: (input: CreateSessionInput) => Promise<{
+  createSession: (
+    input: Omit<SessionStarterSubmitInput, "initialMessage">,
+  ) => Promise<{
     session: { id: string };
     chat: { id: string };
   }>;
@@ -46,7 +34,7 @@ export function NewSessionDialog({
   const router = useRouter();
   const [isCreating, setIsCreating] = useState(false);
 
-  const handleCreateSession = async (input: CreateSessionInput) => {
+  const handleCreateSession = async (input: SessionStarterSubmitInput) => {
     setIsCreating(true);
     try {
       const { initialMessage, ...sessionInput } = input;

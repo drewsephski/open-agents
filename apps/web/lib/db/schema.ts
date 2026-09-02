@@ -3,6 +3,11 @@ import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import type { ModelVariant } from "@/lib/model-variants";
 import type { GlobalSkillRef } from "@/lib/skills/global-skill-refs";
 import {
+  DEFAULT_CHAT_MISSION_TYPE,
+  MISSION_TYPE_VALUES,
+  type MissionType,
+} from "@/lib/missions";
+import {
   boolean,
   index,
   integer,
@@ -141,6 +146,10 @@ export const sessions = pgTable(
     })
       .notNull()
       .default("running"),
+    missionType: text("mission_type", { enum: MISSION_TYPE_VALUES })
+      .$type<MissionType>()
+      .notNull()
+      .default(DEFAULT_CHAT_MISSION_TYPE),
     // Repository info
     repoOwner: text("repo_owner"),
     repoName: text("repo_name"),

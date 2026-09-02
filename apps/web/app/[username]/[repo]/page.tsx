@@ -16,6 +16,7 @@ import {
   MANAGED_TEMPLATE_TRIAL_SESSION_LIMIT_ERROR,
 } from "@/lib/managed-template-trial";
 import { sanitizeUserPreferencesForSession } from "@/lib/model-access";
+import { DEFAULT_REPOSITORY_MISSION_TYPE } from "@/lib/missions";
 import { getRandomCityName } from "@/lib/random-city";
 import { getServerSession } from "@/lib/session/get-server-session";
 
@@ -123,6 +124,7 @@ export default async function RepoPage({ params }: RepoPageProps) {
       userId: session.user.id,
       title,
       status: "running",
+      missionType: DEFAULT_REPOSITORY_MISSION_TYPE,
       repoOwner: username,
       repoName: repo,
       branch: repoInfo.default_branch,

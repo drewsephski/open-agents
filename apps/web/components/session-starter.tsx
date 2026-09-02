@@ -14,6 +14,10 @@ import { useGitHubConnectionStatus } from "@/hooks/use-github-connection-status"
 import { useSession } from "@/hooks/use-session";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { useVercelRepoProjects } from "@/hooks/use-vercel-repo-projects";
+import {
+  DEFAULT_REPOSITORY_MISSION_TYPE,
+  type MissionType,
+} from "@/lib/missions";
 import type { VercelProjectSelection } from "@/lib/vercel/types";
 import { cn } from "@/lib/utils";
 import { BranchSelectorCompact } from "./branch-selector-compact";
@@ -21,9 +25,14 @@ import { RepoSelectorCompact } from "./repo-selector-compact";
 import {
   DEFAULT_SANDBOX_TYPE,
   SANDBOX_OPTIONS,
-  type SandboxType,
 } from "./sandbox-selector-compact";
 import { SessionStarterVercelSyncSection } from "./session-starter-vercel-sync-section";
+import { SessionStarterMissionFields } from "./session-starter-mission-fields";
+import {
+  buildSessionStarterSubmission,
+  type SessionStarterMode,
+  type SessionStarterSubmitInput,
+} from "./session-starter-submission";
 import {
   SlidingTabIndicator,
   slidingTabProps,
@@ -32,21 +41,8 @@ import {
 import { Switch } from "./ui/switch";
 import { Textarea } from "./ui/textarea";
 
-type SessionMode = "empty" | "repo";
-
 interface SessionStarterProps {
-  onSubmit: (session: {
-    repoOwner?: string;
-    repoName?: string;
-    branch?: string;
-    cloneUrl?: string;
-    isNewBranch: boolean;
-    sandboxType: SandboxType;
-    autoCommitPush: boolean;
-    autoCreatePr: boolean;
-    initialMessage?: string;
-    vercelProject?: VercelProjectSelection | null;
-  }) => void;
+  onSubmit: (session: SessionStarterSubmitInput) => void;
   isLoading?: boolean;
   lastRepo: { owner: string; repo: string } | null;
 }
@@ -56,7 +52,7 @@ export function SessionStarter({
   isLoading,
   lastRepo,
 }: SessionStarterProps) {
-  const [mode, setMode] = useState<SessionMode>(() =>
+  const [mode, setMode] = useState<SessionStarterMode>(() =>
     lastRepo ? "repo" : "empty",
   );
   const [selectedOwner, setSelectedOwner] = useState(
@@ -87,6 +83,9 @@ export function SessionStarter({
   const [autoCreatePr, setAutoCreatePr] = useState<boolean | null>(null);
   const [gitSettingsExpanded, setGitSettingsExpanded] = useState(false);
   const [initialMessage, setInitialMessage] = useState("");
+  const [missionType, setMissionType] = useState<MissionType>(
+    DEFAULT_REPOSITORY_MISSION_TYPE,
+  );
   const modeTabsRef = useRef<HTMLDivElement>(null);
   const activeModeTabBox = useSlidingTabBox(modeTabsRef, mode);
   const sandboxType = preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE;
@@ -162,7 +161,7 @@ export function SessionStarter({
     setIsNewBranch(newBranch);
   };
 
-  const handleModeChange = (newMode: SessionMode) => {
+  const handleModeChange = (newMode: SessionStarterMode) => {
     if (isRepoModeDisabled && newMode === "repo") return;
 
     setMode(newMode);
@@ -190,6 +189,7 @@ export function SessionStarter({
     (isRepoModeDisabled && mode === "repo") ||
     (mode === "repo" && (githubConnectionLoading || reconnectRequired)) ||
     !isRepoSelectionComplete ||
+    (mode === "repo" && initialMessage.trim().length === 0) ||
     isVercelLookupPending ||
     requiresVercelChoice;
   const effectiveAutoCommitPush = autoCommitPush ?? defaultAutoCommitPush;
@@ -222,21 +222,21 @@ export function SessionStarter({
       }
     }
 
-    onSubmit({
-      repoOwner: mode === "repo" ? selectedOwner || undefined : undefined,
-      repoName: mode === "repo" ? selectedRepo || undefined : undefined,
-      branch: mode === "repo" ? selectedBranch || undefined : undefined,
-      cloneUrl:
-        mode === "repo" && selectedOwner && selectedRepo
-          ? `https://github.com/${selectedOwner}/${selectedRepo}`
-          : undefined,
-      isNewBranch: mode === "repo" ? isNewBranch : false,
-      sandboxType,
-      autoCommitPush: effectiveAutoCommitPush,
-      autoCreatePr: effectiveAutoCommitPush ? effectiveAutoCreatePr : false,
-      initialMessage: mode === "empty" ? initialMessage.trim() : undefined,
-      vercelProject,
-    });
+    onSubmit(
+      buildSessionStarterSubmission({
+        mode,
+        selectedOwner,
+        selectedRepo,
+        selectedBranch,
+        isNewBranch,
+        missionType,
+        initialMessage,
+        vercelProject,
+        sandboxType,
+        autoCommitPush: effectiveAutoCommitPush,
+        autoCreatePr: effectiveAutoCreatePr,
+      }),
+    );
   };
 
   const buttonLabel =
@@ -291,7 +291,7 @@ export function SessionStarter({
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col justify-center gap-4 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
           {mode === "repo" && (
             <div className="flex flex-col gap-3">
               <RepoSelectorCompact
@@ -303,13 +303,22 @@ export function SessionStarter({
                 selectedRepo &&
                 !githubConnectionLoading &&
                 !reconnectRequired && (
-                  <BranchSelectorCompact
-                    owner={selectedOwner}
-                    repo={selectedRepo}
-                    value={selectedBranch}
-                    isNewBranch={isNewBranch}
-                    onChange={handleBranchChange}
-                  />
+                  <>
+                    <BranchSelectorCompact
+                      owner={selectedOwner}
+                      repo={selectedRepo}
+                      value={selectedBranch}
+                      isNewBranch={isNewBranch}
+                      onChange={handleBranchChange}
+                    />
+                    <SessionStarterMissionFields
+                      missionType={missionType}
+                      task={initialMessage}
+                      disabled={controlsDisabled}
+                      onMissionTypeChange={setMissionType}
+                      onTaskChange={setInitialMessage}
+                    />
+                  </>
                 )}
 
               {showVercelProjectSection && (

@@ -1,0 +1,1 @@
+ALTER TABLE "sessions" ADD COLUMN "mission_type" text DEFAULT 'custom' NOT NULL;

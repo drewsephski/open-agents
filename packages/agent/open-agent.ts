@@ -45,6 +45,7 @@ const callOptionsSchema = z.object({
   model: z.custom<OpenAgentModelInput>().optional(),
   subagentModel: z.custom<OpenAgentModelInput>().optional(),
   customInstructions: z.string().optional(),
+  missionInstructions: z.string().optional(),
   skills: z.custom<SkillMetadata[]>().optional(),
 });
 
@@ -115,6 +116,7 @@ export const openAgent = new ToolLoopAgent({
         })
       : undefined;
     const customInstructions = options.customInstructions;
+    const missionInstructions = options.missionInstructions;
     const sandbox = options.sandbox;
     const skills = options.skills ?? [];
 
@@ -122,6 +124,7 @@ export const openAgent = new ToolLoopAgent({
       cwd: sandbox.workingDirectory,
       currentBranch: sandbox.currentBranch,
       customInstructions,
+      missionInstructions,
       environmentDetails: sandbox.environmentDetails,
       skills,
       modelId: mainSelection.id,

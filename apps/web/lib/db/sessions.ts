@@ -223,6 +223,7 @@ type SessionSidebarFields = Pick<
   | "id"
   | "title"
   | "status"
+  | "missionType"
   | "repoOwner"
   | "repoName"
   | "branch"
@@ -270,6 +271,7 @@ export async function getSessionsWithUnreadByUserId(
       id: sessions.id,
       title: sessions.title,
       status: sessions.status,
+      missionType: sessions.missionType,
       repoOwner: sessions.repoOwner,
       repoName: sessions.repoName,
       branch: sessions.branch,

@@ -13,6 +13,7 @@ import {
 } from "@/lib/db/vercel-project-links";
 import { getUserPreferences } from "@/lib/db/user-preferences";
 import { sanitizeUserPreferencesForSession } from "@/lib/model-access";
+import { isMissionType, resolveNewSessionMissionType } from "@/lib/missions";
 import {
   isValidGitHubRepoName,
   isValidGitHubRepoOwner,
@@ -48,6 +49,7 @@ interface CreateSessionRequest {
   sandboxType?: "vercel";
   autoCommitPush?: boolean;
   autoCreatePr?: boolean;
+  missionType?: unknown;
   vercelProject?: VercelProjectSelection | null;
 }
 
@@ -243,6 +245,10 @@ export async function POST(req: Request) {
     );
   }
 
+  if (body.missionType !== undefined && !isMissionType(body.missionType)) {
+    return Response.json({ error: "Invalid Mission type" }, { status: 400 });
+  }
+
   if (
     body.repoOwner !== undefined &&
     (typeof body.repoOwner !== "string" ||
@@ -305,6 +311,11 @@ export async function POST(req: Request) {
     autoCommitPush,
     autoCreatePr,
   } = body;
+  const hasRepository = Boolean(repoOwner && repoName);
+  const missionType = resolveNewSessionMissionType({
+    hasRepository,
+    missionType: isMissionType(body.missionType) ? body.missionType : undefined,
+  });
 
   let finalBranch = branch;
   if (isNewBranch) {
@@ -316,8 +327,7 @@ export async function POST(req: Request) {
     const preferencesPromise = getUserPreferences(session.user.id);
 
     let resolvedVercelProject: VercelProjectSelection | null = null;
-    const hasRepo = Boolean(repoOwner && repoName);
-    if (hasRepo && repoOwner && repoName) {
+    if (hasRepository && repoOwner && repoName) {
       if (explicitVercelProject) {
         const vercelToken = await getUserVercelToken(session.user.id);
         if (!vercelToken) {
@@ -380,6 +390,7 @@ export async function POST(req: Request) {
         userId: session.user.id,
         title,
         status: "running",
+        missionType,
         repoOwner,
         repoName,
         branch: finalBranch,

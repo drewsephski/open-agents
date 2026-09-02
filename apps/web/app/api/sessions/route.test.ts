@@ -425,4 +425,69 @@ describe("/api/sessions POST vercel project linking", () => {
       autoCreatePrOverride: true,
     });
   });
+
+  test("persists the selected Mission for a repository session", async () => {
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(
+      createJsonRequest({
+        repoOwner: "vercel",
+        repoName: "open-agents",
+        branch: "main",
+        cloneUrl: "https://github.com/vercel/open-agents",
+        missionType: "fix_bug",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(createCalls[0]).toMatchObject({ missionType: "fix_bug" });
+  });
+
+  test("defaults repository sessions to Ship a feature", async () => {
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(
+      createJsonRequest({
+        repoOwner: "vercel",
+        repoName: "open-agents",
+        branch: "main",
+        cloneUrl: "https://github.com/vercel/open-agents",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(createCalls[0]).toMatchObject({ missionType: "ship_feature" });
+  });
+
+  test("keeps generic chat sessions on the custom Mission", async () => {
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(
+      createJsonRequest({
+        missionType: "ship_feature",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(createCalls[0]).toMatchObject({ missionType: "custom" });
+  });
+
+  test("rejects unsupported Mission values", async () => {
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(
+      createJsonRequest({
+        repoOwner: "vercel",
+        repoName: "open-agents",
+        branch: "main",
+        cloneUrl: "https://github.com/vercel/open-agents",
+        missionType: "ship_without_checks",
+      }),
+    );
+    const body = (await response.json()) as { error: string };
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("Invalid Mission type");
+    expect(createCalls).toHaveLength(0);
+  });
 });
