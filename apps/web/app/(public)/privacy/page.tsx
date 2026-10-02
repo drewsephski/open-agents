@@ -28,6 +28,11 @@ export default function PrivacyPage() {
             information needed for the integrations you enable.
           </li>
           <li>
+            If you connect Gmail, email messages, recipients, attachments, and
+            draft or send content accessed for the tasks you request, plus
+            records of approvals and action results.
+          </li>
+          <li>
             Prompts, attachments, repository files the agent reads, generated
             code, messages, command output, session history, and usage records.
           </li>
@@ -55,6 +60,11 @@ export default function PrivacyPage() {
           meet legal and billing obligations. We do not sell your personal
           information.
         </p>
+        <p>
+          Connected Gmail data is used to carry out your requested email tasks.
+          Draft creation and sending require your approval in Launchstack.
+          Review the displayed recipients and message before approving.
+        </p>
       </section>
       <section>
         <h2>Service providers and sharing</h2>
@@ -63,6 +73,13 @@ export default function PrivacyPage() {
           configured sandbox backend, CodeSandbox. Account and session records
           are stored in our PostgreSQL database hosted by Neon. Connected GitHub
           and Vercel accounts are used according to the permissions you grant.
+        </p>
+        <p>
+          Optional Gmail actions use Composio to connect to Google and execute
+          the actions you authorize. Gmail connection credentials remain with
+          Composio. Retrieved email content may enter the conversation context
+          sent to the selected model provider. Connect an account only if you
+          are authorized to share the information needed for your tasks.
         </p>
         <p>
           Prompts, relevant code, attachments, and conversation context may be
