@@ -30,7 +30,11 @@ export function LandingNav({
               : "shadow-none"
           }`}
         >
-          <Link href="/" aria-label="Launchstack home">
+          <Link
+            href="/"
+            aria-label="Launchstack home"
+            className="rounded-sm transition-opacity hover:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-4"
+          >
             <Logo />
           </Link>
           <Link

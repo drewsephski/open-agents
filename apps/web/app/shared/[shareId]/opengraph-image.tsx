@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { BrandMark } from "@/components/landing/logo";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { chatMessages, users, workflowRuns } from "@/lib/db/schema";
@@ -164,21 +165,7 @@ export default async function Image({
               marginBottom: 32,
             }}
           >
-            <svg viewBox="0 0 24 24" width="26" height="26" fill="none">
-              <path
-                d="M4 17L10 11L4 5"
-                stroke="rgba(255,255,255,0.5)"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M12 19H20"
-                stroke="rgba(255,255,255,0.5)"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
+            <BrandMark width={26} height={26} color="#ff8a3d" />
             <span
               style={{
                 fontSize: 19,

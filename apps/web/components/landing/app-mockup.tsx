@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { BrandMark } from "./logo";
 
 type FakeSession = {
   readonly title: string;
@@ -145,49 +146,7 @@ export function AppMockup() {
       <div className="flex items-center justify-between border-b border-(--l-panel-border) px-3 py-2 lg:px-4">
         <div className="flex min-w-0 items-center gap-2 text-[11px]">
           <div className="flex items-center gap-1.5 text-(--l-panel-fg-3)">
-            <svg
-              viewBox="0 0 16 16"
-              fill="none"
-              className="size-3.5"
-              aria-hidden="true"
-            >
-              <rect
-                x="1"
-                y="1"
-                width="5"
-                height="5"
-                rx="1"
-                stroke="currentColor"
-                strokeWidth="1.2"
-              />
-              <rect
-                x="1"
-                y="10"
-                width="5"
-                height="5"
-                rx="1"
-                stroke="currentColor"
-                strokeWidth="1.2"
-              />
-              <rect
-                x="10"
-                y="1"
-                width="5"
-                height="5"
-                rx="1"
-                stroke="currentColor"
-                strokeWidth="1.2"
-              />
-              <rect
-                x="10"
-                y="10"
-                width="5"
-                height="5"
-                rx="1"
-                stroke="currentColor"
-                strokeWidth="1.2"
-              />
-            </svg>
+            <BrandMark className="size-3.5" />
           </div>
           <span className="font-medium text-(--l-panel-fg)">{active.repo}</span>
           <span className="hidden sm:inline text-(--l-panel-fg-4)">/</span>

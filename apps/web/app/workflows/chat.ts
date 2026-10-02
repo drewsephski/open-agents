@@ -114,15 +114,19 @@ function shouldRefreshDiffCacheForParts(
 
 const convertMessages = async (
   messages: WebAgentUIMessage[],
+  userId: string,
+  chatId: string,
 ): Promise<ModelMessage[]> => {
   "use step";
   const { webAgent } = await import("@/app/config");
+  const { getUserActionTools } = await import("@/lib/actions/runtime");
+  const actionTools = await getUserActionTools({ userId, chatId });
   const dedupedMessages = messages.map(dedupeMessageReasoning);
   const modelMessages = await convertToModelMessages<WebAgentUIMessage>(
     dedupedMessages,
     {
       ignoreIncompleteToolCalls: true,
-      tools: webAgent.tools,
+      tools: { ...webAgent.tools, ...actionTools },
       convertDataPart: (part) => {
         if (part.type === "data-snippet") {
           const { filename, content } = part.data;
@@ -613,7 +617,11 @@ export async function runAgentWorkflow(options: Options) {
       ? latestMessage.id
       : (options.assistantId ?? generateIdAi());
 
-  const modelMessagesPromise = convertMessages(options.messages);
+  const modelMessagesPromise = convertMessages(
+    options.messages,
+    options.userId,
+    options.chatId,
+  );
   const inputMessagesPersistPromise = options.inputMessagesPersisted
     ? Promise.resolve()
     : persistInputMessages(options.chatId, options.messages);
@@ -746,6 +754,7 @@ export async function runAgentWorkflow(options: Options) {
           modelId,
           agentOptions,
           step + 1,
+          options.userId,
         );
       } catch (error) {
         if (isStepTimingError(error)) {
@@ -1016,6 +1025,7 @@ const runAgentStep = async (
   modelId: string,
   agentOptions: OpenAgentCallOptions,
   stepNumber: number,
+  userId: string,
 ) => {
   "use step";
 
@@ -1026,6 +1036,15 @@ const runAgentStep = async (
   const stopMonitor = startStopMonitor(workflowRunId, abortController);
 
   try {
+    const { getUserActionTools } = await import("@/lib/actions/runtime");
+    const { GMAIL_AGENT_INSTRUCTIONS } =
+      await import("@/lib/actions/gmail-instructions");
+    const actionTools = await getUserActionTools({ userId, chatId });
+    const { createOpenAgent } = await import("@open-agents/agent");
+    const agent =
+      Object.keys(actionTools).length > 0
+        ? createOpenAgent(actionTools)
+        : webAgent;
     let responseMessage: WebAgentUIMessage | undefined;
     let lastStepUsage: LanguageModelUsage | undefined;
     let lastStepCost: number | undefined;
@@ -1046,9 +1065,21 @@ const runAgentStep = async (
     let totalMessageUsage = existingTotalMessageUsage;
     let totalMessageCost = existingTotalMessageCost;
 
-    const result = await webAgent.stream({
+    const result = await agent.stream({
       messages,
-      options: agentOptions,
+      options: {
+        ...agentOptions,
+        ...(Object.keys(actionTools).length > 0
+          ? {
+              customInstructions: [
+                agentOptions.customInstructions,
+                GMAIL_AGENT_INSTRUCTIONS,
+              ]
+                .filter(Boolean)
+                .join("\n\n"),
+            }
+          : {}),
+      },
       abortSignal: abortController.signal,
     });
 

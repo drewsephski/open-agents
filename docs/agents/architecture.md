@@ -12,6 +12,12 @@ Web -> Agent (packages/agent) -> Sandbox (packages/sandbox)
 2. **Agent** (`deepAgent`) is a `ToolLoopAgent` with tools for file ops, bash, and task delegation
 3. **Sandbox** abstracts file system and shell operations for cloud execution backends
 
+Authenticated external actions form a separate server-side control-plane path:
+Web workflow steps → Action Provider → Composio → Gmail. They share the agent's
+AI SDK tool/approval flow but never execute in the coding sandbox. See
+[Action Providers](action-providers.md) for session persistence, approval, and
+retry behavior.
+
 ## Key Packages
 
 - **packages/agent/** - Core agent implementation with tools, subagents, and context management

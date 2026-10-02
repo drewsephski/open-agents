@@ -30,6 +30,7 @@ import {
 } from "./_lib/chat-context";
 import { parseChatRequestBody, requireChatIdentifiers } from "./_lib/request";
 import { runAgentWorkflow } from "@/app/workflows/chat";
+import { validateGmailApprovalMessages } from "@/lib/actions/approval";
 import { persistAssistantMessagesWithToolResults } from "./_lib/persist-tool-results";
 
 type WebAgentUIMessageChunk = InferUIMessageChunk<WebAgentUIMessage>;
@@ -131,6 +132,20 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
+  }
+
+  const validActionApprovals = await validateGmailApprovalMessages(
+    messages,
+    async (id) => {
+      const saved = await getChatMessageByIdForChat(id, chatId);
+      return saved?.parts;
+    },
+  );
+  if (!validActionApprovals) {
+    return Response.json(
+      { error: "Invalid Gmail approval response" },
+      { status: 403 },
+    );
   }
 
   await Promise.all([

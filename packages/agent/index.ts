@@ -22,7 +22,12 @@ export type {
   OpenAgentCallOptions,
   OpenAgentModelInput,
 } from "./open-agent";
-export { defaultModel, defaultModelLabel, openAgent } from "./open-agent";
+export {
+  createOpenAgent,
+  defaultModel,
+  defaultModelLabel,
+  openAgent,
+} from "./open-agent";
 export {
   type CatalogModelCost,
   type OpenRouterCatalogModel,

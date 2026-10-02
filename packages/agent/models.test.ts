@@ -51,9 +51,9 @@ const {
 } = await import("./models");
 
 describe("resolveDefaultModelId", () => {
-  test("defaults to GLM 5.3 Flash", () => {
-    expect(resolveDefaultModelId({})).toBe("z-ai/glm-5.3-flash");
-    expect(DEFAULT_OPENROUTER_MODEL_ID).toBe("z-ai/glm-5.3-flash");
+  test("defaults to GPT-6.1 Sol", () => {
+    expect(resolveDefaultModelId({})).toBe("openai/gpt-6.1-sol");
+    expect(DEFAULT_OPENROUTER_MODEL_ID).toBe("openai/gpt-6.1-sol");
   });
 
   test("honors OPENROUTER_MODEL override", () => {
@@ -73,12 +73,18 @@ describe("shouldApplyOpenAIReasoningDefaults", () => {
     );
   });
 
-  test("returns true for future GPT-5 variants", () => {
+  test("returns true for GPT-6 models and future GPT-5 variants", () => {
     expect(shouldApplyOpenAIReasoningDefaults("openai/gpt-5.9")).toBe(true);
+    expect(shouldApplyOpenAIReasoningDefaults("openai/gpt-6.1-sol")).toBe(true);
+    expect(shouldApplyOpenAIReasoningDefaults("openai/gpt-6-luna")).toBe(true);
+    expect(shouldApplyOpenAIReasoningDefaults("openai/gpt-6-astra")).toBe(true);
   });
 
-  test("returns false for non-GPT-5 OpenAI models", () => {
+  test("returns false for older GPT models and other providers", () => {
     expect(shouldApplyOpenAIReasoningDefaults("openai/gpt-4o")).toBe(false);
+    expect(
+      shouldApplyOpenAIReasoningDefaults("anthropic/claude-opus-5.5"),
+    ).toBe(false);
   });
 });
 
@@ -105,6 +111,31 @@ describe("getProviderOptionsForModel", () => {
         reasoning: { max_tokens: 8000 },
       },
     });
+  });
+
+  test("uses adaptive reasoning for current Claude models", () => {
+    for (const id of [
+      "anthropic/claude-opus-5.5",
+      "anthropic/claude-sonnet-5.5",
+      "anthropic/claude-fable-5.1",
+      "anthropic/claude-opus-4.8",
+    ]) {
+      expect(getProviderOptionsForModel(id)).toEqual({
+        openrouter: { reasoning: { effort: "medium" } },
+      });
+    }
+    expect(getProviderOptionsForModel("anthropic/claude-haiku-4.5")).toEqual({
+      openrouter: { reasoning: { max_tokens: 8000 } },
+    });
+  });
+
+  test("uses provider defaults for GPT-6 unless reasoning is overridden", () => {
+    expect(getProviderOptionsForModel("openai/gpt-6.1-sol")).toEqual({});
+    expect(
+      getProviderOptionsForModel("openai/gpt-6.1-sol", {
+        openai: { reasoningEffort: "high" },
+      }),
+    ).toEqual({ openrouter: { reasoning: { effort: "high" } } });
   });
 
   test("translates OpenAI GPT-5 reasoning effort and drops Responses-only options", () => {
@@ -224,7 +255,7 @@ describe("model factory", () => {
 
     expect(chatCalls).toEqual([
       {
-        modelId: "z-ai/glm-5.3-flash",
+        modelId: "openai/gpt-6.1-sol",
         settings: { usage: { include: true } },
       },
     ]);

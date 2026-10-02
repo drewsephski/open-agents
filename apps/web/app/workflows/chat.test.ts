@@ -3,6 +3,12 @@ import type { UIMessageChunk } from "ai";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 
 mock.module("server-only", () => ({}));
+const actionToolsSpy = mock(
+  async (_context: { userId: string; chatId: string }) => ({}),
+);
+mock.module("@/lib/actions/runtime", () => ({
+  getUserActionTools: actionToolsSpy,
+}));
 
 // ── Spy state ──────────────────────────────────────────────────────
 
@@ -340,7 +346,9 @@ mock.module("ai", () => ({
     }),
   generateId: () => "gen-id-1",
   isToolUIPart: (part: { type: string }) =>
-    part.type === "tool-invocation" || part.type.startsWith("tool-"),
+    part.type === "tool-invocation" ||
+    part.type === "dynamic-tool" ||
+    part.type.startsWith("tool-"),
   pruneMessages: ({ messages }: { messages: Array<Record<string, unknown>> }) =>
     messages.filter((message) => {
       const content = message.content;
@@ -400,6 +408,7 @@ function makeOptions(overrides?: Record<string, unknown>) {
 // ── Tests ──────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  actionToolsSpy.mockClear();
   writtenChunks.length = 0;
   runStatus = "running";
   agentStreamParts = [{ type: "text-delta", textDelta: "Hi" }];
@@ -449,6 +458,42 @@ beforeEach(() => {
 });
 
 describe("runAgentWorkflow", () => {
+  test("pauses on a dynamic Gmail approval request before further agent steps", async () => {
+    agentFinishReason = "tool-calls";
+    agentAssistantParts = [
+      {
+        type: "dynamic-tool",
+        toolName: "GMAIL_SEND_EMAIL",
+        toolCallId: "send-1",
+        state: "approval-requested",
+        approval: { id: "approval-1" },
+        input: {
+          recipient_email: "reader@example.com",
+          body: "Review before sending",
+        },
+      },
+    ];
+    await runAgentWorkflow(
+      makeOptions({
+        maxSteps: 5,
+        autoCommitEnabled: true,
+        autoCreatePrEnabled: true,
+      }),
+    );
+    expect(actionToolsSpy).toHaveBeenCalledTimes(2);
+    expect(spies.runAutoCommitStep).not.toHaveBeenCalled();
+    expect(spies.persistAssistantMessage.mock.calls[0]?.[1]).toMatchObject({
+      parts: agentAssistantParts,
+    });
+  });
+  test("reconstructs action tools from serializable user/chat IDs in conversion and agent steps", async () => {
+    await runAgentWorkflow(makeOptions());
+    expect(actionToolsSpy).toHaveBeenCalledTimes(2);
+    for (const [context] of actionToolsSpy.mock.calls) {
+      expect(context).toEqual({ userId: "user-1", chatId: "chat-1" });
+    }
+    expect(agentCallOptions).not.toHaveProperty("actionTools");
+  });
   test("passes Ship Feature guidance without rewriting the visible user message", async () => {
     testSessionRecord.missionType = "ship_feature";
 

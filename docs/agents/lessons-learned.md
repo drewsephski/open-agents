@@ -6,6 +6,11 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 
 ## General / Tooling
 
+- Dynamic external-action tools must be reconstructed inside `"use step"` functions from user/provider session IDs. Never put tool functions or Composio clients in Workflow inputs, step results, or sandbox state.
+- Composio session execution can inherit HTTP transport retries. Use a client with `maxRetries: 0` for Gmail dispatch and claim mutating tool calls in the database before execution; an uncertain send must not be automatically retried.
+- AI SDK approvals arriving from the browser must match the server-persisted tool payload and approval ID before external mutations can run. Approval alone does not authorize a client-edited recipient or body.
+
+- Model defaults are also Drizzle column defaults through `APP_DEFAULT_MODEL_ID`; changing the shared constant requires `pnpm --dir apps/web db:generate` even when `schema.ts` itself is unchanged. Keep the web and agent defaults sourced from the lightweight `@open-agents/agent/model-id` entrypoint.
 - Skill discovery de-duplicates by first-seen name, so project skill directories must be scanned before user-level directories to allow project overrides.
 - The system prompt should list all model-invocable skills (including non-user-invocable ones), and reserve user-invocable filtering for the slash-command UI.
 - Glob patterns ending in `**` (for example `"**"` or `"src/**"`) should be treated as recursive, even when `**` is the final segment.
@@ -27,6 +32,9 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - A missing named Vercel restore must never let `createIfMissing` produce an uninitialized workspace: reconnect without implicit creation, then re-provision only the pinned provider with the repository source and rerun fresh-workspace setup. After allocation succeeds, circuit-breaker success bookkeeping is best-effort so a database error cannot leak and invalidate a live sandbox; legacy rows that still have a snapshot should retry it in the same resume request after a named 404.
 
 ## Next.js
+
+- Next.js emits an automatic icon link for `app/favicon.ico` alongside metadata-defined icons. Update that file when changing the brand favicon so browsers cannot select a stale mark. Keep the dedicated preview favicon for environment identification.
+- `ImageResponse` requires explicit flex or contents layout on a `div` with multiple children. Use a flex column with separate spans for multiline headlines; a text/`br`/text sequence without display styling fails while piping the image response.
 
 - In Next.js App Router, dynamic route param names must match the folder segment exactly (e.g. `[sessionId]` requires `params.sessionId`, not `params.id`), or DB queries can receive `undefined` and fail at runtime.
 - Some planning docs still reference legacy `apps/web/app/tasks/[id]/...` paths; current UI/API code is centered on `apps/web/app/sessions/[sessionId]/chats/[chatId]/...`, so verify file paths before implementing plan items.
