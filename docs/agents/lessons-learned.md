@@ -1,5 +1,7 @@
 # Lessons Learned
 
+- Creem store `launchstackpro` reviews the public site at `https://launchstack.sh`, not `launchstackpro.com`. Pricing decisions are $29/month, $10 managed inference, 25 running sandbox hours, and two concurrent sandboxes. Do not expose checkout for paid plans until signed payment events and allowance fulfillment are implemented; public policy pages must work without a session. Keep `lib/store-details.ts`, Creem Store settings, and product descriptions consistent.
+
 Hard-won knowledge from building this codebase. When you make a mistake or discover a non-obvious behavior, add it here.
 
 ## General / Tooling

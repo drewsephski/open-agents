@@ -89,9 +89,9 @@ export function FeatureSandbox() {
             </div>
           </div>
           <div>
-            <div className="text-(--l-panel-fg-4)">cost</div>
+            <div className="text-(--l-panel-fg-4)">runtime</div>
             <div className="mt-0.5 text-(--l-panel-fg-2)">
-              {entry.state === "hibernated" ? "$0.00" : "$0.02/m"}
+              {entry.state === "hibernated" ? "paused" : "running"}
             </div>
           </div>
         </div>

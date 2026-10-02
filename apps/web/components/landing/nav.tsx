@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AuthButtons } from "@/components/auth/auth-buttons";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,15 @@ export function LandingNav({
               : "shadow-none"
           }`}
         >
-          <Logo />
+          <Link href="/" aria-label="Launchstack home">
+            <Logo />
+          </Link>
+          <Link
+            href="/pricing"
+            className="ml-auto mr-5 text-sm underline underline-offset-4"
+          >
+            Pricing
+          </Link>
 
           <div
             className={cn(

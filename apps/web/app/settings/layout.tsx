@@ -17,6 +17,7 @@ import { useState } from "react";
 import { signOut } from "@/lib/auth/actions";
 import { useSession } from "@/hooks/use-session";
 import { AuthGuard } from "@/components/auth/auth-guard";
+import { PolicyLinks } from "@/components/policy-links";
 import {
   Sheet,
   SheetContent,
@@ -228,6 +229,9 @@ function SettingsLayout({
         </div>
         <div className="mx-auto max-w-5xl space-y-6 px-3 py-8 md:px-4 md:py-10">
           {children}
+          <div className="border-t border-border pt-6 text-muted-foreground">
+            <PolicyLinks />
+          </div>
         </div>
       </main>
     </div>
