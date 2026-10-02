@@ -171,3 +171,5 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 
 - Creem subscription access must require a signed paid event for the current period; checkout completion and active status are insufficient. The Next.js adapter callback fields use snake_case and millisecond envelope timestamps, while SDK subscription dates are Date objects.
 - OpenRouter calendar-month key resets do not match arbitrary paid billing periods. Rotate a key with a total $10 cap and paid-period expiry, using `limit_reset: null`.
+
+- The SVGL public API can return 403 from Vercel egress while succeeding locally. Keep a validated, attributed snapshot of its official catalog for upstream failures so stack recommendations still use real catalog entries.

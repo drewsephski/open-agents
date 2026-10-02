@@ -1,4 +1,5 @@
 import { z } from "zod";
+import bundledCatalog from "./svgl-catalog.json";
 
 const SVGL_API_URL = "https://api.svgl.app";
 
@@ -28,14 +29,20 @@ export function selectLightBackgroundLogo(
 }
 
 export async function getSvglCatalog(): Promise<SvglTechnology[]> {
-  const response = await fetch(SVGL_API_URL, {
-    next: { revalidate: 60 * 60 },
-  });
-  if (!response.ok) {
-    throw new Error(`SVGL catalog request failed with ${response.status}`);
+  // Snapshot of the official API, fetched October 2, 2026 (MIT license colocated).
+  // Vercel egress can receive 403 even when the public API is reachable elsewhere.
+  let parsedCatalog;
+  try {
+    const response = await fetch(SVGL_API_URL, {
+      next: { revalidate: 60 * 60 },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) throw new Error("catalog_unavailable");
+    parsedCatalog = z.array(svglEntrySchema).parse(await response.json());
+  } catch {
+    console.warn("SVGL API unavailable; using the bundled official catalog");
+    parsedCatalog = z.array(svglEntrySchema).parse(bundledCatalog);
   }
-
-  const parsedCatalog = z.array(svglEntrySchema).parse(await response.json());
   return parsedCatalog.map((entry) => ({
     id: String(entry.id),
     name: entry.title,
