@@ -83,8 +83,8 @@ export async function getAccessSummary(
         : resolution.source
       : null,
     defaultModel: {
-      id: "z-ai/glm-5.3-flash",
-      label: "GLM 5.3 Flash",
+      id: APP_DEFAULT_MODEL_ID,
+      label: APP_DEFAULT_MODEL_ID,
     },
     credential,
     plan: {

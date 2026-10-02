@@ -24,3 +24,7 @@ Managed keys have a hard paid-period expiry. Unattached keys have durable cleanu
 ## Verification
 
 Run `pnpm run ci`, `pnpm --dir apps/web db:check`, and `git diff --check`. Real SQL tests cover concurrent claims, stale workers, paid-period rollover, and refund replay. Raw-body signature tests exercise the official adapter and failure responses. Provider configuration, checkout rendering, deployment, and actual payment lifecycle are separate evidence.
+
+## Observed provider gates (October 2, 2026)
+
+The live API creates and retrieves a pending checkout through the actual Next.js adapter, but the hosted page says **Live payments are not enabled for your account / Account Verification Required**. The live management key successfully created a $10 total-cap expiring key and disabled it afterward, without an inference call. No real purchase was made, and payment lifecycle fulfillment remains unverified until account activation. Store re-review was submitted and shown Under Review.

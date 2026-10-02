@@ -10,7 +10,7 @@ export type AllowanceWarning = "none" | "passive" | "prominent" | "exhausted";
 export interface AccessSummary {
   eligible: boolean;
   inferenceSource: "byok" | "managed" | null;
-  defaultModel: { id: "z-ai/glm-5.3-flash"; label: "GLM 5.3 Flash" };
+  defaultModel: { id: string; label: string };
   credential: {
     state: SafeCredentialState;
     label: string | null;
@@ -53,7 +53,7 @@ export const PRICING_PLANS = [
     description: "Bring an OpenRouter key and pay the provider directly.",
     features: [
       "Your own OpenRouter key",
-      "GLM 5.3 Flash by default",
+      "Application default model",
       "2 sandbox hours per UTC month",
       "1 concurrent sandbox",
     ],
@@ -67,7 +67,7 @@ export const PRICING_PLANS = [
     features: [
       "$10 managed inference per billing period",
       "BYOK fallback after managed allowance",
-      "GLM 5.3 Flash included",
+      "Application default model included",
       "25 sandbox hours per billing period",
       "2 concurrent sandboxes",
     ],

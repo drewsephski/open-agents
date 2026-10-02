@@ -54,6 +54,13 @@ describe("POST /api/billing/checkout", () => {
       new Request("https://launchstack.sh/api/billing/checkout", {
         method: "POST",
         headers: { origin: "https://launchstack.sh" },
+        body: JSON.stringify({
+          referenceId: "victim",
+          customerId: "cust_attacker",
+          units: 100,
+          productId: "prod_other",
+          successUrl: "https://attacker.example",
+        }),
       }),
     );
 
