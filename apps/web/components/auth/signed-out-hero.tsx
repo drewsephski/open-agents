@@ -78,6 +78,7 @@ export function SignedOutHero() {
         <AgentArchitecture />
         <TechSelector />
         <LandingBento />
+        <LandingPricing />
         <LandingFooter />
       </div>
     </div>

@@ -14,11 +14,7 @@ import {
   getUserPreferences,
   updateUserPreferences,
 } from "@/lib/db/user-preferences";
-import {
-  filterModelVariantsForSession,
-  isRestrictedModelIdForSession,
-  MANAGED_TEMPLATE_TRIAL_MODEL_ACCESS_ERROR,
-} from "@/lib/model-access";
+import { filterModelVariantsForSession } from "@/lib/model-access";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 const PROVIDER_OPTIONS_MAX_BYTES = 16 * 1024;
@@ -76,12 +72,6 @@ export async function POST(req: Request) {
     return jsonError("Invalid model variant payload", 400);
   }
 
-  if (
-    isRestrictedModelIdForSession(parsedBody.data.baseModelId, session, req.url)
-  ) {
-    return jsonError(MANAGED_TEMPLATE_TRIAL_MODEL_ACCESS_ERROR, 403);
-  }
-
   if (isProviderOptionsTooLarge(parsedBody.data.providerOptions)) {
     return jsonError("Provider options must be 16 KB or smaller", 400);
   }
@@ -133,13 +123,6 @@ export async function PATCH(req: Request) {
 
   if (isBuiltInVariant(parsedBody.data.id)) {
     return jsonError("Built-in variants cannot be modified", 403);
-  }
-
-  if (
-    parsedBody.data.baseModelId &&
-    isRestrictedModelIdForSession(parsedBody.data.baseModelId, session, req.url)
-  ) {
-    return jsonError(MANAGED_TEMPLATE_TRIAL_MODEL_ACCESS_ERROR, 403);
   }
 
   try {

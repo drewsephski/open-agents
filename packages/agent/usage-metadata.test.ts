@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { extractModelCost, extractNormalizedUsage } from "./usage-metadata";
+import {
+  extractModelCost,
+  extractModelCostUsd,
+  extractNormalizedUsage,
+} from "./usage-metadata";
 
 describe("extractNormalizedUsage", () => {
   test("reads OpenRouter usage and cost metadata", () => {
@@ -34,6 +38,32 @@ describe("extractNormalizedUsage", () => {
         },
       }),
     ).toBe(0.0025);
+    expect(
+      extractModelCostUsd({
+        openrouter: { usage: { cost: "0.002500000001" } },
+      }),
+    ).toEqual({ micros: 2501, usd: "0.002500000001" });
+  });
+
+  test("normalizes exact provider dollars without floating point drift", () => {
+    expect(
+      extractModelCostUsd({
+        openrouter: { usage: { cost: "9.999999999999" } },
+      }),
+    ).toEqual({ micros: 10_000_000, usd: "9.999999999999" });
+    expect(
+      extractModelCostUsd({
+        openrouter: { usage: { cost: "0.000000000001" } },
+      }),
+    ).toEqual({ micros: 1, usd: "0.000000000001" });
+  });
+
+  test("rejects malformed, negative, and over-precision costs", () => {
+    for (const cost of ["", "1e-3", "-0.1", "0.0000000000001", "NaN"]) {
+      expect(
+        extractModelCostUsd({ openrouter: { usage: { cost } } }),
+      ).toBeUndefined();
+    }
   });
 
   test("ignores Vercel Gateway cost metadata", () => {

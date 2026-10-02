@@ -35,6 +35,7 @@ const spies = {
     Promise.resolve(upsertChatMessageScopedResult),
   ),
   recordUsage: mock(() => Promise.resolve()),
+  recordSandboxActivity: mock(() => Promise.resolve()),
   buildActiveLifecycleUpdate: mock(() => ({})),
   buildLifecycleActivityUpdate: mock(() => ({})),
   connectSandbox: mock(() =>
@@ -69,6 +70,10 @@ mock.module("@/lib/db/sessions", () => ({
 
 mock.module("@/lib/db/usage", () => ({
   recordUsage: spies.recordUsage,
+}));
+
+mock.module("@/lib/sandbox/activity", () => ({
+  recordSandboxActivity: spies.recordSandboxActivity,
 }));
 
 mock.module("@/lib/sandbox/lifecycle", () => ({
@@ -256,13 +261,11 @@ describe("refreshLifecycleActivity", () => {
   test("updates session lifecycle timing", async () => {
     await refreshLifecycleActivity("session-1");
 
-    expect(spies.buildLifecycleActivityUpdate).toHaveBeenCalledTimes(1);
-    expect(spies.updateSession).toHaveBeenCalledTimes(1);
-    expect(spies.updateSession).toHaveBeenCalledWith("session-1", {});
+    expect(spies.recordSandboxActivity).toHaveBeenCalledWith("session-1");
   });
 
   test("does not throw on update error", async () => {
-    spies.updateSession.mockImplementationOnce(() =>
+    spies.recordSandboxActivity.mockImplementationOnce(() =>
       Promise.reject(new Error("DB down")),
     );
 

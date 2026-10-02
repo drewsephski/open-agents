@@ -1,3 +1,4 @@
+import type { InferenceAccountingSettlement } from "@open-agents/agent";
 import type { SandboxState } from "@open-agents/sandbox";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import type { ModelVariant } from "@/lib/model-variants";
@@ -8,10 +9,12 @@ import {
   type MissionType,
 } from "@/lib/missions";
 import {
+  bigint,
   boolean,
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -69,6 +72,274 @@ export const accounts = pgTable("accounts", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const providerCredentials = pgTable(
+  "provider_credentials",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider", { enum: ["openrouter"] }).notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    nonce: text("nonce").notNull(),
+    authenticationTag: text("authentication_tag").notNull(),
+    encryptionKeyVersion: integer("encryption_key_version").notNull(),
+    label: text("label").notNull(),
+    lastFour: text("last_four").notNull(),
+    validationState: text("validation_state", {
+      enum: ["pending", "valid", "invalid", "revoked"],
+    })
+      .notNull()
+      .default("pending"),
+    validatedAt: timestamp("validated_at"),
+    validationErrorCode: text("validation_error_code"),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("provider_credentials_user_provider_idx").on(
+      table.userId,
+      table.provider,
+    ),
+  ],
+);
+
+export const billingCustomers = pgTable(
+  "billing_customers",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    providerCustomerId: text("provider_customer_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("billing_customers_user_id_idx").on(table.userId),
+    uniqueIndex("billing_customers_provider_customer_id_idx").on(
+      table.providerCustomerId,
+    ),
+  ],
+);
+
+export const billingCheckoutReservations = pgTable(
+  "billing_checkout_reservations",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    state: text("state", { enum: ["creating", "open", "failed"] })
+      .notNull()
+      .default("failed"),
+    generation: integer("generation").notNull().default(0),
+    claimToken: text("claim_token"),
+    leaseExpiresAt: timestamp("lease_expires_at"),
+    providerSessionId: text("provider_session_id"),
+    sessionUrl: text("session_url"),
+    sessionExpiresAt: timestamp("session_expires_at"),
+    requestPayload: jsonb("request_payload").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("billing_checkout_reservations_session_id_idx").on(
+      table.providerSessionId,
+    ),
+  ],
+);
+
+export const billingSubscriptions = pgTable(
+  "billing_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    providerCustomerId: text("provider_customer_id").notNull(),
+    providerProductId: text("provider_product_id").notNull(),
+    providerPriceId: text("provider_price_id").notNull(),
+    status: text("status", {
+      enum: [
+        "incomplete",
+        "incomplete_expired",
+        "trialing",
+        "active",
+        "past_due",
+        "canceled",
+        "unpaid",
+        "paused",
+      ],
+    }).notNull(),
+    financialState: text("financial_state", {
+      enum: [
+        "unpaid",
+        "paid",
+        "partially_refunded",
+        "fully_refunded",
+        "disputed",
+      ],
+    })
+      .notNull()
+      .default("unpaid"),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+    currentPeriodStart: timestamp("current_period_start"),
+    currentPeriodEnd: timestamp("current_period_end"),
+    canceledAt: timestamp("canceled_at"),
+    latestEventCreatedAt: timestamp("latest_event_created_at").notNull(),
+    latestFinancialEventCreatedAt: timestamp(
+      "latest_financial_event_created_at",
+    ),
+    latestFinancialEventId: text("latest_financial_event_id"),
+    paidPeriodStart: timestamp("paid_period_start"),
+    paidPeriodEnd: timestamp("paid_period_end"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("billing_subscriptions_user_id_idx").on(table.userId),
+    index("billing_subscriptions_customer_id_idx").on(table.providerCustomerId),
+  ],
+);
+
+export const billingEntitlements = pgTable(
+  "billing_entitlements",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    subscriptionId: text("subscription_id")
+      .notNull()
+      .references(() => billingSubscriptions.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ["managed_openrouter"] }).notNull(),
+    state: text("state", { enum: ["active", "inactive"] }).notNull(),
+    periodStart: timestamp("period_start"),
+    periodEnd: timestamp("period_end"),
+    latestEventCreatedAt: timestamp("latest_event_created_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("billing_entitlements_user_kind_idx").on(
+      table.userId,
+      table.kind,
+    ),
+    index("billing_entitlements_subscription_id_idx").on(table.subscriptionId),
+  ],
+);
+
+export const billingWebhookReceipts = pgTable(
+  "billing_webhook_receipts",
+  {
+    providerEventId: text("provider_event_id").primaryKey(),
+    eventType: text("event_type").notNull(),
+    eventCreatedAt: timestamp("event_created_at").notNull(),
+    processingState: text("processing_state", {
+      enum: ["processing", "processed", "failed"],
+    })
+      .notNull()
+      .default("processing"),
+    processingErrorCode: text("processing_error_code"),
+    claimToken: text("claim_token"),
+    claimGeneration: integer("claim_generation").notNull().default(0),
+    leaseExpiresAt: timestamp("lease_expires_at"),
+    receivedAt: timestamp("received_at").defaultNow().notNull(),
+    processedAt: timestamp("processed_at"),
+  },
+  (table) => [
+    index("billing_webhook_receipts_event_created_at_idx").on(
+      table.eventCreatedAt,
+    ),
+  ],
+);
+
+export const managedInferenceKeys = pgTable(
+  "managed_inference_keys",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    entitlementId: text("entitlement_id").references(
+      () => billingEntitlements.id,
+      { onDelete: "set null" },
+    ),
+    provider: text("provider", { enum: ["openrouter"] })
+      .notNull()
+      .default("openrouter"),
+    providerKeyId: text("provider_key_id"),
+    ciphertext: text("ciphertext"),
+    nonce: text("nonce"),
+    authenticationTag: text("authentication_tag"),
+    encryptionKeyVersion: integer("encryption_key_version"),
+    keyHash: text("key_hash"),
+    label: text("label").notNull(),
+    lifecycleState: text("lifecycle_state", {
+      enum: ["provisioning", "active", "failed", "revoking", "revoked"],
+    })
+      .notNull()
+      .default("provisioning"),
+    claimToken: text("claim_token"),
+    claimGeneration: integer("claim_generation").notNull().default(0),
+    leaseExpiresAt: timestamp("lease_expires_at"),
+    spendLimitMicros: integer("spend_limit_micros")
+      .notNull()
+      .default(10_000_000),
+    periodStart: timestamp("period_start").notNull(),
+    periodEnd: timestamp("period_end").notNull(),
+    provisioningErrorCode: text("provisioning_error_code"),
+    provisionedAt: timestamp("provisioned_at"),
+    rotatedAt: timestamp("rotated_at"),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("managed_inference_keys_user_id_idx").on(table.userId),
+    index("managed_inference_keys_entitlement_id_idx").on(table.entitlementId),
+    uniqueIndex("managed_inference_keys_provider_key_id_idx").on(
+      table.providerKeyId,
+    ),
+    uniqueIndex("managed_inference_keys_key_hash_idx").on(table.keyHash),
+  ],
+);
+
+export const managedKeyCleanupJobs = pgTable(
+  "managed_key_cleanup_jobs",
+  {
+    providerKeyId: text("provider_key_id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    managedKeyId: text("managed_key_id").references(
+      () => managedInferenceKeys.id,
+      { onDelete: "set null" },
+    ),
+    label: text("label").notNull(),
+    state: text("state", {
+      enum: ["pending", "processing", "attached", "done"],
+    })
+      .notNull()
+      .default("pending"),
+    availableAt: timestamp("available_at").notNull(),
+    claimToken: text("claim_token"),
+    claimGeneration: integer("claim_generation").notNull().default(0),
+    leaseExpiresAt: timestamp("lease_expires_at"),
+    lastErrorCode: text("last_error_code"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("managed_key_cleanup_jobs_user_state_idx").on(
+      table.userId,
+      table.state,
+    ),
+    index("managed_key_cleanup_jobs_managed_key_id_idx").on(table.managedKeyId),
+  ],
+);
 
 // better-auth sessions
 export const authSessions = pgTable("auth_sessions", {
@@ -251,6 +522,68 @@ export const sandboxProviderCircuits = pgTable(
   ],
 );
 
+export const sandboxUsagePeriods = pgTable(
+  "sandbox_usage_periods",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tier: text("tier", { enum: ["byok", "pro"] }).notNull(),
+    periodStart: timestamp("period_start").notNull(),
+    periodEnd: timestamp("period_end").notNull(),
+    allowanceMilliseconds: bigint("allowance_milliseconds", {
+      mode: "number",
+    }).notNull(),
+    consumedMilliseconds: bigint("consumed_milliseconds", {
+      mode: "number",
+    })
+      .notNull()
+      .default(0),
+    runningSandboxCount: integer("running_sandbox_count").notNull().default(0),
+    lastMeteredAt: timestamp("last_metered_at"),
+    revision: integer("revision").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("sandbox_usage_periods_user_tier_start_idx").on(
+      table.userId,
+      table.tier,
+      table.periodStart,
+    ),
+    index("sandbox_usage_periods_period_end_idx").on(table.periodEnd),
+  ],
+);
+
+export const sandboxMeteringLeases = pgTable(
+  "sandbox_metering_leases",
+  {
+    sessionId: text("session_id")
+      .primaryKey()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    usagePeriodId: text("usage_period_id")
+      .notNull()
+      .references(() => sandboxUsagePeriods.id, { onDelete: "cascade" }),
+    state: text("state", { enum: ["starting", "running"] })
+      .notNull()
+      .default("starting"),
+    startedAt: timestamp("started_at").notNull(),
+    admissionExpiresAt: timestamp("admission_expires_at"),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("sandbox_metering_leases_user_period_idx").on(
+      table.userId,
+      table.usagePeriodId,
+      table.state,
+    ),
+  ],
+);
+
 export const chats = pgTable(
   "chats",
   {
@@ -260,6 +593,11 @@ export const chats = pgTable(
       .references(() => sessions.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     modelId: text("model_id").default(APP_DEFAULT_MODEL_ID),
+    executionBackend: text("execution_backend", {
+      enum: ["launchstack_native", "codex", "opencode"],
+    })
+      .notNull()
+      .default("launchstack_native"),
     activeStreamId: text("active_stream_id"),
     lastAssistantMessageAt: timestamp("last_assistant_message_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -387,6 +725,36 @@ export const workflowRunSteps = pgTable(
   ],
 );
 
+export const modelCallToolCheckpoints = pgTable(
+  "model_call_tool_checkpoints",
+  {
+    id: text("id").primaryKey(),
+    workflowRunId: text("workflow_run_id").notNull(),
+    stepNumber: integer("step_number").notNull(),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    messageId: text("message_id").notNull(),
+    state: text("state", { enum: ["observed", "replayable"] })
+      .notNull()
+      .default("observed"),
+    responseMessage: jsonb("response_message").notNull(),
+    responseMessages: jsonb("response_messages").notNull(),
+    accountingSettlement: jsonb(
+      "accounting_settlement",
+    ).$type<InferenceAccountingSettlement>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("model_call_tool_checkpoints_run_step_idx").on(
+      table.workflowRunId,
+      table.stepNumber,
+    ),
+    index("model_call_tool_checkpoints_chat_idx").on(table.chatId),
+  ],
+);
+
 export type Session = typeof sessions.$inferSelect;
 export type NewSession = typeof sessions.$inferInsert;
 export type VercelProjectLink = typeof vercelProjectLinks.$inferSelect;
@@ -405,6 +773,24 @@ export type WorkflowRunStep = typeof workflowRunSteps.$inferSelect;
 export type NewWorkflowRunStep = typeof workflowRunSteps.$inferInsert;
 export type GitHubInstallation = typeof githubInstallations.$inferSelect;
 export type NewGitHubInstallation = typeof githubInstallations.$inferInsert;
+export type ProviderCredential = typeof providerCredentials.$inferSelect;
+export type NewProviderCredential = typeof providerCredentials.$inferInsert;
+export type BillingCustomer = typeof billingCustomers.$inferSelect;
+export type NewBillingCustomer = typeof billingCustomers.$inferInsert;
+export type BillingSubscription = typeof billingSubscriptions.$inferSelect;
+export type NewBillingSubscription = typeof billingSubscriptions.$inferInsert;
+export type BillingEntitlement = typeof billingEntitlements.$inferSelect;
+export type NewBillingEntitlement = typeof billingEntitlements.$inferInsert;
+export type BillingWebhookReceipt = typeof billingWebhookReceipts.$inferSelect;
+export type NewBillingWebhookReceipt =
+  typeof billingWebhookReceipts.$inferInsert;
+export type ManagedInferenceKey = typeof managedInferenceKeys.$inferSelect;
+export type NewManagedInferenceKey = typeof managedInferenceKeys.$inferInsert;
+export type ManagedKeyCleanupJob = typeof managedKeyCleanupJobs.$inferSelect;
+export type NewManagedKeyCleanupJob = typeof managedKeyCleanupJobs.$inferInsert;
+export type SandboxUsagePeriod = typeof sandboxUsagePeriods.$inferSelect;
+export type NewSandboxUsagePeriod = typeof sandboxUsagePeriods.$inferInsert;
+export type SandboxMeteringLease = typeof sandboxMeteringLeases.$inferSelect;
 
 // User preferences for settings
 export const userPreferences = pgTable("user_preferences", {
@@ -445,7 +831,7 @@ export const userPreferences = pgTable("user_preferences", {
 export type UserPreferences = typeof userPreferences.$inferSelect;
 export type NewUserPreferences = typeof userPreferences.$inferInsert;
 
-// Usage tracking — one row per assistant turn (append-only)
+// Usage tracking — one row per authenticated provider call (append-only)
 export const usageEvents = pgTable("usage_events", {
   id: text("id").primaryKey(),
   userId: text("user_id")
@@ -459,6 +845,26 @@ export const usageEvents = pgTable("usage_events", {
     .default("main"),
   provider: text("provider"),
   modelId: text("model_id"),
+  credentialSource: text("credential_source", {
+    enum: ["byok", "managed", "administrative"],
+  }),
+  inferenceCostUsd: numeric("inference_cost_usd", {
+    precision: 18,
+    scale: 12,
+  }),
+  accountingStatus: text("accounting_status", {
+    enum: ["accounted", "failed"],
+  })
+    .notNull()
+    .default("accounted"),
+  accountingFailureReason: text("accounting_failure_reason", {
+    enum: [
+      "missing_cost",
+      "provider_error",
+      "stream_cancelled",
+      "stream_truncated",
+    ],
+  }),
   inputTokens: integer("input_tokens").notNull().default(0),
   cachedInputTokens: integer("cached_input_tokens").notNull().default(0),
   outputTokens: integer("output_tokens").notNull().default(0),
@@ -466,5 +872,42 @@ export const usageEvents = pgTable("usage_events", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const inferenceCallReservations = pgTable(
+  "inference_call_reservations",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    modelId: text("model_id").notNull(),
+    periodStart: timestamp("period_start").notNull(),
+    periodEnd: timestamp("period_end").notNull(),
+    reservedMicros: bigint("reserved_micros", { mode: "number" }).notNull(),
+    state: text("state", {
+      enum: ["pending", "reconciled", "missing_cost", "abandoned"],
+    })
+      .notNull()
+      .default("pending"),
+    actualCostUsd: numeric("actual_cost_usd", {
+      precision: 18,
+      scale: 12,
+    }),
+    actualCostMicros: bigint("actual_cost_micros", { mode: "number" }),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    completedAt: timestamp("completed_at"),
+  },
+  (table) => [
+    index("inference_call_reservations_user_period_idx").on(
+      table.userId,
+      table.periodStart,
+      table.periodEnd,
+      table.state,
+    ),
+  ],
+);
+
 export type UsageEvent = typeof usageEvents.$inferSelect;
 export type NewUsageEvent = typeof usageEvents.$inferInsert;
+export type InferenceCallReservation =
+  typeof inferenceCallReservations.$inferSelect;

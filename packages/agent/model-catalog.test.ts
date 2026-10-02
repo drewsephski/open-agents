@@ -12,7 +12,9 @@ describe("fetchOpenRouterLanguageModels", () => {
           apiKey: "",
           fetchImpl: async () => new Response("{}", { status: 200 }),
         }),
-      ).rejects.toThrow("OPENROUTER_API_KEY is not configured");
+      ).rejects.toThrow(
+        "Explicit OpenRouter API key configuration is required.",
+      );
     } finally {
       if (originalApiKey === undefined) {
         delete process.env.OPENROUTER_API_KEY;

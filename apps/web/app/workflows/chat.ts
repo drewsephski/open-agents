@@ -60,6 +60,10 @@ import { resolveChatModelSelection } from "../api/chat/_lib/model-selection";
 import { resolveChatSandboxRuntime } from "./chat-sandbox-runtime";
 
 type AuthSessionContext = Pick<AuthSession, "authProvider" | "user"> | null;
+type UnresolvedOpenAgentCallOptions = Omit<
+  OpenAgentCallOptions,
+  "openRouter" | "resolveSubagentOpenRouter"
+>;
 
 type Options = {
   messages: WebAgentUIMessage[];
@@ -70,7 +74,7 @@ type Options = {
   authSession: AuthSessionContext;
   selectedModelId?: string;
   modelId?: string;
-  agentOptions?: Omit<OpenAgentCallOptions, "sandbox" | "skills">;
+  agentOptions?: Omit<UnresolvedOpenAgentCallOptions, "sandbox" | "skills">;
   assistantId?: string;
   inputMessagesPersisted?: boolean;
   maxSteps?: number;
@@ -81,7 +85,7 @@ type Options = {
 type ChatModelRuntime = {
   selectedModelId: string;
   modelId: string;
-  agentOptions: Omit<OpenAgentCallOptions, "sandbox" | "skills">;
+  agentOptions: Omit<UnresolvedOpenAgentCallOptions, "sandbox" | "skills">;
   autoCommitEnabled: boolean;
   autoCreatePrEnabled: boolean;
 };
@@ -721,7 +725,7 @@ export async function runAgentWorkflow(options: Options) {
       ),
     };
 
-    const agentOptions: OpenAgentCallOptions = {
+    const agentOptions: UnresolvedOpenAgentCallOptions = {
       ...modelRuntime.agentOptions,
       ...options.agentOptions,
       sandbox: {
@@ -750,11 +754,11 @@ export async function runAgentWorkflow(options: Options) {
           workflowRunId,
           options.chatId,
           options.sessionId,
+          options.userId,
           selectedModelId,
           modelId,
           agentOptions,
           step + 1,
-          options.userId,
         );
       } catch (error) {
         if (isStepTimingError(error)) {
@@ -1003,6 +1007,7 @@ export async function runAgentWorkflow(options: Options) {
           finishedAt: runFinishedAt.toISOString(),
           totalDurationMs: runFinishedAt.getTime() - runStartedAt.getTime(),
           stepTimings,
+          inferenceAccounted: true,
         },
       );
     }
@@ -1021,16 +1026,54 @@ const runAgentStep = async (
   workflowRunId: string,
   chatId: string,
   sessionId: string,
+  userId: string,
   selectedModelId: string,
   modelId: string,
-  agentOptions: OpenAgentCallOptions,
+  agentOptions: UnresolvedOpenAgentCallOptions,
   stepNumber: number,
-  userId: string,
 ) => {
   "use step";
 
   const stepStartedAt = new Date();
   const { webAgent } = await import("@/app/config");
+  const { checkpointToolResults, getReplayableToolCheckpoint } =
+    await import("@/lib/ai/model-call-tool-checkpoint");
+  const replayableCheckpoint = await getReplayableToolCheckpoint({
+    workflowRunId,
+    stepNumber,
+  });
+  if (replayableCheckpoint) {
+    if (replayableCheckpoint.accountingSettlement) {
+      const { retryInferenceSettlement } =
+        await import("@/lib/access/inference-call-accounting");
+      await retryInferenceSettlement(replayableCheckpoint.accountingSettlement);
+    }
+    const stepFinishedAt = new Date();
+    const checkpointFinishReason: FinishReason = "tool-calls";
+    return {
+      responseMessage: {
+        ...replayableCheckpoint.responseMessage,
+        metadata: withModelMetadata(
+          replayableCheckpoint.responseMessage.metadata,
+          selectedModelId,
+          modelId,
+        ),
+      },
+      responseMessages: replayableCheckpoint.responseMessages,
+      finishReason: checkpointFinishReason,
+      rawFinishReason: "durable-tool-checkpoint",
+      stepUsage: undefined,
+      stepCost: undefined,
+      stepWasAborted: false,
+      stepTiming: buildStepTiming(
+        stepNumber,
+        stepStartedAt,
+        stepFinishedAt,
+        checkpointFinishReason,
+        "durable-tool-checkpoint",
+      ),
+    };
+  }
 
   const abortController = new AbortController();
   const stopMonitor = startStopMonitor(workflowRunId, abortController);
@@ -1065,25 +1108,44 @@ const runAgentStep = async (
     let totalMessageUsage = existingTotalMessageUsage;
     let totalMessageCost = existingTotalMessageCost;
 
+    const { requireModelCredential } =
+      await import("@/lib/access/model-credential-resolver");
+    const mainModelId = getAgentModelId(agentOptions.model, modelId);
+    const mainCredential = await requireModelCredential({
+      userId,
+      modelId: mainModelId,
+      agentType: "main",
+    });
+    const authorizedAgentOptions: OpenAgentCallOptions = {
+      ...agentOptions,
+      ...(Object.keys(actionTools).length > 0
+        ? {
+            customInstructions: [
+              agentOptions.customInstructions,
+              GMAIL_AGENT_INSTRUCTIONS,
+            ]
+              .filter(Boolean)
+              .join("\n\n"),
+          }
+        : {}),
+      openRouter: mainCredential.openRouter,
+      resolveSubagentOpenRouter: async ({ modelId: subagentModelId }) => {
+        const credential = await requireModelCredential({
+          userId,
+          modelId: subagentModelId,
+          agentType: "subagent",
+        });
+        return credential.openRouter;
+      },
+    };
+
     const result = await agent.stream({
       messages,
-      options: {
-        ...agentOptions,
-        ...(Object.keys(actionTools).length > 0
-          ? {
-              customInstructions: [
-                agentOptions.customInstructions,
-                GMAIL_AGENT_INSTRUCTIONS,
-              ]
-                .filter(Boolean)
-                .join("\n\n"),
-            }
-          : {}),
-      },
+      options: authorizedAgentOptions,
       abortSignal: abortController.signal,
     });
 
-    for await (const part of result.toUIMessageStream<WebAgentUIMessage>({
+    const uiMessageStream = result.toUIMessageStream<WebAgentUIMessage>({
       originalMessages,
       generateMessageId: () => messageId,
       sendStart: false,
@@ -1125,10 +1187,36 @@ const runAgentStep = async (
       onFinish: ({ responseMessage: finishedResponseMessage }) => {
         responseMessage = finishedResponseMessage;
       },
-    })) {
-      const writer = writable.getWriter();
-      await writer.write(part);
-      writer.releaseLock();
+    });
+    const checkpointedStream = checkpointToolResults({
+      stream: uiMessageStream,
+      originalMessage:
+        lastOriginalMessage?.role === "assistant"
+          ? lastOriginalMessage
+          : undefined,
+      workflowRunId,
+      stepNumber,
+      chatId,
+      tools: webAgent.tools,
+    });
+    try {
+      const checkpointReader = checkpointedStream.output.getReader();
+      while (true) {
+        const nextPart = await checkpointReader.read();
+        if (nextPart.done) break;
+        const writer = writable.getWriter();
+        try {
+          await writer.write(nextPart.value);
+        } finally {
+          writer.releaseLock();
+        }
+      }
+      await checkpointedStream.settled;
+    } catch (error) {
+      await checkpointedStream.settled.catch((checkpointError: unknown) => {
+        if (checkpointError !== error) throw checkpointError;
+      });
+      throw error;
     }
 
     if (responseMessage == null) {
@@ -1301,6 +1389,16 @@ const runAgentStep = async (
     await stopMonitor.done;
   }
 };
+
+function getAgentModelId(
+  selection: UnresolvedOpenAgentCallOptions["model"],
+  fallbackModelId: string,
+): string {
+  if (!selection) {
+    return fallbackModelId;
+  }
+  return typeof selection === "string" ? selection : selection.id;
+}
 
 function startStopMonitor(runId: string, abortController: AbortController) {
   let shouldStop = false;

@@ -35,6 +35,10 @@ mock.module("@/lib/db/sessions", () => ({
   getChatById: async () => chatRecord,
 }));
 
+mock.module("@/lib/sandbox/activity", () => ({
+  recordSandboxActivity: async () => {},
+}));
+
 const sessionContextModulePromise = import("./session-context");
 
 async function getErrorMessage(

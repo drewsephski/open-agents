@@ -8,6 +8,13 @@ export interface NormalizedModelUsage {
   cost?: number;
 }
 
+export interface NormalizedModelCost {
+  /** Exact normalized dollar amount accepted by numeric(18, 12). */
+  usd: string;
+  /** Conservative allowance charge, rounded up to the next dollar micro. */
+  micros: number;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -74,4 +81,50 @@ export function extractModelCost(
   providerMetadata: ProviderMetadata | undefined,
 ): number | undefined {
   return extractNormalizedUsage(providerMetadata).cost;
+}
+
+function normalizeCostValue(value: unknown): string | undefined {
+  const candidate =
+    typeof value === "number" && Number.isFinite(value)
+      ? value.toFixed(12).replace(/0+$/, "").replace(/\.$/, "")
+      : typeof value === "string"
+        ? value
+        : undefined;
+  if (candidate === undefined || !/^\d+(?:\.\d{1,12})?$/.test(candidate)) {
+    return undefined;
+  }
+
+  const [wholePart = "0", fractionPart = ""] = candidate.split(".");
+  const whole = wholePart.replace(/^0+(?=\d)/, "");
+  const fraction = fractionPart.replace(/0+$/, "");
+  return fraction.length > 0 ? `${whole}.${fraction}` : whole;
+}
+
+/**
+ * Read exact OpenRouter dollar cost for durable accounting. String metadata is
+ * never converted through a floating point number. Allowance micros round up
+ * so sub-micro charges cannot accumulate outside the managed limit.
+ */
+export function extractModelCostUsd(
+  providerMetadata: ProviderMetadata | undefined,
+): NormalizedModelCost | undefined {
+  const usage = getOpenRouterUsage(providerMetadata);
+  const usd = normalizeCostValue(usage?.cost);
+  if (usd === undefined) {
+    return undefined;
+  }
+
+  const micros = modelCostUsdToMicros(usd);
+  return micros === undefined ? undefined : { usd, micros };
+}
+
+export function modelCostUsdToMicros(usd: string): number | undefined {
+  if (!/^\d+(?:\.\d{1,12})?$/.test(usd)) return undefined;
+  const [whole = "0", fraction = ""] = usd.split(".");
+  const paddedFraction = fraction.padEnd(12, "0");
+  const micros =
+    Number(whole) * 1_000_000 +
+    Number(paddedFraction.slice(0, 6)) +
+    (/[1-9]/.test(paddedFraction.slice(6)) ? 1 : 0);
+  return Number.isSafeInteger(micros) ? micros : undefined;
 }

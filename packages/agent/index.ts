@@ -34,10 +34,22 @@ export {
   fetchOpenRouterLanguageModels,
 } from "./model-catalog";
 export {
+  type NormalizedModelCost,
   type NormalizedModelUsage,
   extractModelCost,
+  extractModelCostUsd,
   extractNormalizedUsage,
+  modelCostUsdToMicros,
 } from "./usage-metadata";
+export {
+  type InferenceAccountingCallbacks,
+  type InferenceAccountingFailureReason,
+  type InferenceAccountingResult,
+  type InferenceAccountingSettlement,
+  type InferenceAccountingSettlementContext,
+  InferenceAccountingSettlementError,
+  withInferenceAccounting,
+} from "./inference-accounting";
 // Skills exports
 export { discoverSkills, parseSkillFrontmatter } from "./skills/discovery";
 export { extractSkillBody, substituteArguments } from "./skills/loader";

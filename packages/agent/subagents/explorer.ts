@@ -1,4 +1,3 @@
-import type { LanguageModel } from "ai";
 import { stepCountIs, ToolLoopAgent } from "ai";
 import { z } from "zod";
 import { constructorPlaceholderModel } from "../models";
@@ -13,6 +12,10 @@ import {
   SUBAGENT_STEP_LIMIT,
   SUBAGENT_WORKING_DIR,
 } from "./constants";
+import {
+  authorizeSubagentStep,
+  subagentModelRuntimeSchema,
+} from "./model-runtime";
 
 const EXPLORER_REMINDER = `## REMINDER
 - You CANNOT ask questions - no one will respond
@@ -61,16 +64,17 @@ You have access to: read, grep, glob, bash (read-only commands only)
 - NEVER use bash for: mkdir, touch, rm, cp, mv, git add, git commit, npm install, or any file creation/modification
 - Return workspace-relative file paths in your final response (e.g., "src/index.ts:42")`;
 
-const callOptionsSchema = z.object({
-  task: z.string().describe("Short description of the exploration task"),
-  instructions: z
-    .string()
-    .describe("Detailed instructions for the exploration"),
-  sandbox: z
-    .custom<SandboxExecutionContext["sandbox"]>()
-    .describe("Sandbox for file system and shell operations"),
-  model: z.custom<LanguageModel>().describe("Language model for this subagent"),
-});
+const callOptionsSchema = z
+  .object({
+    task: z.string().describe("Short description of the exploration task"),
+    instructions: z
+      .string()
+      .describe("Detailed instructions for the exploration"),
+    sandbox: z
+      .custom<SandboxExecutionContext["sandbox"]>()
+      .describe("Sandbox for file system and shell operations"),
+  })
+  .extend(subagentModelRuntimeSchema.shape);
 
 export type ExplorerCallOptions = z.infer<typeof callOptionsSchema>;
 
@@ -85,16 +89,16 @@ export const explorerSubagent = new ToolLoopAgent({
   },
   stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
   callOptionsSchema,
+  prepareStep: ({ experimental_context }) =>
+    authorizeSubagentStep(experimental_context),
   prepareCall: ({ options, ...settings }) => {
     if (!options) {
       throw new Error("Explorer subagent requires task call options.");
     }
 
     const sandbox = options.sandbox;
-    const model = options.model ?? settings.model;
     return {
       ...settings,
-      model,
       instructions: `${EXPLORER_SYSTEM_PROMPT}
 
 ${SUBAGENT_WORKING_DIR}
@@ -108,7 +112,11 @@ ${options.instructions}
 ${EXPLORER_REMINDER}`,
       experimental_context: {
         sandbox,
-        model,
+        model: settings.model,
+        subagentModelRuntime: {
+          modelId: options.modelId,
+          resolveModel: options.resolveModel,
+        },
       },
     };
   },

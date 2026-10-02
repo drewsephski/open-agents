@@ -10,7 +10,12 @@ const generateTextCalls: Array<{
 let generationResult: { output: unknown } | Error;
 
 mock.module("@open-agents/agent", () => ({
-  model: (modelId: string) => modelId,
+  model: (modelId: string, options: { config: { apiKey: string } }) =>
+    `${modelId}:${options.config.apiKey}`,
+}));
+
+mock.module("@/lib/ai/public-demo-model", () => ({
+  getPublicDemoOpenRouterConfig: () => ({ apiKey: "public-demo-key" }),
 }));
 
 mock.module("ai", () => ({
@@ -164,7 +169,7 @@ describe("/api/recommend-stack", () => {
       timeout: 12_000,
     });
     expect(generateTextCalls[0]).toMatchObject({
-      model: "openai/gpt-5.6-luna",
+      model: "openai/gpt-5.6-luna:public-demo-key",
     });
   });
 

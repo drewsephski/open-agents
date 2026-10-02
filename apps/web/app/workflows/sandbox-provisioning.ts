@@ -9,6 +9,7 @@ import {
   provisionSessionSandbox,
   SessionArchivedDuringProvisioningError,
 } from "@/lib/sandbox/provisioning";
+import { SandboxAccessDeniedError } from "@/lib/sandbox/allowance";
 
 async function runProvisioning(sessionId: string, runId: string) {
   "use step";
@@ -37,6 +38,10 @@ async function runProvisioning(sessionId: string, runId: string) {
       sandboxState: result.sandboxState,
     };
   } catch (error) {
+    if (error instanceof SandboxAccessDeniedError) {
+      await clearSessionSandboxProvisioningRunIdIfOwned(sessionId, runId);
+      throw error;
+    }
     if (error instanceof SessionArchivedDuringProvisioningError) {
       await clearSessionSandboxProvisioningRunIdIfOwned(sessionId, runId);
       return { skipped: true, reason: "session-archived" };

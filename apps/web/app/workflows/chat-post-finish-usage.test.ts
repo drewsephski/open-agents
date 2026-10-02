@@ -66,6 +66,10 @@ mock.module("@/lib/db/usage", () => ({
   recordUsage: spies.recordUsage,
 }));
 
+mock.module("@/lib/sandbox/activity", () => ({
+  recordSandboxActivity: mock(() => Promise.resolve()),
+}));
+
 mock.module("@/lib/db/workflow-runs", () => ({
   recordWorkflowRun: spies.recordWorkflowRun,
 }));

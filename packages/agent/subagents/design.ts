@@ -1,4 +1,3 @@
-import type { LanguageModel } from "ai";
 import { stepCountIs, ToolLoopAgent } from "ai";
 import { z } from "zod";
 import { constructorPlaceholderModel } from "../models";
@@ -18,6 +17,10 @@ import {
   SUBAGENT_VALIDATE_RULES,
   SUBAGENT_WORKING_DIR,
 } from "./constants";
+import {
+  authorizeSubagentStep,
+  subagentModelRuntimeSchema,
+} from "./model-runtime";
 
 const DESIGN_SYSTEM_PROMPT = `You are a design agent — a specialized subagent that creates distinctive, production-grade frontend interfaces with exceptional design quality. You avoid generic "AI slop" aesthetics and implement real working code with extraordinary attention to aesthetic details and creative choices.
 
@@ -78,14 +81,15 @@ You have full access to file operations (read, write, edit, grep, glob) and bash
 
 ${SUBAGENT_BASH_RULES}`;
 
-const callOptionsSchema = z.object({
-  task: z.string().describe("Short description of the task"),
-  instructions: z.string().describe("Detailed instructions for the task"),
-  sandbox: z
-    .custom<SandboxExecutionContext["sandbox"]>()
-    .describe("Sandbox for file system and shell operations"),
-  model: z.custom<LanguageModel>().describe("Language model for this subagent"),
-});
+const callOptionsSchema = z
+  .object({
+    task: z.string().describe("Short description of the task"),
+    instructions: z.string().describe("Detailed instructions for the task"),
+    sandbox: z
+      .custom<SandboxExecutionContext["sandbox"]>()
+      .describe("Sandbox for file system and shell operations"),
+  })
+  .extend(subagentModelRuntimeSchema.shape);
 
 export type DesignCallOptions = z.infer<typeof callOptionsSchema>;
 
@@ -102,16 +106,16 @@ export const designSubagent = new ToolLoopAgent({
   },
   stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
   callOptionsSchema,
+  prepareStep: ({ experimental_context }) =>
+    authorizeSubagentStep(experimental_context),
   prepareCall: ({ options, ...settings }) => {
     if (!options) {
       throw new Error("Design subagent requires task call options.");
     }
 
     const sandbox = options.sandbox;
-    const model = options.model ?? settings.model;
     return {
       ...settings,
-      model,
       instructions: `${DESIGN_SYSTEM_PROMPT}
 
 ${SUBAGENT_WORKING_DIR}
@@ -125,7 +129,11 @@ ${options.instructions}
 ${SUBAGENT_REMINDER}`,
       experimental_context: {
         sandbox,
-        model,
+        model: settings.model,
+        subagentModelRuntime: {
+          modelId: options.modelId,
+          resolveModel: options.resolveModel,
+        },
       },
     };
   },

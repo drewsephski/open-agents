@@ -1,4 +1,4 @@
-import { model } from "@open-agents/agent";
+import { model, type OpenRouterConfig } from "@open-agents/agent";
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import { getSvglCatalog } from "@/lib/svgl";
@@ -10,9 +10,11 @@ const STACK_RECOMMENDATION_TIMEOUT_MS = 12_000;
 export async function recommendTechStack({
   productRequest,
   abortSignal,
+  openRouter,
 }: {
   productRequest: string;
   abortSignal?: AbortSignal;
+  openRouter: OpenRouterConfig;
 }) {
   const catalog = await getSvglCatalog();
   const modelOutputSchema = z.object({
@@ -35,6 +37,7 @@ export async function recommendTechStack({
 
   const { output } = await generateText({
     model: model(STACK_RECOMMENDATION_MODEL, {
+      config: openRouter,
       providerOptionsOverrides: {
         openai: { reasoningEffort: "minimal" },
         openrouter: { provider: { sort: "latency" } },

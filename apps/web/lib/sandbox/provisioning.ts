@@ -48,6 +48,11 @@ import { sandboxProviderCircuit } from "@/lib/sandbox/provider-circuit";
 import { emitSandboxTelemetry } from "@/lib/sandbox/telemetry";
 import { installGlobalSkills } from "@/lib/skills/global-skill-installer";
 import { eq } from "drizzle-orm";
+import {
+  admitSandboxOperation,
+  confirmSandboxRunning,
+  releaseSandboxRunning,
+} from "@/lib/sandbox/allowance";
 
 type UserRecord = {
   id: string;
@@ -207,130 +212,141 @@ export async function provisionSessionSandbox(params: {
   }
 
   const isPinnedRestore = hasResumableSandboxState(session.sandboxState);
-  let didSetupWorkspace = !isPinnedRestore;
-  const user = await getUserById(session.userId);
-  if (!user) {
-    throw new Error("User not found");
-  }
-
-  const gitUser = await getGitUser(user);
-  const setupToken = await getSetupToken({
+  await admitSandboxOperation({
     userId: session.userId,
-    session,
+    sessionId: session.id,
+    operation: isPinnedRestore ? "resume" : "create",
   });
-
-  const providerConfig = getSandboxProviderConfig();
-  const sharedOptions = {
-    githubToken: setupToken?.token,
-    gitUser,
-    timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
-    hibernationTimeoutMs: SANDBOX_INACTIVITY_TIMEOUT_MS,
-    vcpus: DEFAULT_SANDBOX_VCPUS,
-    ports: DEFAULT_SANDBOX_PORTS,
-    baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
-    persistent: true,
-    resume: true,
-    createIfMissing: true,
-    providerOrder: providerConfig.providerOrder,
-    providerOptions: providerConfig.providerOptions,
-    circuitBreaker: sandboxProviderCircuit,
-    telemetry: emitSandboxTelemetry,
-  } as const;
-
-  let sandbox: Sandbox;
-  let provider: SandboxProvider;
-  let selectionReason: SandboxSelectionReason | "restore";
+  let didSetupWorkspace = !isPinnedRestore;
   try {
-    if (isPinnedRestore && isSandboxState(session.sandboxState)) {
-      try {
-        sandbox = await connectSandbox({
-          state: session.sandboxState,
-          options: { ...sharedOptions, createIfMissing: false },
-        });
-        provider = session.sandboxState.type;
-        selectionReason = "restore";
-      } catch (error) {
-        const shouldRebuildPinnedVercel =
-          session.sandboxState.type === "vercel" &&
-          isSandboxProviderError(error) &&
-          error.errorClass === "resource_not_found";
-        if (!shouldRebuildPinnedVercel) {
-          throw error;
-        }
+    const user = await getUserById(session.userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
 
+    const gitUser = await getGitUser(user);
+    const setupToken = await getSetupToken({
+      userId: session.userId,
+      session,
+    });
+
+    const providerConfig = getSandboxProviderConfig();
+    const sharedOptions = {
+      githubToken: setupToken?.token,
+      gitUser,
+      timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
+      hibernationTimeoutMs: SANDBOX_INACTIVITY_TIMEOUT_MS,
+      vcpus: DEFAULT_SANDBOX_VCPUS,
+      ports: DEFAULT_SANDBOX_PORTS,
+      baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
+      persistent: true,
+      resume: true,
+      createIfMissing: true,
+      providerOrder: providerConfig.providerOrder,
+      providerOptions: providerConfig.providerOptions,
+      circuitBreaker: sandboxProviderCircuit,
+      telemetry: emitSandboxTelemetry,
+    } as const;
+
+    let sandbox: Sandbox;
+    let provider: SandboxProvider;
+    let selectionReason: SandboxSelectionReason | "restore";
+    try {
+      if (isPinnedRestore && isSandboxState(session.sandboxState)) {
+        try {
+          sandbox = await connectSandbox({
+            state: session.sandboxState,
+            options: { ...sharedOptions, createIfMissing: false },
+          });
+          provider = session.sandboxState.type;
+          selectionReason = "restore";
+        } catch (error) {
+          const shouldRebuildPinnedVercel =
+            session.sandboxState.type === "vercel" &&
+            isSandboxProviderError(error) &&
+            error.errorClass === "resource_not_found";
+          if (!shouldRebuildPinnedVercel) {
+            throw error;
+          }
+
+          const provisioned = await provisionSandbox(
+            {
+              source: buildSandboxSource(session),
+              persistenceKey: getSessionSandboxName(session.id),
+            },
+            {
+              ...sharedOptions,
+              providerOrder: ["vercel"],
+            },
+          );
+          sandbox = provisioned.sandbox;
+          provider = provisioned.provider;
+          selectionReason = provisioned.reason;
+          didSetupWorkspace = true;
+        }
+      } else {
         const provisioned = await provisionSandbox(
           {
             source: buildSandboxSource(session),
             persistenceKey: getSessionSandboxName(session.id),
           },
-          {
-            ...sharedOptions,
-            providerOrder: ["vercel"],
-          },
+          sharedOptions,
         );
         sandbox = provisioned.sandbox;
         provider = provisioned.provider;
         selectionReason = provisioned.reason;
-        didSetupWorkspace = true;
       }
-    } else {
-      const provisioned = await provisionSandbox(
-        {
-          source: buildSandboxSource(session),
-          persistenceKey: getSessionSandboxName(session.id),
-        },
-        sharedOptions,
-      );
-      sandbox = provisioned.sandbox;
-      provider = provisioned.provider;
-      selectionReason = provisioned.reason;
+    } finally {
+      if (setupToken) {
+        await revokeInstallationToken(setupToken.token);
+      }
     }
-  } finally {
-    if (setupToken) {
-      await revokeInstallationToken(setupToken.token);
-    }
-  }
 
-  const rawSandboxState = sandbox.getState?.();
-  const sandboxState = isSandboxState(rawSandboxState)
-    ? rawSandboxState
-    : ({ type: provider } as SandboxState);
+    const rawSandboxState = sandbox.getState?.();
+    const sandboxState = isSandboxState(rawSandboxState)
+      ? rawSandboxState
+      : ({ type: provider } as SandboxState);
 
-  const updatedSession = await updateSessionIfNotArchived(params.sessionId, {
-    sandboxState,
-    snapshotUrl: null,
-    snapshotCreatedAt: null,
-    lifecycleVersion: getNextLifecycleVersion(session.lifecycleVersion),
-    lifecycleError: null,
-    ...buildActiveLifecycleUpdate(sandboxState),
-  });
-
-  if (!updatedSession) {
-    await stopSandboxAfterArchiveRace({
-      sessionId: params.sessionId,
-      sandbox,
+    const updatedSession = await updateSessionIfNotArchived(params.sessionId, {
+      sandboxState,
+      snapshotUrl: null,
+      snapshotCreatedAt: null,
+      lifecycleVersion: getNextLifecycleVersion(session.lifecycleVersion),
+      lifecycleError: null,
+      ...buildActiveLifecycleUpdate(sandboxState),
     });
+
+    if (!updatedSession) {
+      await stopSandboxAfterArchiveRace({
+        sessionId: params.sessionId,
+        sandbox,
+      });
+    }
+
+    await installSessionGlobalSkills({
+      session,
+      sandbox,
+      didSetupWorkspace,
+    });
+
+    await confirmSandboxRunning(session.id);
+    kickSandboxLifecycleWorkflow({
+      sessionId: params.sessionId,
+      reason: "sandbox-created",
+    });
+
+    return {
+      sandboxState,
+      workingDirectory: sandbox.workingDirectory,
+      currentBranch: sandbox.currentBranch,
+      environmentDetails: sandbox.environmentDetails,
+      didSetupWorkspace,
+      provider,
+      selectionReason,
+      session: updatedSession ?? session,
+    };
+  } catch (error) {
+    await releaseSandboxRunning(session.id);
+    throw error;
   }
-
-  await installSessionGlobalSkills({
-    session,
-    sandbox,
-    didSetupWorkspace,
-  });
-
-  kickSandboxLifecycleWorkflow({
-    sessionId: params.sessionId,
-    reason: "sandbox-created",
-  });
-
-  return {
-    sandboxState,
-    workingDirectory: sandbox.workingDirectory,
-    currentBranch: sandbox.currentBranch,
-    environmentDetails: sandbox.environmentDetails,
-    didSetupWorkspace,
-    provider,
-    selectionReason,
-    session: updatedSession ?? session,
-  };
 }

@@ -1,0 +1,193 @@
+import "server-only";
+import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import type { CredentialEnvelope } from "@/lib/credentials/envelope-encryption";
+import { db } from "@/lib/db/client";
+import {
+  billingEntitlements,
+  billingSubscriptions,
+  inferenceCallReservations,
+  managedInferenceKeys,
+  usageEvents,
+} from "@/lib/db/schema";
+import type { ManagedKeyState } from "@/lib/access/inference-source";
+import type { SubscriptionAccessState } from "@/lib/access/subscription-state";
+import {
+  getAllowanceWarningLevel,
+  MANAGED_INFERENCE_ALLOWANCE_MICROS,
+  type AllowancePeriod,
+  type AllowanceWarningLevel,
+} from "@/lib/access/allowance-period";
+import { modelCostUsdToMicros } from "@open-agents/agent";
+
+export interface BillingCredentialAccessState {
+  subscription: SubscriptionAccessState | null;
+  managedInference: {
+    keyState: ManagedKeyState;
+    period: AllowancePeriod | null;
+    spentMicros: number;
+    reservedMicros: number;
+    allowanceMicros: number;
+    warning: AllowanceWarningLevel;
+    envelope: CredentialEnvelope | null;
+  };
+}
+
+const unavailableState: BillingCredentialAccessState = {
+  subscription: null,
+  managedInference: {
+    keyState: "missing",
+    period: null,
+    spentMicros: 0,
+    reservedMicros: 0,
+    allowanceMicros: MANAGED_INFERENCE_ALLOWANCE_MICROS,
+    warning: "none",
+    envelope: null,
+  },
+};
+
+function toMicros(rawUsd: string): number {
+  const micros = modelCostUsdToMicros(rawUsd);
+  if (micros === undefined) {
+    throw new Error("Managed inference spend is invalid");
+  }
+  return micros;
+}
+
+export async function getBillingCredentialAccessState(
+  userId: string,
+): Promise<BillingCredentialAccessState> {
+  const [billing] = await db
+    .select({
+      entitlementId: billingEntitlements.id,
+      entitlementState: billingEntitlements.state,
+      entitlementPeriodStart: billingEntitlements.periodStart,
+      entitlementPeriodEnd: billingEntitlements.periodEnd,
+      subscriptionStatus: billingSubscriptions.status,
+      financialState: billingSubscriptions.financialState,
+      paidPeriodStart: billingSubscriptions.paidPeriodStart,
+      paidPeriodEnd: billingSubscriptions.paidPeriodEnd,
+      cancelAtPeriodEnd: billingSubscriptions.cancelAtPeriodEnd,
+      subscriptionPeriodStart: billingSubscriptions.currentPeriodStart,
+      subscriptionPeriodEnd: billingSubscriptions.currentPeriodEnd,
+    })
+    .from(billingEntitlements)
+    .innerJoin(
+      billingSubscriptions,
+      eq(billingEntitlements.subscriptionId, billingSubscriptions.id),
+    )
+    .where(
+      and(
+        eq(billingEntitlements.userId, userId),
+        eq(billingEntitlements.kind, "managed_openrouter"),
+        eq(billingSubscriptions.userId, userId),
+      ),
+    )
+    .limit(1);
+  if (
+    !billing?.entitlementPeriodStart ||
+    !billing.entitlementPeriodEnd ||
+    !billing.subscriptionPeriodStart ||
+    !billing.subscriptionPeriodEnd ||
+    billing.entitlementPeriodStart.getTime() !==
+      billing.subscriptionPeriodStart.getTime() ||
+    billing.entitlementPeriodEnd.getTime() !==
+      billing.subscriptionPeriodEnd.getTime()
+  ) {
+    return unavailableState;
+  }
+
+  const period = {
+    start: billing.entitlementPeriodStart,
+    end: billing.entitlementPeriodEnd,
+  };
+  const hasCurrentPaymentProof =
+    billing.paidPeriodStart?.getTime() === period.start.getTime() &&
+    billing.paidPeriodEnd?.getTime() === period.end.getTime();
+  const [key] = await db
+    .select({
+      lifecycleState: managedInferenceKeys.lifecycleState,
+      ciphertext: managedInferenceKeys.ciphertext,
+      nonce: managedInferenceKeys.nonce,
+      authenticationTag: managedInferenceKeys.authenticationTag,
+      encryptionKeyVersion: managedInferenceKeys.encryptionKeyVersion,
+    })
+    .from(managedInferenceKeys)
+    .where(
+      and(
+        eq(managedInferenceKeys.userId, userId),
+        eq(managedInferenceKeys.entitlementId, billing.entitlementId),
+        eq(managedInferenceKeys.periodStart, period.start),
+        eq(managedInferenceKeys.periodEnd, period.end),
+      ),
+    )
+    .orderBy(desc(managedInferenceKeys.updatedAt))
+    .limit(1);
+  const envelope =
+    key?.ciphertext &&
+    key.nonce &&
+    key.authenticationTag &&
+    key.encryptionKeyVersion !== null
+      ? {
+          ciphertext: key.ciphertext,
+          nonce: key.nonce,
+          authenticationTag: key.authenticationTag,
+          encryptionKeyVersion: key.encryptionKeyVersion,
+        }
+      : null;
+
+  const [[spend], [reservations]] = await Promise.all([
+    db
+      .select({
+        usd: sql<string>`coalesce(sum(${usageEvents.inferenceCostUsd}), 0)`,
+      })
+      .from(usageEvents)
+      .where(
+        and(
+          eq(usageEvents.userId, userId),
+          eq(usageEvents.credentialSource, "managed"),
+          gte(usageEvents.createdAt, period.start),
+          lt(usageEvents.createdAt, period.end),
+        ),
+      ),
+    db
+      .select({
+        micros: sql<string>`coalesce(sum(${inferenceCallReservations.reservedMicros}), 0)`,
+      })
+      .from(inferenceCallReservations)
+      .where(
+        and(
+          eq(inferenceCallReservations.userId, userId),
+          eq(inferenceCallReservations.periodStart, period.start),
+          eq(inferenceCallReservations.periodEnd, period.end),
+          inArray(inferenceCallReservations.state, ["pending", "missing_cost"]),
+        ),
+      ),
+  ]);
+
+  const spentMicros = toMicros(spend?.usd ?? "0");
+  const reservedMicros = Number(reservations?.micros ?? "0");
+  return {
+    subscription: {
+      status: billing.subscriptionStatus,
+      entitlementState: billing.entitlementState,
+      financialState: hasCurrentPaymentProof
+        ? billing.financialState
+        : "unpaid",
+      periodStart: billing.subscriptionPeriodStart,
+      periodEnd: billing.subscriptionPeriodEnd,
+      cancelAtPeriodEnd: billing.cancelAtPeriodEnd,
+    },
+    managedInference: {
+      keyState: key?.lifecycleState ?? "missing",
+      period,
+      spentMicros,
+      reservedMicros,
+      allowanceMicros: MANAGED_INFERENCE_ALLOWANCE_MICROS,
+      warning: getAllowanceWarningLevel(
+        spentMicros + reservedMicros,
+        MANAGED_INFERENCE_ALLOWANCE_MICROS,
+      ),
+      envelope,
+    },
+  };
+}

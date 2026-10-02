@@ -1,11 +1,15 @@
 import { connectSandbox } from "@open-agents/sandbox";
-import { defaultLanguageModel } from "@open-agents/agent";
 import { generateText } from "ai";
 import { checkBotProtection } from "@/lib/botid";
 import { getSessionById } from "@/lib/db/sessions";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { isSandboxActive } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
+import { getAuthenticatedLanguageModel } from "@/lib/ai/authenticated-model";
+import {
+  isInferenceAccessDeniedError,
+  toInferenceAccessErrorResponse,
+} from "@/lib/access/model-credential-resolver";
 
 export const maxDuration = 30;
 
@@ -57,9 +61,11 @@ export async function POST(
     return Response.json({ message: "chore: update repository changes" });
   }
 
-  const result = await generateText({
-    model: defaultLanguageModel(),
-    prompt: `Generate a concise git commit message for these changes. Use conventional commit format (e.g., "feat:", "fix:", "refactor:"). One line only, max 72 characters.
+  let result: Awaited<ReturnType<typeof generateText>>;
+  try {
+    result = await generateText({
+      model: await getAuthenticatedLanguageModel({ userId: session.user.id }),
+      prompt: `Generate a concise git commit message for these changes. Use conventional commit format (e.g., "feat:", "fix:", "refactor:"). One line only, max 72 characters.
 
 Session context: ${dbSession.title}
 
@@ -67,7 +73,13 @@ Diff:
 ${diff.slice(0, 8000)}
 
 Respond with ONLY the commit message, nothing else.`,
-  });
+    });
+  } catch (error) {
+    if (isInferenceAccessDeniedError(error)) {
+      return toInferenceAccessErrorResponse(error.failure);
+    }
+    throw error;
+  }
 
   const generated = result.text.trim().split("\n")[0]?.trim();
   const message =

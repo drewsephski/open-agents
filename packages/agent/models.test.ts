@@ -41,7 +41,6 @@ delete process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL;
 
 const {
   DEFAULT_OPENROUTER_MODEL_ID,
-  MissingOpenRouterApiKeyError,
   defaultLanguageModel,
   getProviderOptionsForModel,
   mergeProviderOptions,
@@ -234,14 +233,16 @@ describe("mergeProviderOptions", () => {
 });
 
 describe("model factory", () => {
-  test("throws when OPENROUTER_API_KEY is missing", () => {
+  test("requires explicit OpenRouter configuration even when a deployment key exists", () => {
     const previous = process.env.OPENROUTER_API_KEY;
-    delete process.env.OPENROUTER_API_KEY;
+    process.env.OPENROUTER_API_KEY = "deployment-key-must-not-be-used";
 
     try {
-      expect(() => model("z-ai/glm-5.3-flash")).toThrow(
-        MissingOpenRouterApiKeyError,
-      );
+      expect(() =>
+        model("z-ai/glm-5.3-flash", {
+          config: { apiKey: undefined as never },
+        }),
+      ).toThrow("Explicit OpenRouter API key configuration is required.");
     } finally {
       process.env.OPENROUTER_API_KEY = previous;
     }
@@ -251,7 +252,7 @@ describe("model factory", () => {
     createOpenRouterCalls.length = 0;
     chatCalls.length = 0;
 
-    defaultLanguageModel();
+    defaultLanguageModel({ config: { apiKey: "test-openrouter-key" } });
 
     expect(chatCalls).toEqual([
       {
@@ -267,9 +268,23 @@ describe("model factory", () => {
     });
   });
 
+  test("does not retain user-scoped providers between model factory calls", () => {
+    createOpenRouterCalls.length = 0;
+
+    model("z-ai/glm-5.3-flash", {
+      config: { apiKey: "user-scoped-key-no-cache" },
+    });
+    model("z-ai/glm-5.3-flash", {
+      config: { apiKey: "user-scoped-key-no-cache" },
+    });
+
+    expect(createOpenRouterCalls).toHaveLength(2);
+  });
+
   test("passes canonical app URL when available", () => {
     createOpenRouterCalls.length = 0;
     model("z-ai/glm-5.3-flash", {
+      config: { apiKey: "test-openrouter-key" },
       appUrl: "https://launchstack.example",
     });
 

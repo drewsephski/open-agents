@@ -9,7 +9,6 @@ import type { WebAgentUIMessage } from "@/app/types";
 import {
   claimChatActiveStreamId,
   compareAndSetChatActiveStreamId,
-  countUserMessagesByUserId,
   createChatMessageIfNotExists,
   getChatById,
   getChatMessageByIdForChat,
@@ -20,10 +19,10 @@ import {
 import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
 import { getServerSession } from "@/lib/session/get-server-session";
 import {
-  isManagedTemplateTrialUser,
-  MANAGED_TEMPLATE_TRIAL_MESSAGE_LIMIT,
-  MANAGED_TEMPLATE_TRIAL_MESSAGE_LIMIT_ERROR,
-} from "@/lib/managed-template-trial";
+  resolveModelCredential,
+  toInferenceAccessErrorResponse,
+} from "@/lib/access/model-credential-resolver";
+import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import {
   requireAuthenticatedUser,
   requireOwnedSessionChat,
@@ -34,17 +33,6 @@ import { validateGmailApprovalMessages } from "@/lib/actions/approval";
 import { persistAssistantMessagesWithToolResults } from "./_lib/persist-tool-results";
 
 type WebAgentUIMessageChunk = InferUIMessageChunk<WebAgentUIMessage>;
-
-function getLatestUserMessage(messages: WebAgentUIMessage[]) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.role === "user") {
-      return message;
-    }
-  }
-
-  return null;
-}
 
 export async function POST(req: Request) {
   // 1. Validate session
@@ -91,23 +79,12 @@ export async function POST(req: Request) {
     return Response.json({ error: "Session is archived" }, { status: 400 });
   }
 
-  if (isManagedTemplateTrialUser(session, req.url)) {
-    const latestUserMessage = getLatestUserMessage(messages);
-    if (latestUserMessage) {
-      const existingMessage = await getChatMessageByIdForChat(
-        latestUserMessage.id,
-        chatId,
-      );
-      if (!existingMessage) {
-        const userMessageCount = await countUserMessagesByUserId(userId);
-        if (userMessageCount >= MANAGED_TEMPLATE_TRIAL_MESSAGE_LIMIT) {
-          return Response.json(
-            { error: MANAGED_TEMPLATE_TRIAL_MESSAGE_LIMIT_ERROR },
-            { status: 403 },
-          );
-        }
-      }
-    }
+  const admission = await resolveModelCredential({
+    userId,
+    modelId: chat.modelId ?? APP_DEFAULT_MODEL_ID,
+  });
+  if (!admission.allowed) {
+    return toInferenceAccessErrorResponse(admission.failure);
   }
 
   // Guard: if a workflow is already running for this chat, reconnect to it

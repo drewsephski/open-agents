@@ -230,6 +230,10 @@ async function runAgentUntilStop(prompt: string, sandbox: LocalSandbox) {
     const result = await openAgent.generate({
       messages: messages as never,
       options: {
+        openRouter: { apiKey: process.env.OPENROUTER_API_KEY ?? "" },
+        resolveSubagentOpenRouter: async () => ({
+          apiKey: process.env.OPENROUTER_API_KEY ?? "",
+        }),
         sandbox: {
           state: { type: "vercel", sandboxId: sandbox.sandboxId },
           workingDirectory: sandbox.workingDirectory,
@@ -335,7 +339,11 @@ describeSmoke("Default OpenRouter model Open Agents runtime smoke", () => {
             state: { type: "vercel", sandboxId: sandbox.sandboxId },
             workingDirectory: sandbox.workingDirectory,
           },
-          model: defaultLanguageModel(),
+          modelId: resolveDefaultModelId(),
+          resolveModel: async () =>
+            defaultLanguageModel({
+              config: { apiKey: process.env.OPENROUTER_API_KEY ?? "" },
+            }),
         },
       });
 

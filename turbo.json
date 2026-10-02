@@ -28,13 +28,39 @@
         "SANDBOX_CIRCUIT_WINDOW_MS",
         "SANDBOX_PROVIDER_ORDER",
         "VERCEL_SANDBOX_ENABLED",
-        "VERCEL_APP_CLIENT_SECRET"
+        "VERCEL_APP_CLIENT_SECRET",
+        "CREEM_API_KEY",
+        "CREEM_MODE",
+        "CREEM_PRO_PRODUCT_ID",
+        "CREEM_WEBHOOK_SECRET",
+        "PRO_CHECKOUT_ENABLED",
+        "LAUNCHSTACK_APP_ORIGIN",
+        "OPENROUTER_API_KEY",
+        "OPENROUTER_MANAGEMENT_API_KEY",
+        "OPENROUTER_PUBLIC_DEMO_API_KEY",
+        "MANAGED_OPENROUTER_MODEL_IDS",
+        "ENCRYPTION_KEY_VERSION",
+        "ENCRYPTION_KEY_V1",
+        "COMPOSIO_API_KEY",
+        "COMPOSIO_GMAIL_AUTH_CONFIG_ID"
       ],
       "outputs": ["dist/**"]
     },
-    "dev": { "cache": false, "persistent": true },
-    "typecheck": { "dependsOn": ["^typecheck"], "outputs": [] },
-    "lint": { "dependsOn": ["^lint"], "outputs": [] },
-    "lint:fix": { "dependsOn": ["^lint:fix"], "outputs": [] }
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "outputs": []
+    },
+    "lint": {
+      "dependsOn": ["^lint"],
+      "outputs": []
+    },
+    "lint:fix": {
+      "dependsOn": ["^lint:fix"],
+      "outputs": []
+    }
   }
 }

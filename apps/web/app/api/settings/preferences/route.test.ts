@@ -89,7 +89,7 @@ describe("/api/settings/preferences", () => {
     expect(body.preferences.globalSkillRefs).toEqual([]);
   });
 
-  test("GET hides Opus and Fable defaults for managed trial users", async () => {
+  test("GET preserves BYOK model choices on the hosted deployment", async () => {
     const { GET } = await routeModulePromise;
 
     currentSession = {
@@ -115,9 +115,13 @@ describe("/api/settings/preferences", () => {
       preferences: typeof preferencesState;
     };
 
-    expect(body.preferences.defaultModelId).toBe(APP_DEFAULT_MODEL_ID);
-    expect(body.preferences.defaultSubagentModelId).toBe(APP_DEFAULT_MODEL_ID);
-    expect(body.preferences.modelVariants).toEqual([]);
+    expect(body.preferences.defaultModelId).toBe("anthropic/claude-fable-5");
+    expect(body.preferences.defaultSubagentModelId).toBe(
+      "variant:builtin:claude-fable-5-high",
+    );
+    expect(body.preferences.modelVariants).toEqual(
+      preferencesState.modelVariants,
+    );
   });
 
   test("PATCH rejects invalid sandbox types", async () => {
