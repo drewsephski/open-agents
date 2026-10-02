@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { BrandMark } from "@/components/landing/logo";
 
 export const alt = "Launchstack. Send coding work to the cloud.";
 export const size = { width: 1200, height: 630 };
@@ -88,21 +89,7 @@ export default function OgImage() {
               marginBottom: 40,
             }}
           >
-            <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-              <path
-                d="M4 17L10 11L4 5"
-                stroke="rgba(255,255,255,0.5)"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-              <path
-                d="M12 19H20"
-                stroke="rgba(255,255,255,0.5)"
-                stroke-width="1.5"
-                stroke-linecap="round"
-              />
-            </svg>
+            <BrandMark width={28} height={28} color="#ff8a3d" />
             <span
               style={{
                 fontSize: 20,
@@ -118,6 +105,8 @@ export default function OgImage() {
           {/* Hero heading */}
           <div
             style={{
+              display: "flex",
+              flexDirection: "column",
               fontSize: 82,
               fontWeight: 600,
               lineHeight: 1,
@@ -125,9 +114,8 @@ export default function OgImage() {
               color: "#ffffff",
             }}
           >
-            Send coding work
-            <br />
-            to the cloud.
+            <span>Send coding work</span>
+            <span>to the cloud.</span>
           </div>
 
           {/* Subtitle */}

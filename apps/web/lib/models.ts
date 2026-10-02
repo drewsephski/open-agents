@@ -1,5 +1,7 @@
-export const DEFAULT_MODEL_ID = "z-ai/glm-5.3-flash";
-export const APP_DEFAULT_MODEL_ID = "z-ai/glm-5.3-flash";
+import { DEFAULT_OPENROUTER_MODEL_ID } from "@open-agents/agent/model-id";
+
+export const DEFAULT_MODEL_ID = DEFAULT_OPENROUTER_MODEL_ID;
+export const APP_DEFAULT_MODEL_ID = DEFAULT_OPENROUTER_MODEL_ID;
 export const DEFAULT_CONTEXT_LIMIT = 200_000;
 const TOKENS_PER_MILLION = 1_000_000;
 

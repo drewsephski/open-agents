@@ -1,5 +1,8 @@
+import { APP_DEFAULT_MODEL_ID } from "./models";
+
 /**
- * Curated models shown at the top of selectors.
+ * Curated coding models shown at the top of selectors, verified against the
+ * OpenRouter catalog on 2026-10-02: https://openrouter.ai/api/v1/models
  *
  * Each spec lists preferred OpenRouter ids in order. The first id present in
  * the live catalog is used, so a missing or renamed model is skipped instead
@@ -12,16 +15,36 @@ export interface RecommendedModelSpec {
 
 export const RECOMMENDED_MODEL_SPECS: readonly RecommendedModelSpec[] = [
   {
-    ids: ["z-ai/glm-5.3-flash"],
-    badge: "Best value",
-  },
-  {
-    ids: ["openai/gpt-5.6-luna"],
+    ids: [APP_DEFAULT_MODEL_ID],
     badge: "Best overall",
   },
   {
-    ids: ["anthropic/claude-fable-5"],
+    ids: ["anthropic/claude-opus-5.5"],
     badge: "Max performance",
+  },
+  {
+    ids: ["anthropic/claude-sonnet-5.5"],
+    badge: "Balanced",
+  },
+  {
+    ids: ["openai/gpt-6-luna"],
+    badge: "Best value",
+  },
+  {
+    ids: ["openai/gpt-6-astra"],
+    badge: "Advanced reasoning",
+  },
+  {
+    ids: ["google/gemini-3.8-flash"],
+    badge: "Fast",
+  },
+  {
+    ids: ["x-ai/grok-4.7"],
+    badge: "Frontier",
+  },
+  {
+    ids: ["z-ai/glm-5.3-prime"],
+    badge: "Open weights",
   },
 ];
 

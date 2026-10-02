@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AuthButtons } from "@/components/auth/auth-buttons";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,12 @@ export function LandingNav({
               : "shadow-none"
           }`}
         >
-          <Logo />
+          <Link
+            href="/"
+            className="rounded-sm transition-opacity hover:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-4"
+          >
+            <Logo />
+          </Link>
 
           <div
             className={cn(

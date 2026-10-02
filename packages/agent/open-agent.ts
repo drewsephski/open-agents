@@ -79,73 +79,85 @@ const tools = {
   web_fetch: webFetchTool,
 } satisfies ToolSet;
 
-export const openAgent = new ToolLoopAgent({
-  model: defaultModel,
-  instructions: buildSystemPrompt({}),
-  tools,
-  stopWhen: stepCountIs(1),
-  callOptionsSchema,
-  prepareStep: ({ messages, model, steps: _steps }) => {
-    return {
-      messages: addCacheControl({
-        messages,
-        model,
-      }),
-    };
-  },
-  prepareCall: ({ options, ...settings }) => {
-    if (!options) {
-      throw new Error("The agent requires call options with sandbox.");
+/** Construct per-call tools in the control plane; never serialize this agent. */
+export function createOpenAgent<T extends ToolSet>(additionalTools: T) {
+  for (const name of Object.keys(additionalTools)) {
+    if (Object.hasOwn(tools, name)) {
+      throw new Error(`Action tool collides with coding tool: ${name}`);
     }
+  }
+  const agentTools = { ...tools, ...additionalTools };
+  return new ToolLoopAgent({
+    model: defaultModel,
+    instructions: buildSystemPrompt({}),
+    tools: agentTools,
+    stopWhen: stepCountIs(1),
+    callOptionsSchema,
+    prepareStep: ({ messages, model, steps: _steps }) => {
+      return {
+        messages: addCacheControl({
+          messages,
+          model,
+        }),
+      };
+    },
+    prepareCall: ({ options, ...settings }) => {
+      if (!options) {
+        throw new Error("The agent requires call options with sandbox.");
+      }
 
-    const fallbackModelId = resolveDefaultModelId();
-    const mainSelection = normalizeAgentModelSelection(
-      options.model,
-      fallbackModelId,
-    );
-    const subagentSelection = options.subagentModel
-      ? normalizeAgentModelSelection(options.subagentModel, fallbackModelId)
-      : undefined;
+      const fallbackModelId = resolveDefaultModelId();
+      const mainSelection = normalizeAgentModelSelection(
+        options.model,
+        fallbackModelId,
+      );
+      const subagentSelection = options.subagentModel
+        ? normalizeAgentModelSelection(options.subagentModel, fallbackModelId)
+        : undefined;
 
-    const callModel = model(mainSelection.id, {
-      providerOptionsOverrides: mainSelection.providerOptionsOverrides,
-    });
-    const subagentModel = subagentSelection
-      ? model(subagentSelection.id, {
-          providerOptionsOverrides: subagentSelection.providerOptionsOverrides,
-        })
-      : undefined;
-    const customInstructions = options.customInstructions;
-    const missionInstructions = options.missionInstructions;
-    const sandbox = options.sandbox;
-    const skills = options.skills ?? [];
+      const callModel = model(mainSelection.id, {
+        providerOptionsOverrides: mainSelection.providerOptionsOverrides,
+      });
+      const subagentModel = subagentSelection
+        ? model(subagentSelection.id, {
+            providerOptionsOverrides:
+              subagentSelection.providerOptionsOverrides,
+          })
+        : undefined;
+      const customInstructions = options.customInstructions;
+      const missionInstructions = options.missionInstructions;
+      const sandbox = options.sandbox;
+      const skills = options.skills ?? [];
 
-    const instructions = buildSystemPrompt({
-      cwd: sandbox.workingDirectory,
-      currentBranch: sandbox.currentBranch,
-      customInstructions,
-      missionInstructions,
-      environmentDetails: sandbox.environmentDetails,
-      skills,
-      modelId: mainSelection.id,
-    });
-
-    return {
-      ...settings,
-      model: callModel,
-      tools: addCacheControl({
-        tools: settings.tools ?? tools,
-        model: callModel,
-      }),
-      instructions,
-      experimental_context: {
-        sandbox,
+      const instructions = buildSystemPrompt({
+        cwd: sandbox.workingDirectory,
+        currentBranch: sandbox.currentBranch,
+        customInstructions,
+        missionInstructions,
+        environmentDetails: sandbox.environmentDetails,
         skills,
+        modelId: mainSelection.id,
+      });
+
+      return {
+        ...settings,
         model: callModel,
-        subagentModel,
-      },
-    };
-  },
-});
+        tools: addCacheControl({
+          tools: settings.tools ?? agentTools,
+          model: callModel,
+        }),
+        instructions,
+        experimental_context: {
+          sandbox,
+          skills,
+          model: callModel,
+          subagentModel,
+        },
+      };
+    },
+  });
+}
+
+export const openAgent = createOpenAgent({});
 
 export type OpenAgent = typeof openAgent;

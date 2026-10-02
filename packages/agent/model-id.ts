@@ -1,4 +1,4 @@
-export const DEFAULT_OPENROUTER_MODEL_ID = "z-ai/glm-5.3-flash";
+export const DEFAULT_OPENROUTER_MODEL_ID = "openai/gpt-6.1-sol";
 export const OPENROUTER_APP_NAME = "Launchstack";
 export const OPENROUTER_APP_URL = "https://launchstack.sh";
 

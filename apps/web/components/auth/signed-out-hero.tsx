@@ -8,6 +8,7 @@ import { LandingBento } from "@/components/landing/bento";
 import { LandingFeatures } from "@/components/landing/features";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNav } from "@/components/landing/nav";
+import { ProductArt } from "@/components/landing/product-art";
 import { Stage } from "@/components/landing/stage";
 import { TechSelector } from "@/components/landing/tech-selector";
 
@@ -36,25 +37,28 @@ export function SignedOutHero() {
         <LandingNav showSignIn={!heroButtonsVisible} />
 
         <section className="relative overflow-hidden pb-0 pt-24 md:pb-0 md:pt-44">
-          <div className="mx-auto max-w-[1320px] px-6">
-            <div className="max-w-[740px]">
-              <h1 className="text-4xl font-semibold leading-[1.03] tracking-tighter sm:text-5xl md:text-7xl">
-                Send coding work to the cloud.
-              </h1>
-              <p className="mt-4 text-balance text-base leading-relaxed text-(--l-fg-2) sm:mt-6 sm:text-xl">
-                Launchstack gives each coding agent an isolated branch and a
-                cloud development environment. Use it to build features, fix
-                bugs, run tests, and prepare pull requests without tying up your
-                laptop.
-              </p>
-            </div>
+          <div className="mx-auto grid max-w-[1320px] items-center gap-6 px-6 lg:grid-cols-[1.35fr_1fr] lg:gap-4">
+            <div>
+              <div className="max-w-[740px]">
+                <h1 className="text-4xl font-semibold leading-[1.03] tracking-tighter sm:text-5xl md:text-7xl">
+                  Send coding work to the cloud.
+                </h1>
+                <p className="mt-4 text-balance text-base leading-relaxed text-(--l-fg-2) sm:mt-6 sm:text-xl">
+                  Launchstack gives each coding agent an isolated branch and a
+                  cloud development environment. Use it to build features, fix
+                  bugs, run tests, and prepare pull requests without tying up
+                  your laptop.
+                </p>
+              </div>
 
-            <div
-              ref={heroButtonsRef}
-              className="mt-6 flex items-center gap-2 sm:mt-8"
-            >
-              <AuthButtons size="lg" />
+              <div
+                ref={heroButtonsRef}
+                className="mt-6 flex items-center gap-2 sm:mt-8"
+              >
+                <AuthButtons size="lg" />
+              </div>
             </div>
+            <ProductArt />
           </div>
 
           <div className="mx-auto mt-12 max-w-[1320px] px-4 sm:px-6 md:mt-20 md:px-0 overflow-hidden">

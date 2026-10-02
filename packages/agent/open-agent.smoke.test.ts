@@ -15,7 +15,7 @@ import type { ExecResult, Sandbox, SandboxStats } from "@open-agents/sandbox";
 
 const execFileAsync = promisify(execFile);
 const SMOKE_TOKEN = "SHIPCHECK_SMOKE_TOKEN";
-const SMOKE_VALUE = "glm-5.3-flash-runtime-ok";
+const SMOKE_VALUE = "openrouter-runtime-ok";
 const MAX_AGENT_STEPS = 20;
 const hasOpenRouterKey = Boolean(process.env.OPENROUTER_API_KEY?.trim());
 
@@ -286,7 +286,7 @@ async function runAgentUntilStop(prompt: string, sandbox: LocalSandbox) {
 
 const describeSmoke = hasOpenRouterKey ? describe : describe.skip;
 
-describeSmoke("GLM 5.3 Flash Open Agents runtime smoke", () => {
+describeSmoke("Default OpenRouter model Open Agents runtime smoke", () => {
   test(
     "agent receives a task, executes a sandbox tool, and continues to a final response",
     async () => {
@@ -310,7 +310,6 @@ describeSmoke("GLM 5.3 Flash Open Agents runtime smoke", () => {
         sandbox,
       );
 
-      expect(resolveDefaultModelId()).toBe("z-ai/glm-5.3-flash");
       expect(main.toolNames.length, main.transcript.join("\n")).toBeGreaterThan(
         0,
       );
@@ -319,8 +318,8 @@ describeSmoke("GLM 5.3 Flash Open Agents runtime smoke", () => {
         "tool-calls",
       );
       expect(main.text).toContain(SMOKE_TOKEN);
-      expect(main.text).toMatch(/SHIPCHECK_SMOKE_OK|glm-5\.3-flash-runtime-ok/);
-      expect(main.modelId).toContain("glm");
+      expect(main.text).toMatch(/SHIPCHECK_SMOKE_OK|openrouter-runtime-ok/);
+      expect(main.modelId).toBe(resolveDefaultModelId());
 
       const explorer = await explorerSubagent.generate({
         prompt:

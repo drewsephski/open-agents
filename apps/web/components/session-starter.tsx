@@ -246,7 +246,7 @@ export function SessionStarter({
 
   return (
     <div className="h-[30rem] w-full min-w-0 max-w-2xl overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(40,32,20,0.04),0_12px_32px_rgba(40,32,20,0.06)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_16px_40px_rgba(0,0,0,0.4)] sm:p-5">
-      <div className="flex h-full flex-col gap-4">
+      <div className="flex h-full flex-col gap-3">
         <div
           ref={modeTabsRef}
           role="tablist"
@@ -291,9 +291,14 @@ export function SessionStarter({
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
           {mode === "repo" && (
-            <div className="flex flex-col gap-3">
+            <div
+              className={cn(
+                "flex flex-col gap-3",
+                !isRepoSelectionComplete && "min-h-0 flex-1",
+              )}
+            >
               <RepoSelectorCompact
                 selectedOwner={selectedOwner}
                 selectedRepo={selectedRepo}
@@ -363,7 +368,7 @@ export function SessionStarter({
             <button
               type="button"
               onClick={() => setGitSettingsExpanded(true)}
-              className="flex w-full items-center gap-2.5 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-left transition-colors hover:bg-muted"
+              className="flex w-full shrink-0 items-center gap-2.5 rounded-lg border border-border bg-muted/40 px-3.5 py-2 text-left transition-colors hover:bg-muted"
             >
               <GitCommitHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
               <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">

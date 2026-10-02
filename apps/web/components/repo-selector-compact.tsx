@@ -110,7 +110,7 @@ async function fetchInstallations(): Promise<Installation[]> {
 
 function SkeletonRow() {
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
+    <div className="flex items-center gap-3 px-3 py-2">
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <div className="h-5 w-[120px] animate-pulse rounded bg-muted-foreground/10" />
         <div className="h-4 w-[48px] animate-pulse rounded bg-muted-foreground/10" />
@@ -402,7 +402,7 @@ export function RepoSelectorCompact({
 
   // Expanded state: no selection, show full list
   return (
-    <div className="flex flex-col gap-0">
+    <div className="flex min-h-0 flex-1 flex-col gap-0">
       {/* Top bar: org dropdown + search */}
       <div className="flex items-stretch gap-0 overflow-hidden rounded-t-lg border border-border/70 dark:border-white/10">
         {/* Org dropdown */}
@@ -492,7 +492,7 @@ export function RepoSelectorCompact({
       </div>
 
       {/* Repo list */}
-      <div className="h-[280px] overflow-y-auto rounded-b-lg border border-t-0 border-border/70 dark:border-white/10">
+      <div className="min-h-32 flex-1 overflow-y-auto rounded-b-lg border border-t-0 border-border/70 dark:border-white/10">
         {reposLoading ? (
           <div className="flex h-full flex-col divide-y divide-border/50 dark:divide-white/[0.06]">
             <SkeletonRow />
@@ -516,7 +516,7 @@ export function RepoSelectorCompact({
             {sortedRepos.slice(0, 25).map((repo) => (
               <div
                 key={repo.full_name}
-                className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/30 dark:hover:bg-white/[0.03]"
+                className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-accent/30 dark:hover:bg-white/[0.03]"
               >
                 <div className="flex min-w-0 flex-1 items-center gap-2">
                   <span className="truncate text-sm font-medium">
@@ -534,7 +534,7 @@ export function RepoSelectorCompact({
                 <button
                   type="button"
                   onClick={() => handleRepoSelect(repo)}
-                  className="shrink-0 rounded-md border border-border/70 bg-background px-3 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent dark:border-white/20 dark:bg-white/[0.06] dark:hover:bg-white/10"
+                  className="shrink-0 rounded-md border border-border/70 bg-background px-2.5 py-0.5 text-xs font-medium text-foreground transition-colors hover:bg-accent dark:border-white/20 dark:bg-white/[0.06] dark:hover:bg-white/10"
                 >
                   Select
                 </button>
@@ -550,7 +550,7 @@ export function RepoSelectorCompact({
       </div>
 
       {/* Footer: manage access + refresh */}
-      <div className="mt-1.5 flex items-center justify-between px-1 text-xs">
+      <div className="mt-1 flex items-center justify-between px-1 text-xs">
         <div className="flex items-center gap-3">
           {currentInstallation?.installationUrl && (
             <Link
