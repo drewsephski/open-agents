@@ -22,6 +22,8 @@ import { TodoRenderer } from "./renderers/todo-renderer";
 import { AskUserQuestionRenderer } from "./renderers/ask-user-question-renderer";
 import { FetchRenderer } from "./renderers/fetch-renderer";
 import { SkillRenderer } from "./renderers/skill-renderer";
+import { GmailRenderer } from "./renderers/gmail-renderer";
+import { isGmailAction } from "@/lib/actions/gmail-policy";
 
 export type ToolCallProps = {
   part: WebAgentUIToolPart;
@@ -45,6 +47,17 @@ export function ToolCall({
 }: ToolCallProps) {
   const state = extractRenderState(part, activeApprovalId, isStreaming);
   const approvalProps = { onApprove, onDeny };
+  const toolName = getToolName(part);
+  if (isGmailAction(toolName)) {
+    return (
+      <GmailRenderer
+        part={part}
+        state={state}
+        name={toolName}
+        {...approvalProps}
+      />
+    );
+  }
 
   switch (part.type) {
     case "tool-bash":

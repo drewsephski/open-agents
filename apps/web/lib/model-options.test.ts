@@ -188,11 +188,11 @@ describe("model options", () => {
         provider: "openai",
       },
       {
-        id: "z-ai/glm-5.3-flash",
-        label: "GLM 5.3 Flash",
-        shortLabel: "GLM 5.3 Flash",
+        id: "openai/gpt-6.1-sol",
+        label: "GPT-6.1 Sol",
+        shortLabel: "GPT-6.1 Sol",
         isVariant: false,
-        provider: "z-ai",
+        provider: "openai",
       },
       {
         id: "openai/gpt-5",
@@ -203,7 +203,7 @@ describe("model options", () => {
       },
     ];
 
-    expect(getDefaultModelOptionId(options)).toBe("z-ai/glm-5.3-flash");
+    expect(getDefaultModelOptionId(options)).toBe("openai/gpt-6.1-sol");
   });
 
   test("getDefaultModelOptionId falls back to first option when default is missing", () => {

@@ -3,12 +3,14 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { FeatureAgent } from "./feature-agent";
+import { FeatureIcon, type FeatureIconName } from "./feature-icon";
 import { FeatureSandbox } from "./feature-sandbox";
 import { FeatureWorkflow } from "./feature-workflow";
 import { Stage, type StageTone } from "./stage";
 import { Window } from "./window";
 
 function Spotlight({
+  icon,
   tone,
   title,
   description,
@@ -16,6 +18,7 @@ function Spotlight({
   flip,
   window: windowContent,
 }: {
+  readonly icon: FeatureIconName;
   readonly tone: StageTone;
   readonly title: string;
   readonly description: string;
@@ -31,6 +34,7 @@ function Spotlight({
           flip ? "order-1 md:order-2" : "order-1 md:order-1",
         )}
       >
+        <FeatureIcon name={icon} className="mb-6" />
         <h2 className="text-balance text-2xl font-semibold tracking-tighter sm:text-3xl md:text-4xl">
           {title}
         </h2>
@@ -73,6 +77,7 @@ export function LandingFeatures() {
         />
         <div>
           <Spotlight
+            icon="agent"
             tone="slate"
             title="Give it a task, not a code snippet."
             description="Ask Launchstack to trace a bug, add a feature, update a dependency, or repair a failing build. The agent can inspect the repository, edit files, run commands, and verify its work in one session."
@@ -85,6 +90,7 @@ export function LandingFeatures() {
           />
 
           <Spotlight
+            icon="sandbox"
             tone="ash"
             title="Keep agent work off your machine."
             description="Every session gets an isolated cloud sandbox and its own Git branch. Agents can install dependencies, start development servers, and test changes without competing for your local files or compute."
@@ -98,6 +104,7 @@ export function LandingFeatures() {
           />
 
           <Spotlight
+            icon="workflow"
             tone="iron"
             title="Come back when the work is ready."
             description="Launchstack runs each agent turn as a durable workflow. You can leave the page, reconnect from another device, and continue following the same run instead of keeping a browser tab and local process alive."

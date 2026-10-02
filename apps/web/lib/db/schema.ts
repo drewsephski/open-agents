@@ -37,6 +37,20 @@ export const users = pgTable(
   (table) => [uniqueIndex("users_email_idx").on(table.email)],
 );
 
+// Server-side external-action session references (never OAuth credentials).
+export const actionProviderSessions = pgTable(
+  "action_provider_sessions",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    providerId: text("provider_id").notNull(),
+    sessionId: text("session_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.providerId] })],
+);
+
 // oauth provider accounts
 export const accounts = pgTable("accounts", {
   id: text("id").primaryKey(),
@@ -265,6 +279,27 @@ export const shares = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [uniqueIndex("shares_chat_id_idx").on(table.chatId)],
+);
+
+export const actionExecutions = pgTable(
+  "action_executions",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    toolCallId: text("tool_call_id").notNull(),
+    toolName: text("tool_name").notNull(),
+    input: jsonb("input").$type<unknown>().notNull(),
+    status: text("status", { enum: ["started", "completed"] }).notNull(),
+    output: jsonb("output").$type<unknown>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.chatId, table.toolCallId] }),
+  ],
 );
 
 export const chatMessages = pgTable("chat_messages", {

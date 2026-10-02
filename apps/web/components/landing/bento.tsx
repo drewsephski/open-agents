@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { FeatureIcon, type FeatureIconName } from "./feature-icon";
 import { PromptCopyButton } from "./prompt-copy-button";
 
 type BentoItem = {
   readonly id: string;
+  readonly icon: FeatureIconName;
   readonly title: string;
   readonly body: string;
   readonly prompt: string;
@@ -12,6 +14,7 @@ type BentoItem = {
 const items: readonly BentoItem[] = [
   {
     id: "001",
+    icon: "feature",
     title: "Feature work",
     body: "Hand off a scoped feature that touches components, APIs, tests, or configuration. The agent works across the repository and checks the result.",
     prompt:
@@ -19,6 +22,7 @@ const items: readonly BentoItem[] = [
   },
   {
     id: "002",
+    icon: "repair",
     title: "Bug fixes",
     body: "Send an error, failing test, or broken flow. The agent searches for the cause, makes a targeted change, and runs the relevant checks.",
     prompt:
@@ -26,6 +30,7 @@ const items: readonly BentoItem[] = [
   },
   {
     id: "003",
+    icon: "checks",
     title: "CI repair",
     body: "Give an agent a failing check to investigate. It can inspect logs, update the branch, and rerun the same project commands before you review it.",
     prompt:
@@ -33,50 +38,13 @@ const items: readonly BentoItem[] = [
   },
   {
     id: "004",
+    icon: "parallel",
     title: "Parallel backlog",
     body: "Start separate sessions for independent tasks. Each one gets its own sandbox and branch, so work can move at the same time without file conflicts.",
     prompt:
       "Take ownership of [backlog task]. Keep the work limited to this task, preserve unrelated changes, and follow the repository's existing patterns. Verify the completed path and leave the branch ready for review with a concise summary of files changed and checks run.",
   },
 ];
-
-function mark(index: number) {
-  if (index === 0) {
-    return (
-      <div className="grid grid-cols-2 gap-1" aria-hidden="true">
-        <span className="size-2 border border-(--l-fg-4)" />
-        <span className="size-2 border border-(--l-fg-4)" />
-        <span className="size-2 border border-(--l-fg-4)" />
-        <span className="size-2 border border-(--l-fg-4)" />
-      </div>
-    );
-  }
-  if (index === 1) {
-    return (
-      <div className="flex items-center gap-1.5" aria-hidden="true">
-        <span className="h-px w-4 bg-(--l-fg-4)" />
-        <span className="h-px w-6 bg-(--l-fg-4)" />
-        <span className="h-px w-3 bg-(--l-fg-4)" />
-      </div>
-    );
-  }
-  if (index === 2) {
-    return (
-      <div className="flex flex-col gap-1" aria-hidden="true">
-        <span className="h-1 w-8 border border-(--l-fg-4)" />
-        <span className="h-1 w-6 border border-(--l-fg-4)" />
-        <span className="h-1 w-4 border border-(--l-fg-4)" />
-      </div>
-    );
-  }
-  return (
-    <div className="relative h-6 w-8" aria-hidden="true">
-      <span className="absolute left-0 top-0 size-2 border border-(--l-fg-4)" />
-      <span className="absolute right-0 top-0 size-2 border border-(--l-fg-4)" />
-      <span className="absolute bottom-0 left-1/2 size-2 -translate-x-1/2 border border-(--l-fg-4)" />
-    </div>
-  );
-}
 
 export function LandingBento() {
   return (
@@ -119,7 +87,9 @@ export function LandingBento() {
               <div className="font-mono text-[11px] text-(--l-fg-4)">
                 {item.id}
               </div>
-              <div className="mt-7 flex h-10 items-center">{mark(index)}</div>
+              <div className="mt-7 flex h-12 items-center">
+                <FeatureIcon name={item.icon} />
+              </div>
               <h3 className="mt-7 text-balance text-2xl font-semibold tracking-tighter">
                 {item.title}
               </h3>

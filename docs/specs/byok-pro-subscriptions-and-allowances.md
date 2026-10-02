@@ -125,7 +125,7 @@ The implementation also introduces the minimal Execution Backend identity needed
 
 ## Further Notes
 
-- The current default model `z-ai/glm-5.3-flash` must remain available and remain the default managed model.
+- The managed default model is `openai/gpt-6.1-sol` (updated 2026-10-02). `z-ai/glm-5.3-flash` remains available in the catalog; saved model preferences and `OPENROUTER_MODEL` overrides remain honored.
 - OpenRouter and Stripe credentials required for live provider proof will be supplied separately and must never be committed.
 - The repository contains unrelated landing-page edits in the original checkout. Implementation must occur in an isolated `codex/` worktree and preserve those changes.
 - The domain glossary and ADRs are binding context for implementation. In particular, signed webhooks authorize paid access, User inference credentials remain isolated, and Execution Backends are pinned to chats.

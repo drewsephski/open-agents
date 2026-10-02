@@ -68,7 +68,11 @@ export function mergeProviderOptions(
 }
 
 function supportsAdaptiveAnthropicThinking(modelId: string): boolean {
-  return modelId.includes("4.6") || modelId.includes("4.7");
+  const version =
+    /^anthropic\/claude-(?:opus|sonnet|fable)-(\d+)(?:\.(\d+))?/.exec(modelId);
+  const major = Number(version?.[1]);
+  const minor = Number(version?.[2] ?? 0);
+  return major >= 5 || (major === 4 && minor >= 6);
 }
 
 function getAnthropicIntent(modelId: string): Record<string, JSONValue> {
@@ -85,7 +89,8 @@ function getAnthropicIntent(modelId: string): Record<string, JSONValue> {
 }
 
 export function shouldApplyOpenAIReasoningDefaults(modelId: string): boolean {
-  return modelId.startsWith("openai/gpt-5");
+  const version = /^openai\/gpt-(\d+)/.exec(modelId);
+  return Number(version?.[1]) >= 5;
 }
 
 function mapReasoningEffort(effort: string): OpenRouterReasoningEffort {

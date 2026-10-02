@@ -22,6 +22,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BranchPickerDialog } from "@/components/branch-picker-dialog";
 import { getValidRenameTitle } from "@/components/inbox-sidebar-rename";
 import { InboxSidebarStatusTabs } from "@/components/inbox-sidebar-status-tabs";
+import { BrandMark } from "@/components/landing/logo";
 import { ThemeToggleButton } from "@/components/theme-toggle-button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -968,7 +969,8 @@ export function InboxSidebar({
     <>
       <div className="border-b border-sidebar-border px-3 py-3">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <p className="px-1 text-[13px] font-medium text-sidebar-foreground">
+          <p className="flex items-center gap-2 px-1 text-[13px] font-medium text-sidebar-foreground">
+            <BrandMark className="size-5" />
             Sessions
           </p>
           <Button

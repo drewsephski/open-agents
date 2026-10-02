@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { BrandMark } from "@/components/landing/logo";
 import {
   getPublicUsageProfile,
   displayModelId,
@@ -179,21 +180,7 @@ export async function GET(request: Request, context: OgRouteContext) {
           gap: 12,
         }}
       >
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <path
-            d="M4 17L10 11L4 5"
-            stroke="rgba(255,255,255,0.5)"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M12 19H20"
-            stroke="rgba(255,255,255,0.5)"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-        </svg>
+        <BrandMark width={28} height={28} color="#ff8a3d" />
         <span
           style={{
             fontSize: 20,

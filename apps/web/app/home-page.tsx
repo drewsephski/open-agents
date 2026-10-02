@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { SignedOutHero } from "@/components/auth/signed-out-hero";
 import { HomeSkeleton } from "@/components/home-skeleton";
+import { Logo } from "@/components/landing/logo";
 import { SessionDrawer } from "@/components/session-drawer";
 import { SessionStarter } from "@/components/session-starter";
 import type { SessionStarterSubmitInput } from "@/components/session-starter-submission";
@@ -77,7 +78,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <header className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-2 sm:justify-self-start">
-          <span className="text-lg font-semibold">Launchstack</span>
+          <Logo />
         </div>
         <div className="flex items-center gap-2 sm:justify-self-end">
           <button
