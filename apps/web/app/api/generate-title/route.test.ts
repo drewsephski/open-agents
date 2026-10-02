@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
+mock.module("server-only", () => ({}));
+
 const generateTextCalls: Array<{ prompt: string }> = [];
 
 let currentSession: { user: { id: string } } | null = {
@@ -10,8 +12,14 @@ let generateTextResult: { text: string } | Error = {
   text: "Generated session title",
 };
 
-mock.module("@open-agents/agent", () => ({
-  defaultLanguageModel: () => "mock-model",
+mock.module("@/lib/ai/authenticated-model", () => ({
+  getAuthenticatedLanguageModel: async () => "mock-model",
+}));
+
+mock.module("@/lib/access/model-credential-resolver", () => ({
+  isInferenceAccessDeniedError: () => false,
+  toInferenceAccessErrorResponse: () =>
+    Response.json({ error: "Access denied" }, { status: 403 }),
 }));
 
 mock.module("ai", () => ({

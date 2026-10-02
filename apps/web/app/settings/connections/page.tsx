@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { AccountsSection, AccountsSectionSkeleton } from "../accounts-section";
 import { VercelSection, VercelSectionSkeleton } from "../vercel-section";
 import { GmailSection } from "./gmail-section";
+import { OpenRouterCredentialPanel } from "@/components/openrouter-credential-panel";
 
 export const metadata: Metadata = {
   title: "Connections",
@@ -12,7 +13,13 @@ export const metadata: Metadata = {
 export default function ConnectionsPage() {
   return (
     <>
-      <h1 className="text-2xl font-semibold">Connections</h1>
+      <div className="space-y-1">
+        <h1 className="text-balance text-2xl font-semibold">Connections</h1>
+        <p className="text-pretty text-sm text-muted-foreground">
+          Manage provider credentials and source-control access.
+        </p>
+      </div>
+      <OpenRouterCredentialPanel />
       <Suspense fallback={<VercelSectionSkeleton />}>
         <VercelSection />
       </Suspense>

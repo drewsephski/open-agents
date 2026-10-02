@@ -12,6 +12,12 @@ import {
 import { isSandboxActive } from "@/lib/sandbox/utils";
 import { getSandboxSkillDirectories } from "@/lib/skills/directories";
 import { getCachedSkills, setCachedSkills } from "@/lib/skills-cache";
+import {
+  admitSandboxOperation,
+  confirmSandboxRunning,
+  SandboxAccessDeniedError,
+} from "@/lib/sandbox/allowance";
+import { hibernateSandboxAfterAllowanceDenial } from "@/lib/sandbox/allowance-hibernation";
 
 type SessionRecord = NonNullable<Awaited<ReturnType<typeof getSessionById>>>;
 type DiscoveredSkills = Awaited<ReturnType<typeof discoverSkills>>;
@@ -66,6 +72,19 @@ async function getReadySessionSandbox(params: {
     throw new Error("Session is archived");
   }
   if (isSandboxActive(session.sandboxState)) {
+    try {
+      await admitSandboxOperation({
+        userId: params.userId,
+        sessionId: params.sessionId,
+        operation: "resume",
+      });
+    } catch (error) {
+      if (error instanceof SandboxAccessDeniedError) {
+        await hibernateSandboxAfterAllowanceDenial(params.sessionId);
+      }
+      throw error;
+    }
+    await confirmSandboxRunning(params.sessionId);
     return { session, didSetupWorkspace: false };
   }
 

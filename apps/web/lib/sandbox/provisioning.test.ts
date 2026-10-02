@@ -147,6 +147,11 @@ mock.module("@/lib/sandbox/provider-circuit", () => ({
 mock.module("@/lib/sandbox/telemetry", () => ({
   emitSandboxTelemetry: () => {},
 }));
+mock.module("@/lib/sandbox/allowance", () => ({
+  admitSandboxOperation: async () => ({ tier: "byok" }),
+  confirmSandboxRunning: async () => {},
+  releaseSandboxRunning: async () => {},
+}));
 mock.module("@/lib/sandbox/lifecycle", () => ({
   buildActiveLifecycleUpdate: () => ({ lifecycleState: "active" }),
   getNextLifecycleVersion: (value: number) => value + 1,

@@ -120,7 +120,7 @@ describe("/api/models context window enrichment", () => {
     expect(requestedUrls).toContain("https://models.dev/api.json");
   });
 
-  test("hides Claude Opus models for managed trial users", async () => {
+  test("does not infer model access from the hosted deployment", async () => {
     catalogModels.push(
       {
         id: "anthropic/claude-opus-4.6",
@@ -147,6 +147,7 @@ describe("/api/models context window enrichment", () => {
     };
 
     expect(body.models.map((model) => model.id)).toEqual([
+      "anthropic/claude-opus-4.6",
       "anthropic/claude-haiku-4.5",
     ]);
   });

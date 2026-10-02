@@ -3,6 +3,7 @@
 import {
   ArrowLeft,
   Cable,
+  CreditCard,
   LogOut,
   Menu,
   Settings as SettingsIcon,
@@ -17,6 +18,7 @@ import { useState } from "react";
 import { signOut } from "@/lib/auth/actions";
 import { useSession } from "@/hooks/use-session";
 import { AuthGuard } from "@/components/auth/auth-guard";
+import { PolicyLinks } from "@/components/policy-links";
 import {
   Sheet,
   SheetContent,
@@ -85,6 +87,12 @@ const baseSidebarItems = [
     icon: Cable,
   },
   {
+    id: "billing",
+    label: "Billing",
+    href: "/settings/billing",
+    icon: CreditCard,
+  },
+  {
     id: "models",
     label: "Models",
     href: "/settings/models",
@@ -146,7 +154,7 @@ function SettingsLayout({
   );
 
   return (
-    <div className="flex h-screen bg-background text-foreground">
+    <div className="flex h-dvh bg-background text-foreground">
       <aside className="hidden w-64 shrink-0 border-r border-sidebar-border bg-sidebar md:flex">
         <div className="flex h-full w-full flex-col overflow-y-auto">
           <div className="flex items-center gap-4 px-4 py-4">
@@ -217,6 +225,7 @@ function SettingsLayout({
         <div className="flex items-center gap-3 border-b border-border px-4 py-3 md:hidden">
           <button
             type="button"
+            aria-label="Open settings navigation"
             onClick={() => setMobileSidebarOpen(true)}
             className="text-muted-foreground hover:text-foreground"
           >
@@ -228,6 +237,9 @@ function SettingsLayout({
         </div>
         <div className="mx-auto max-w-5xl space-y-6 px-3 py-8 md:px-4 md:py-10">
           {children}
+          <div className="border-t border-border pt-6 text-muted-foreground">
+            <PolicyLinks />
+          </div>
         </div>
       </main>
     </div>

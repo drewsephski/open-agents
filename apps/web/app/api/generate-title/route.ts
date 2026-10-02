@@ -1,9 +1,13 @@
 import { checkBotProtection } from "@/lib/botid";
-import { defaultLanguageModel } from "@open-agents/agent";
 import { generateText } from "ai";
 import { z } from "zod";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { getServerSession } from "@/lib/session/get-server-session";
+import { getAuthenticatedLanguageModel } from "@/lib/ai/authenticated-model";
+import {
+  isInferenceAccessDeniedError,
+  toInferenceAccessErrorResponse,
+} from "@/lib/access/model-credential-resolver";
 
 /**
  * Generates a short, descriptive session title from a user message using AI.
@@ -13,13 +17,14 @@ import { getServerSession } from "@/lib/session/get-server-session";
  */
 export async function generateSessionTitle(
   message: string,
+  userId: string,
 ): Promise<string | null> {
   const trimmed = message.trim().slice(0, 2000);
   if (trimmed.length === 0) return null;
 
   try {
     const result = await generateText({
-      model: defaultLanguageModel(),
+      model: await getAuthenticatedLanguageModel({ userId }),
       prompt: `You are a developer tool that names coding sessions. Generate a concise title (max 5 words) for a coding session based on the user's first message below. The title should help the user quickly identify what this session is about at a glance. Do NOT use quotes or punctuation around the title. Respond with ONLY the title, nothing else.
 
 User message:
@@ -32,6 +37,9 @@ ${trimmed}`,
     }
     return null;
   } catch (error) {
+    if (isInferenceAccessDeniedError(error)) {
+      throw error;
+    }
     console.error("[generate-title] Failed to generate title:", error);
     return null;
   }
@@ -79,7 +87,15 @@ export async function POST(req: Request) {
 
   const { message } = parsedBody.data;
 
-  const title = await generateSessionTitle(message);
+  let title: string | null;
+  try {
+    title = await generateSessionTitle(message, session.user.id);
+  } catch (error) {
+    if (isInferenceAccessDeniedError(error)) {
+      return toInferenceAccessErrorResponse(error.failure);
+    }
+    throw error;
+  }
 
   if (!title) {
     return Response.json(

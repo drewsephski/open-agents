@@ -9,7 +9,7 @@ import {
   withTemporaryGitHubAuth,
 } from "@open-agents/sandbox";
 import { generateText } from "ai";
-import { defaultLanguageModel } from "@open-agents/agent";
+import { getAuthenticatedLanguageModel } from "@/lib/ai/authenticated-model";
 import { updateSession } from "@/lib/db/sessions";
 import { generateBranchName, isSafeBranchName } from "@/lib/git/helpers";
 import {
@@ -146,7 +146,11 @@ export async function performAutoCommit(
   }
 
   // 4. generate commit message from staged diff
-  const commitMessage = await generateCommitMessage(sandbox, sessionTitle);
+  const commitMessage = await generateCommitMessage(
+    sandbox,
+    sessionTitle,
+    userId,
+  );
 
   const coAuthor = await buildCoAuthor(userId);
 
@@ -240,6 +244,7 @@ export async function performAutoCommit(
 async function generateCommitMessage(
   sandbox: Sandbox,
   sessionTitle: string,
+  userId: string,
 ): Promise<string> {
   const fallback = "chore: update repository changes";
 
@@ -251,7 +256,7 @@ async function generateCommitMessage(
     }
 
     const result = await generateText({
-      model: defaultLanguageModel(),
+      model: await getAuthenticatedLanguageModel({ userId }),
       prompt: `Generate a concise git commit message for these changes. Use conventional commit format (e.g., "feat:", "fix:", "refactor:"). One line only, max 72 characters.
 
 Session context: ${sessionTitle}

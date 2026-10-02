@@ -9,6 +9,7 @@ import {
   isSandboxState,
 } from "./utils";
 import { connectConfiguredSandbox } from "./connect";
+import { releaseSandboxRunning } from "./allowance";
 
 type SessionRecord = NonNullable<Awaited<ReturnType<typeof getSessionById>>>;
 type SessionUpdateInput = Parameters<typeof updateSession>[1];
@@ -150,6 +151,7 @@ async function finalizeArchivedSessionSandbox(
       return;
     }
     if (!canOperateOnSandbox(archivedSession.sandboxState)) {
+      await releaseSandboxRunning(sessionId);
       return;
     }
 
@@ -157,6 +159,7 @@ async function finalizeArchivedSessionSandbox(
       archivedSession.sandboxState,
     );
     await sandbox.stop();
+    await releaseSandboxRunning(sessionId);
     const stoppedState = sandbox.getState?.();
 
     await updateSession(sessionId, {

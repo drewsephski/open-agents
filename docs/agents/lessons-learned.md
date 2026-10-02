@@ -1,5 +1,7 @@
 # Lessons Learned
 
+- Creem store `launchstackpro` reviews the public site at `https://launchstack.sh`, not `launchstackpro.com`. Pricing decisions are $29/month, $10 managed inference, 25 running sandbox hours, and two concurrent sandboxes. Do not expose checkout for paid plans until signed payment events and allowance fulfillment are implemented; public policy pages must work without a session. Keep `lib/store-details.ts`, Creem Store settings, and product descriptions consistent.
+
 Hard-won knowledge from building this codebase. When you make a mistake or discover a non-obvious behavior, add it here.
 
 ## General / Tooling
@@ -22,6 +24,7 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - pnpm 11 requires an explicit `allowBuilds` map in `pnpm-workspace.yaml`; approve required native/tooling builds deliberately and keep non-functional lifecycle scripts disabled.
 - Keep pnpm release-age policy explicit in `pnpm-workspace.yaml`: enforce a strict one-day `minimumReleaseAge` and fail closed when publish timestamps are missing.
 - Use `pnpm run ci` for the repository verification script. `pnpm ci` invokes pnpm's built-in clean-install command instead of the package script.
+- Bun `mock.module` registrations are process-global, so passing multiple mock-heavy test files to one `bun test` process can create false cross-file failures. Use the repository's isolated test runner, or invoke the package test script once per focused file.
 - Keep Kysely pinned to `0.28.x` until Better Auth's bundled Kysely adapter stops importing migration constants from Kysely's root entrypoint; Kysely `0.29.x` removed those root exports and breaks the Next production bundle.
 - Node 24's built-in TypeScript support uses native ESM resolution and ignores tsconfig path aliases, so utility-script dependency chains need explicit `.ts` extensions and relative imports.
 - `bunx @vercel/config validate` executes the CLI under Node via its shebang and cannot parse TypeScript-style `vercel.ts` imports; use `bunx --bun @vercel/config validate` (or `bun node_modules/@vercel/config/dist/cli.js validate`) for reliable local validation.
@@ -163,3 +166,10 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - OpenRouter reasoning options are a discriminated union (`effort` **or** `max_tokens`). Anthropic `effort: "max"` maps to OpenRouter `"xhigh"`. Responses-only fields (`store`, encrypted reasoning, `reasoningSummary`, `textVerbosity`) have no OpenRouter equivalent and must be dropped.
 - Prompt cache markers apply only when the routed model is Anthropic. GLM defaults skip `addCacheControl`. Set both `anthropic` and `openrouter` `cacheControl: { type: "ephemeral" }` namespaces when routing Claude through OpenRouter.
 - Cost lives at `providerMetadata.openrouter.usage.cost` as a **number**. Pass `{ usage: { include: true } }` on `chat()` or cost is omitted. Do not read `providerMetadata.gateway.cost`.
+- Treat OpenRouter credential metadata as untrusted even after authenticated validation: re-project safe response fields and replace any provider label that contains the submitted plaintext key before storing or returning it.
+- Do not pass persisted envelope strings directly to Node's permissive base64url decoder. Require canonical unpadded base64url, round-trip the encoding, enforce the 12-byte GCM nonce and 16-byte tag, and set `authTagLength` explicitly.
+
+- Creem subscription access must require a signed paid event for the current period; checkout completion and active status are insufficient. The Next.js adapter callback fields use snake_case and millisecond envelope timestamps, while SDK subscription dates are Date objects.
+- OpenRouter calendar-month key resets do not match arbitrary paid billing periods. Rotate a key with a total $10 cap and paid-period expiry, using `limit_reset: null`.
+
+- The SVGL public API can return 403 from Vercel egress while succeeding locally. Keep a validated, attributed snapshot of its official catalog for upstream failures so stack recommendations still use real catalog entries.

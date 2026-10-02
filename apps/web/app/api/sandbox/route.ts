@@ -14,6 +14,11 @@ import {
 } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
+import {
+  releaseSandboxRunning,
+  SandboxAccessDeniedError,
+  toSandboxAccessErrorResponse,
+} from "@/lib/sandbox/allowance";
 
 interface CreateSandboxRequest {
   sessionId?: string;
@@ -64,10 +69,18 @@ export async function POST(req: Request) {
   if (!sessionContext.ok) return sessionContext.response;
 
   const startedAt = Date.now();
-  const provisioned = await provisionSessionSandbox({
-    sessionId: body.sessionId,
-    userId: session.user.id,
-  });
+  let provisioned: Awaited<ReturnType<typeof provisionSessionSandbox>>;
+  try {
+    provisioned = await provisionSessionSandbox({
+      sessionId: body.sessionId,
+      userId: session.user.id,
+    });
+  } catch (error) {
+    if (error instanceof SandboxAccessDeniedError) {
+      return toSandboxAccessErrorResponse(error);
+    }
+    throw error;
+  }
 
   return Response.json({
     createdAt: Date.now(),
@@ -120,11 +133,13 @@ export async function DELETE(req: Request) {
 
   const { sessionRecord } = sessionContext;
   if (!canOperateOnSandbox(sessionRecord.sandboxState)) {
+    await releaseSandboxRunning(sessionId);
     return Response.json({ success: true, alreadyStopped: true });
   }
 
   const sandbox = await connectConfiguredSandbox(sessionRecord.sandboxState);
   await sandbox.stop();
+  await releaseSandboxRunning(sessionId);
   const persistedState = sandbox.getState?.();
   const clearedState =
     persistedState &&
@@ -146,6 +161,5 @@ export async function DELETE(req: Request) {
     lifecycleRunId: null,
     lifecycleError: null,
   });
-
   return Response.json({ success: true });
 }

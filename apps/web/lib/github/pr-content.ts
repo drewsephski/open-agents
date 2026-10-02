@@ -1,5 +1,4 @@
 import type { Sandbox } from "@open-agents/sandbox";
-import { defaultLanguageModel } from "@open-agents/agent";
 import { generateText, NoObjectGeneratedError, Output } from "ai";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -9,6 +8,7 @@ import { db } from "@/lib/db/client";
 import { getChatsBySessionId, getSessionById } from "@/lib/db/sessions";
 import { users } from "@/lib/db/schema";
 import { SAFE_BRANCH_PATTERN } from "@/lib/git/helpers";
+import { getAuthenticatedLanguageModel } from "@/lib/ai/authenticated-model";
 
 const prContentSchema = z.object({
   title: z
@@ -139,6 +139,7 @@ export function appendPullRequestContextSection(
 
 export interface GeneratePullRequestContentParams {
   sandbox: Sandbox;
+  userId: string;
   sessionId: string;
   sessionTitle: string;
   baseBranch: string;
@@ -301,7 +302,7 @@ export async function generatePullRequestContentFromSandbox(
   let prContent: z.infer<typeof prContentSchema>;
   try {
     const { output } = await generateText({
-      model: defaultLanguageModel(),
+      model: await getAuthenticatedLanguageModel({ userId: params.userId }),
       output: Output.object({
         schema: prContentSchema,
       }),

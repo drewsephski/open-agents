@@ -4,6 +4,7 @@ import { AuthProductPreview } from "@/components/auth/auth-product-preview";
 import { Logo } from "@/components/landing/logo";
 import { ThemeToggle } from "@/components/landing/theme-toggle";
 import { SignInButton } from "@/components/auth/sign-in-button";
+import { PolicyLinks } from "@/components/policy-links";
 import {
   AuthModeSwitch,
   EmailPasswordForm,
@@ -82,6 +83,9 @@ export function AuthScreen({ mode, callbackUrl }: AuthScreenProps) {
 
             <div className="mt-5">
               <AuthModeSwitch mode={mode} callbackUrl={callbackUrl} />
+            </div>
+            <div className="mt-6 text-(--l-fg-2)">
+              <PolicyLinks />
             </div>
             <p className="mt-8 text-center font-mono text-[9px] uppercase tracking-[0.14em] text-(--l-fg-4)">
               Secure sessions · encrypted credentials

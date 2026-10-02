@@ -7,9 +7,11 @@ import {
   GitCommitHorizontal,
   Loader2,
   MessageSquare,
+  ShieldAlert,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { Button } from "./ui/button";
 import { useGitHubConnectionStatus } from "@/hooks/use-github-connection-status";
 import { useSession } from "@/hooks/use-session";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
@@ -33,6 +35,7 @@ import {
   type SessionStarterMode,
   type SessionStarterSubmitInput,
 } from "./session-starter-submission";
+import { ChatAccessNotice } from "./chat-access-notice";
 import {
   SlidingTabIndicator,
   slidingTabProps,
@@ -40,9 +43,15 @@ import {
 } from "./ui/sliding-tab-indicator";
 import { Switch } from "./ui/switch";
 import { Textarea } from "./ui/textarea";
+import { useAccessSummary } from "@/hooks/use-access-summary";
+import {
+  clearPendingPrompt,
+  loadPendingPrompt,
+  savePendingPrompt,
+} from "@/lib/chat/pending-prompt";
 
 interface SessionStarterProps {
-  onSubmit: (session: SessionStarterSubmitInput) => void;
+  onSubmit: (session: SessionStarterSubmitInput) => Promise<void> | void;
   isLoading?: boolean;
   lastRepo: { owner: string; repo: string } | null;
 }
@@ -86,6 +95,13 @@ export function SessionStarter({
   const [missionType, setMissionType] = useState<MissionType>(
     DEFAULT_REPOSITORY_MISSION_TYPE,
   );
+  const [hasPendingPrompt, setHasPendingPrompt] = useState(false);
+  const [accessBlocked, setAccessBlocked] = useState(false);
+  const {
+    summary: accessSummary,
+    error: accessError,
+    refresh: refreshAccess,
+  } = useAccessSummary();
   const modeTabsRef = useRef<HTMLDivElement>(null);
   const activeModeTabBox = useSlidingTabBox(modeTabsRef, mode);
   const sandboxType = preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE;
@@ -139,6 +155,14 @@ export function SessionStarter({
     }
     setVercelProjectChoice(undefined);
   }, [repoProjects, repoProjectsLoading, shouldLoadVercelProjects]);
+
+  useEffect(() => {
+    const pending = loadPendingPrompt(window.localStorage, "new-session");
+    if (!pending) return;
+    setInitialMessage((current) => current || pending.text);
+    setHasPendingPrompt(true);
+    setAccessBlocked(true);
+  }, []);
 
   const handleRepoSelect = (owner: string, repo: string) => {
     setSelectedOwner(owner);
@@ -203,8 +227,18 @@ export function SessionStarter({
     !!selectedRepo &&
     (sessionLoading || hasVercelAccount);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (isSubmitDisabled) return;
+
+    if (mode === "empty" && initialMessage.trim()) {
+      const currentAccess = await refreshAccess();
+      if (!currentAccess?.eligible) {
+        savePendingPrompt(window.localStorage, "new-session", initialMessage);
+        setHasPendingPrompt(true);
+        setAccessBlocked(true);
+        return;
+      }
+    }
 
     let vercelProject: VercelProjectSelection | null | undefined;
     if (shouldLoadVercelProjects) {
@@ -222,7 +256,7 @@ export function SessionStarter({
       }
     }
 
-    onSubmit(
+    await onSubmit(
       buildSessionStarterSubmission({
         mode,
         selectedOwner,
@@ -237,6 +271,9 @@ export function SessionStarter({
         autoCreatePr: effectiveAutoCreatePr,
       }),
     );
+    clearPendingPrompt(window.localStorage, "new-session");
+    setHasPendingPrompt(false);
+    setAccessBlocked(false);
   };
 
   const buttonLabel =
@@ -434,9 +471,51 @@ export function SessionStarter({
           )}
         </div>
 
+        {accessBlocked && mode === "empty" && (
+          <div
+            role="status"
+            className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3"
+          >
+            <ShieldAlert className="mt-0.5 size-4 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">
+                Pending prompt saved locally
+              </p>
+              <p className="text-pretty text-xs text-muted-foreground">
+                {accessSummary?.eligible
+                  ? "Access is ready. Choose Resend pending prompt when you want to send it."
+                  : "Add an OpenRouter key or upgrade to Pro. Launchstack will only send this prompt when you explicitly resend it."}
+              </p>
+              {accessError && (
+                <p className="mt-1 text-pretty text-xs text-destructive">
+                  {accessError}
+                </p>
+              )}
+              {!accessSummary?.eligible && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button asChild size="sm" variant="outline">
+                    <Link href="/settings/connections">Add API key</Link>
+                  </Button>
+                  <Button asChild size="sm" variant="outline">
+                    <Link href="/settings/billing">Upgrade</Link>
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {!accessBlocked && mode === "empty" && (
+          <ChatAccessNotice
+            summary={accessSummary}
+            pending={false}
+            checking={false}
+            onResend={() => undefined}
+          />
+        )}
+
         <button
           type="button"
-          onClick={handleSubmit}
+          onClick={() => void handleSubmit()}
           disabled={isSubmitDisabled}
           className={cn(
             "flex w-full items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors",
@@ -446,7 +525,11 @@ export function SessionStarter({
           )}
         >
           {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-          {isLoading ? "Creating session…" : buttonLabel}
+          {isLoading
+            ? "Creating session…"
+            : hasPendingPrompt && accessSummary?.eligible
+              ? "Resend pending prompt"
+              : buttonLabel}
         </button>
 
         <p className="text-center text-xs text-muted-foreground">

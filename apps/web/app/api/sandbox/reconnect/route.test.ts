@@ -1,6 +1,28 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 mock.module("server-only", () => ({}));
+const allowanceCalls: string[] = [];
+mock.module("@/lib/sandbox/allowance", () => ({
+  admitSandboxOperation: async () => {
+    allowanceCalls.push("admit");
+    return { tier: "byok" };
+  },
+  confirmSandboxRunning: async () => {
+    allowanceCalls.push("confirm");
+  },
+  releaseSandboxRunning: async () => {},
+  SandboxAccessDeniedError: class SandboxAccessDeniedError extends Error {
+    constructor() {
+      super("sandbox denied");
+      this.name = "SandboxAccessDeniedError";
+    }
+  },
+  toSandboxAccessErrorResponse: () =>
+    Response.json({ error: { code: "sandbox_denied" } }, { status: 403 }),
+}));
+mock.module("@/lib/sandbox/allowance-hibernation", () => ({
+  hibernateSandboxAfterAllowanceDenial: async () => {},
+}));
 
 const updateCalls: Array<{
   sessionId: string;
@@ -96,6 +118,7 @@ const routeModulePromise = import("./route");
 
 describe("/api/sandbox/reconnect", () => {
   beforeEach(() => {
+    allowanceCalls.length = 0;
     updateCalls.length = 0;
     probeResult = {
       success: true,
@@ -144,6 +167,7 @@ describe("/api/sandbox/reconnect", () => {
     expect(updateCalls[0]?.sessionId).toBe("session-1");
     expect(updateCalls[0]?.patch.lifecycleState).toBe("active");
     expect(updateCalls[0]?.patch.lifecycleError).toBeNull();
+    expect(allowanceCalls).toEqual(["admit", "confirm"]);
   });
 
   test("marks sandbox expired when the reconnect probe hits a 410", async () => {

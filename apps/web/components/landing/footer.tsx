@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { PolicyLinks } from "@/components/policy-links";
+import { STORE } from "@/lib/store-details";
 import { Logo } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -16,7 +18,15 @@ export function LandingFooter() {
             </div>
           </div>
 
-          <div className="hidden lg:block" />
+          <div className="px-6 pt-14 md:px-10 md:py-18">
+            <h2 className="mb-4 text-balance text-sm font-medium">
+              Policies & support
+            </h2>
+            <PolicyLinks />
+            <p className="mt-4 text-pretty text-sm text-(--l-fg-2)">
+              Operated by {STORE.operator}, {STORE.country}.
+            </p>
+          </div>
 
           <div className="px-6 pt-14 md:px-10 md:py-18">
             <div className="font-mono text-xs uppercase tracking-widest text-(--l-fg-3)">
@@ -98,6 +108,7 @@ export function LandingFooter() {
         <div className="flex items-center justify-between px-6 pt-6 pb-6 md:pt-0 md:px-10 md:pb-10">
           <a
             href="https://vercel.com"
+            aria-label="Vercel"
             target="_blank"
             rel="noopener noreferrer"
             className="text-(--l-fg)"

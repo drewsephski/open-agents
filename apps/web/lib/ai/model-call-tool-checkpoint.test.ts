@@ -1,0 +1,202 @@
+import { describe, expect, mock, test } from "bun:test";
+import { InferenceAccountingSettlementError } from "@open-agents/agent";
+import { tool, type InferUIMessageChunk } from "ai";
+import { z } from "zod";
+import type { WebAgentUIMessage } from "@/app/types";
+
+mock.module("server-only", () => ({}));
+
+const { checkpointToolResults } = await import("./model-call-tool-checkpoint");
+
+describe("checkpointToolResults", () => {
+  test("promotes completed mutating tool results before surfacing settlement failure", async () => {
+    const accountingSettlement = {
+      context: {
+        callId: "call-1",
+        userId: "user-1",
+        modelId: "openai/gpt-5.6-luna",
+        source: "managed" as const,
+        agentType: "main" as const,
+        occurredAt: "2026-08-15T12:00:00.000Z",
+      },
+      result: {
+        cost: { micros: 125_000, usd: "0.125" },
+        usage: {
+          inputTokens: { total: 2, noCache: 2, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 1, text: 1, reasoning: 0 },
+        },
+      },
+    };
+    const settlementError = new InferenceAccountingSettlementError(
+      new Error("database unavailable"),
+      accountingSettlement,
+    );
+    const chunks: InferUIMessageChunk<WebAgentUIMessage>[] = [
+      { type: "start", messageId: "assistant-1" },
+      { type: "start-step" },
+      {
+        type: "tool-input-available",
+        toolCallId: "write-1",
+        toolName: "write",
+        input: { path: "src/side-effect.ts", content: "created" },
+      },
+      {
+        type: "tool-output-available",
+        toolCallId: "write-1",
+        output: { ok: true },
+      },
+      {
+        type: "tool-input-available",
+        toolCallId: "bash-1",
+        toolName: "bash",
+        input: { command: "publish" },
+      },
+      {
+        type: "tool-output-available",
+        toolCallId: "bash-1",
+        output: { exitCode: 0 },
+      },
+    ];
+    let chunkIndex = 0;
+    const stream = new ReadableStream<InferUIMessageChunk<WebAgentUIMessage>>({
+      async pull(controller) {
+        const chunk = chunks[chunkIndex++];
+        if (chunk) {
+          controller.enqueue(chunk);
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          controller.error(settlementError);
+        }
+      },
+    });
+    const record = mock(async (_params: { message: WebAgentUIMessage }) => {});
+    const promote = mock(
+      async (_params: { workflowRunId: string; stepNumber: number }) => {},
+    );
+    const checkpointed = checkpointToolResults({
+      stream,
+      originalMessage: undefined,
+      workflowRunId: "workflow-1",
+      stepNumber: 1,
+      chatId: "chat-1",
+      tools: {
+        write: tool({
+          inputSchema: z.object({ path: z.string(), content: z.string() }),
+        }),
+        bash: tool({ inputSchema: z.object({ command: z.string() }) }),
+      },
+      persistence: { record, promote },
+    });
+    const observerResult = checkpointed.settled.then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    const reader = checkpointed.output.getReader();
+    let outputError: unknown;
+    try {
+      while (!(await reader.read()).done) {
+        // The application branch continues streaming until settlement fails.
+      }
+    } catch (error) {
+      outputError = error;
+    }
+    expect(outputError).toBe(settlementError);
+    expect(await observerResult).toBeNull();
+
+    expect(record).toHaveBeenCalled();
+    const lastRecord = record.mock.calls.at(-1)?.[0];
+    expect(lastRecord?.message.parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "tool-write",
+          state: "output-available",
+        }),
+        expect.objectContaining({
+          type: "tool-bash",
+          state: "output-available",
+        }),
+      ]),
+    );
+    expect(promote).toHaveBeenCalledWith({
+      workflowRunId: "workflow-1",
+      stepNumber: 1,
+      accountingSettlement,
+    });
+  });
+
+  test("stores cumulative UI with a step-local model replay payload", async () => {
+    const stream = new ReadableStream<InferUIMessageChunk<WebAgentUIMessage>>({
+      start(controller) {
+        controller.enqueue({ type: "start-step" });
+        controller.enqueue({
+          type: "tool-input-available",
+          toolCallId: "new-write",
+          toolName: "write",
+          input: { filePath: "new.ts", content: "new" },
+        });
+        controller.enqueue({
+          type: "tool-output-available",
+          toolCallId: "new-write",
+          output: { success: true, path: "new.ts", bytesWritten: 3 },
+        });
+        controller.close();
+      },
+    });
+    const records: Array<{
+      message: WebAgentUIMessage;
+      responseMessages: unknown[];
+    }> = [];
+    const checkpointed = checkpointToolResults({
+      stream,
+      originalMessage: {
+        id: "assistant-1",
+        role: "assistant",
+        parts: [
+          { type: "text", text: "Earlier explanation" },
+          { type: "step-start" },
+          {
+            type: "tool-write",
+            toolCallId: "prior-write",
+            state: "output-available",
+            input: { filePath: "prior.ts", content: "prior" },
+            output: { success: true, path: "prior.ts", bytesWritten: 5 },
+          },
+        ],
+      },
+      workflowRunId: "workflow-2",
+      stepNumber: 2,
+      chatId: "chat-1",
+      tools: {
+        write: tool({
+          inputSchema: z.object({ filePath: z.string(), content: z.string() }),
+        }),
+      },
+      persistence: {
+        record: async (params) => {
+          records.push(params);
+        },
+        promote: async () => {},
+      },
+    });
+    const reader = checkpointed.output.getReader();
+    while (!(await reader.read()).done) {
+      // Drain the guarded stream.
+    }
+
+    const lastRecord = records.at(-1);
+    const toolCallIds = lastRecord?.message.parts
+      .filter((part) => part.type.startsWith("tool-"))
+      .map((part) => ("toolCallId" in part ? part.toolCallId : null));
+    expect(toolCallIds).toEqual(["prior-write", "new-write"]);
+    expect(
+      lastRecord?.message.parts.filter(
+        (part) => part.type === "text" && part.text === "Earlier explanation",
+      ),
+    ).toHaveLength(1);
+    expect(JSON.stringify(lastRecord?.responseMessages)).toContain("new-write");
+    expect(JSON.stringify(lastRecord?.responseMessages)).not.toContain(
+      "prior-write",
+    );
+  });
+});

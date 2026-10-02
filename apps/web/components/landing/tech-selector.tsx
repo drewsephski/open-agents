@@ -186,7 +186,7 @@ export function TechSelector() {
                 <div className="mt-2 max-w-2xl text-sm leading-relaxed text-white/65 [&_p]:m-0">
                   <Streamdown mode="static" isAnimating={false}>
                     {recommendation?.summaryMarkdown ??
-                      "Reading the product brief and matching its responsibilities to the live technology catalog…"}
+                      "Reading the product brief and matching its responsibilities to the technology catalog…"}
                   </Streamdown>
                 </div>
               </div>

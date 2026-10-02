@@ -4,6 +4,7 @@ import { z } from "zod";
 import { addCacheControl } from "./context-management";
 import {
   type ModelId,
+  type OpenRouterConfig,
   constructorPlaceholderModel,
   model,
   resolveDefaultModelId,
@@ -32,6 +33,9 @@ export interface AgentModelSelection {
 }
 
 export type OpenAgentModelInput = ModelId | AgentModelSelection;
+export type ResolveSubagentOpenRouterConfig = (params: {
+  modelId: ModelId;
+}) => Promise<OpenRouterConfig>;
 
 export interface AgentSandboxContext {
   state: SandboxState;
@@ -40,8 +44,27 @@ export interface AgentSandboxContext {
   environmentDetails?: string;
 }
 
+const openRouterConfigSchema: z.ZodType<OpenRouterConfig> = z.object({
+  apiKey: z.string().trim().min(1),
+  baseURL: z.string().optional(),
+  accounting: z
+    .custom<OpenRouterConfig["accounting"]>(
+      (value) =>
+        typeof value === "object" &&
+        value !== null &&
+        "reconcile" in value &&
+        typeof value.reconcile === "function",
+    )
+    .optional(),
+});
+
 const callOptionsSchema = z.object({
   sandbox: z.custom<AgentSandboxContext>(),
+  openRouter: openRouterConfigSchema,
+  resolveSubagentOpenRouter: z.custom<ResolveSubagentOpenRouterConfig>(
+    (value) => typeof value === "function",
+    "A subagent OpenRouter authorization resolver is required.",
+  ),
   model: z.custom<OpenAgentModelInput>().optional(),
   subagentModel: z.custom<OpenAgentModelInput>().optional(),
   customInstructions: z.string().optional(),
@@ -113,21 +136,27 @@ export function createOpenAgent<T extends ToolSet>(additionalTools: T) {
       );
       const subagentSelection = options.subagentModel
         ? normalizeAgentModelSelection(options.subagentModel, fallbackModelId)
-        : undefined;
+        : mainSelection;
 
       const callModel = model(mainSelection.id, {
+        config: options.openRouter,
         providerOptionsOverrides: mainSelection.providerOptionsOverrides,
       });
-      const subagentModel = subagentSelection
-        ? model(subagentSelection.id, {
+      const subagentModelRuntime = {
+        modelId: subagentSelection.id,
+        resolveModel: async () =>
+          model(subagentSelection.id, {
+            config: await options.resolveSubagentOpenRouter({
+              modelId: subagentSelection.id,
+            }),
             providerOptionsOverrides:
               subagentSelection.providerOptionsOverrides,
-          })
-        : undefined;
+          }),
+      };
       const customInstructions = options.customInstructions;
-      const missionInstructions = options.missionInstructions;
       const sandbox = options.sandbox;
       const skills = options.skills ?? [];
+      const missionInstructions = options.missionInstructions;
 
       const instructions = buildSystemPrompt({
         cwd: sandbox.workingDirectory,
@@ -151,7 +180,7 @@ export function createOpenAgent<T extends ToolSet>(additionalTools: T) {
           sandbox,
           skills,
           model: callModel,
-          subagentModel,
+          subagentModelRuntime,
         },
       };
     },

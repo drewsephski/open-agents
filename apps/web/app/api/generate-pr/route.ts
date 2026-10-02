@@ -6,6 +6,10 @@ import { generatePullRequestContentFromSandbox } from "@/lib/github/pr-content";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { isSandboxActive } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
+import {
+  isInferenceAccessDeniedError,
+  toInferenceAccessErrorResponse,
+} from "@/lib/access/model-credential-resolver";
 
 // allow up to 2 minutes for AI generation and git operations
 export const maxDuration = 120;
@@ -206,15 +210,26 @@ export async function POST(req: Request) {
     );
   }
 
-  const prContentResult = await generatePullRequestContentFromSandbox({
-    sandbox,
-    sessionId,
-    sessionTitle,
-    baseBranch,
-    branchName: resolvedBranch,
-    baseRef,
-    appBaseUrl: new URL(req.url).origin,
-  });
+  let prContentResult: Awaited<
+    ReturnType<typeof generatePullRequestContentFromSandbox>
+  >;
+  try {
+    prContentResult = await generatePullRequestContentFromSandbox({
+      sandbox,
+      userId: session.user.id,
+      sessionId,
+      sessionTitle,
+      baseBranch,
+      branchName: resolvedBranch,
+      baseRef,
+      appBaseUrl: new URL(req.url).origin,
+    });
+  } catch (error) {
+    if (isInferenceAccessDeniedError(error)) {
+      return toInferenceAccessErrorResponse(error.failure);
+    }
+    throw error;
+  }
 
   if (!prContentResult.success) {
     return Response.json({ error: prContentResult.error }, { status: 400 });

@@ -165,6 +165,19 @@ let agentResponseBody: unknown;
 let agentProviderMetadata: Record<string, unknown> | undefined;
 let agentInputMessages: unknown;
 let agentCallOptions: Record<string, unknown> | undefined;
+let agentStreamCalls = 0;
+let replayableToolCheckpoint: {
+  responseMessage: Record<string, unknown>;
+  responseMessages: Array<Record<string, unknown>>;
+  accountingSettlement?: Record<string, unknown>;
+} | null = null;
+let replayableCheckpointStepNumber = 1;
+const retriedInferenceSettlements: Array<Record<string, unknown>> = [];
+const modelCredentialCalls: Array<{
+  userId: string;
+  modelId: string;
+  agentType?: "main" | "subagent";
+}> = [];
 
 function buildAgentSteps() {
   return [
@@ -238,7 +251,8 @@ mock.module("@/app/config", () => ({
       messages: unknown;
       options: Record<string, unknown>;
     }) => {
-      agentInputMessages = messages;
+      agentStreamCalls += 1;
+      agentInputMessages = structuredClone(messages);
       agentCallOptions = options;
       return {
         toUIMessageStream: (opts: {
@@ -358,6 +372,48 @@ mock.module("ai", () => ({
 
 mock.module("@open-agents/agent", () => ({}));
 
+mock.module("@/lib/ai/model-call-tool-checkpoint", () => ({
+  getReplayableToolCheckpoint: async (params: { stepNumber: number }) =>
+    params.stepNumber === replayableCheckpointStepNumber
+      ? replayableToolCheckpoint
+      : null,
+  checkpointToolResults: (params: {
+    stream: AsyncIterable<UIMessageChunk>;
+  }) => {
+    const iterator = params.stream[Symbol.asyncIterator]();
+    return {
+      output: {
+        getReader: () => ({ read: () => iterator.next() }),
+      },
+      settled: Promise.resolve(),
+    };
+  },
+  recordObservedToolCheckpoint: async () => {},
+  promoteToolCheckpoint: async () => {},
+}));
+
+mock.module("@/lib/access/model-credential-resolver", () => ({
+  requireModelCredential: async (params: {
+    userId: string;
+    modelId: string;
+    agentType?: "main" | "subagent";
+  }) => {
+    modelCredentialCalls.push(params);
+    return {
+      allowed: true,
+      source: "byok",
+      modelId: params.modelId,
+      openRouter: { apiKey: `credential-for-${params.modelId}` },
+    };
+  },
+}));
+
+mock.module("@/lib/access/inference-call-accounting", () => ({
+  retryInferenceSettlement: async (settlement: Record<string, unknown>) => {
+    retriedInferenceSettlements.push(settlement);
+  },
+}));
+
 mock.module("@/lib/db/sessions", () => ({
   getChatById: async () => testChatRecord,
   getSessionById: async () => testSessionRecord,
@@ -425,6 +481,11 @@ beforeEach(() => {
   agentProviderMetadata = undefined;
   agentInputMessages = undefined;
   agentCallOptions = undefined;
+  agentStreamCalls = 0;
+  replayableToolCheckpoint = null;
+  replayableCheckpointStepNumber = 1;
+  retriedInferenceSettlements.length = 0;
+  modelCredentialCalls.length = 0;
   streamOnFinishCallback = undefined;
   testSessionRecord = {
     id: "session-1",
@@ -837,6 +898,197 @@ describe("runAgentWorkflow", () => {
         finishReason: "tool-calls",
       }),
     ]);
+  });
+
+  test("re-authorizes model credentials inside each agent step and passes them explicitly", async () => {
+    await runAgentWorkflow(makeOptions());
+
+    expect(modelCredentialCalls).toEqual([
+      {
+        userId: "user-1",
+        modelId: APP_DEFAULT_MODEL_ID,
+        agentType: "main",
+      },
+    ]);
+    expect(agentCallOptions).toMatchObject({
+      openRouter: { apiKey: `credential-for-${APP_DEFAULT_MODEL_ID}` },
+      resolveSubagentOpenRouter: expect.any(Function),
+    });
+  });
+
+  test("provides a fresh authorization resolver for every selected subagent call", async () => {
+    testPreferences.defaultSubagentModelId = "openai/gpt-5.6-luna";
+
+    await runAgentWorkflow(makeOptions());
+
+    const resolveSubagentOpenRouter = agentCallOptions?.[
+      "resolveSubagentOpenRouter"
+    ] as
+      | ((params: { modelId: string }) => Promise<{ apiKey: string }>)
+      | undefined;
+    expect(resolveSubagentOpenRouter).toBeFunction();
+    await expect(
+      resolveSubagentOpenRouter?.({ modelId: "openai/gpt-5.6-luna" }),
+    ).resolves.toEqual({ apiKey: "credential-for-openai/gpt-5.6-luna" });
+    await expect(
+      resolveSubagentOpenRouter?.({ modelId: "openai/gpt-5.6-luna" }),
+    ).resolves.toEqual({ apiKey: "credential-for-openai/gpt-5.6-luna" });
+
+    expect(modelCredentialCalls).toEqual([
+      {
+        userId: "user-1",
+        modelId: APP_DEFAULT_MODEL_ID,
+        agentType: "main",
+      },
+      {
+        userId: "user-1",
+        modelId: "openai/gpt-5.6-luna",
+        agentType: "subagent",
+      },
+      {
+        userId: "user-1",
+        modelId: "openai/gpt-5.6-luna",
+        agentType: "subagent",
+      },
+    ]);
+    expect(agentCallOptions).toMatchObject({
+      openRouter: { apiKey: `credential-for-${APP_DEFAULT_MODEL_ID}` },
+      resolveSubagentOpenRouter: expect.any(Function),
+    });
+  });
+
+  test("retries failed settlement before resuming without replaying completed tools", async () => {
+    agentFinishReason = "tool-calls";
+    const accountingSettlement = {
+      context: { callId: "call-1", source: "managed" },
+      result: { cost: { micros: 125_000, usd: "0.125" } },
+    };
+    replayableToolCheckpoint = {
+      responseMessage: {
+        id: "assistant-1",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-write",
+            toolCallId: "write-1",
+            state: "output-available",
+            output: "created a.txt",
+          },
+          {
+            type: "tool-bash",
+            toolCallId: "bash-1",
+            state: "output-available",
+            output: "migration applied",
+          },
+        ],
+      },
+      responseMessages: [
+        { role: "assistant", content: [{ type: "tool-call" }] },
+        { role: "tool", content: [{ type: "tool-result" }] },
+      ],
+      accountingSettlement,
+    };
+
+    await runAgentWorkflow(makeOptions({ maxSteps: 2 }));
+
+    expect(agentStreamCalls).toBe(1);
+    expect(retriedInferenceSettlements).toHaveLength(1);
+    expect(retriedInferenceSettlements[0]).toEqual(accountingSettlement);
+    expect(modelCredentialCalls).toEqual([
+      {
+        userId: "user-1",
+        modelId: APP_DEFAULT_MODEL_ID,
+        agentType: "main",
+      },
+    ]);
+    expect(agentInputMessages).toEqual(
+      expect.arrayContaining(replayableToolCheckpoint.responseMessages),
+    );
+  });
+
+  test("preserves cumulative UI when replaying a step-local second-step checkpoint", async () => {
+    agentFinishReason = "tool-calls";
+    agentAssistantParts = [
+      { type: "text", text: "Earlier explanation" },
+      {
+        type: "tool-write",
+        toolCallId: "prior-write",
+        state: "output-available",
+        output: "created prior.ts",
+      },
+    ];
+    agentResponseMessages = [
+      {
+        role: "assistant",
+        content: [{ type: "tool-call", toolCallId: "prior-write" }],
+      },
+      {
+        role: "tool",
+        content: [{ type: "tool-result", toolCallId: "prior-write" }],
+      },
+    ];
+    agentResponse = { messages: agentResponseMessages };
+    replayableCheckpointStepNumber = 2;
+    replayableToolCheckpoint = {
+      responseMessage: {
+        id: "assistant-1",
+        role: "assistant",
+        parts: [
+          ...agentAssistantParts,
+          {
+            type: "tool-write",
+            toolCallId: "current-write",
+            state: "output-available",
+            output: "created current.ts",
+          },
+        ],
+      },
+      responseMessages: [
+        {
+          role: "assistant",
+          content: [{ type: "tool-call", toolCallId: "current-write" }],
+        },
+        {
+          role: "tool",
+          content: [{ type: "tool-result", toolCallId: "current-write" }],
+        },
+      ],
+    };
+
+    await runAgentWorkflow(makeOptions({ maxSteps: 3 }));
+
+    expect(agentStreamCalls).toBe(2);
+    expect(modelCredentialCalls).toHaveLength(2);
+    const contextToolCallIds = (
+      agentInputMessages as Array<{
+        content?: Array<{ toolCallId?: string; type?: string }>;
+      }>
+    ).flatMap((message) =>
+      (message.content ?? []).flatMap((part) =>
+        part.toolCallId ? [part.toolCallId] : [],
+      ),
+    );
+    expect(contextToolCallIds).toEqual([
+      "prior-write",
+      "prior-write",
+      "current-write",
+      "current-write",
+    ]);
+    const persisted = spies.persistAssistantMessage.mock.calls.at(-1)?.[1] as
+      | { parts: Array<Record<string, unknown>> }
+      | undefined;
+    const toolCallIds = persisted?.parts
+      .filter(
+        (part) =>
+          typeof part.type === "string" && part.type.startsWith("tool-"),
+      )
+      .map((part) => part.toolCallId);
+    expect(toolCallIds).toEqual(["prior-write", "current-write"]);
+    expect(
+      persisted?.parts.filter(
+        (part) => part.type === "text" && part.text === "Earlier explanation",
+      ),
+    ).toHaveLength(1);
   });
 
   test("logs full step diagnostics when the agent finishes with reason other", async () => {

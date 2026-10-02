@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { z } from "zod";
 import { recommendTechStack } from "@/lib/ai/recommend-tech-stack";
+import { getPublicDemoOpenRouterConfig } from "@/lib/ai/public-demo-model";
 import { checkBotProtection } from "@/lib/botid";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 
@@ -45,6 +46,7 @@ export async function POST(request: Request) {
     const recommendation = await recommendTechStack({
       productRequest: parsedBody.data.request,
       abortSignal: request.signal,
+      openRouter: getPublicDemoOpenRouterConfig(),
     });
     return Response.json(recommendation);
   } catch (error) {

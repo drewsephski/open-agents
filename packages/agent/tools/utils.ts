@@ -1,7 +1,7 @@
 import { connectSandbox, type Sandbox } from "@open-agents/sandbox";
 import type { LanguageModel, ModelMessage } from "ai";
 import * as path from "path";
-import type { AgentContext } from "../types";
+import type { AgentContext, SubagentModelRuntime } from "../types";
 
 function isAgentContext(value: unknown): value is AgentContext {
   return (
@@ -148,25 +148,22 @@ export function getModel(
   return context.model;
 }
 
-/**
- * Get subagent model from experimental context, falling back to the main model.
- * Returns the dedicated subagent model if configured, otherwise the main agent model.
- */
-export function getSubagentModel(
+/** Get the per-provider-call subagent authorization runtime. */
+export function getSubagentModelRuntime(
   experimental_context: unknown,
   toolName?: string,
-): LanguageModel {
+): SubagentModelRuntime {
   const context = isAgentContext(experimental_context)
     ? experimental_context
     : undefined;
-  if (!context?.model) {
+  if (!context?.subagentModelRuntime) {
     const toolInfo = toolName ? ` (tool: ${toolName})` : "";
     throw new Error(
-      `Model not initialized in context${toolInfo}. ` +
-        "Ensure the agent's prepareCall sets experimental_context: { model, ... }",
+      `Subagent model authorization not initialized in context${toolInfo}. ` +
+        "Ensure the agent's prepareCall sets experimental_context: { subagentModelRuntime, ... }",
     );
   }
-  return context.subagentModel ?? context.model;
+  return context.subagentModelRuntime;
 }
 
 /**

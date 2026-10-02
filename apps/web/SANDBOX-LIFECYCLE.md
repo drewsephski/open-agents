@@ -12,7 +12,7 @@ selection, circuit-breaker, security, rollout, and rollback details.
 | Constant | Default | Purpose |
 |---|---:|---|
 | DEFAULT_SANDBOX_TIMEOUT_MS | 5 hours standard / 40 minutes hobby | Proactive Vercel wrapper deadline |
-| SANDBOX_INACTIVITY_TIMEOUT_MS | 30 minutes | Server inactivity window before provider pause |
+| SANDBOX_INACTIVITY_TIMEOUT_MS | 15 minutes | Server inactivity window before provider pause |
 
 Vercel also enforces its provider timeout. CodeSandbox receives the inactivity
 window as its hibernation timeout. HTTP and WebSocket auto-wake are disabled so

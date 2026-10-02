@@ -71,6 +71,7 @@ import { useInlineQuestion } from "@/components/inline-question-input";
 import { SlashCommandDropdown } from "@/components/slash-command-dropdown";
 import { SnippetChip } from "@/components/snippet-chip";
 import { AssistantMessageGroups } from "@/components/assistant-message-groups";
+import { ChatAccessNotice } from "@/components/chat-access-notice";
 import { MessageModelPill } from "@/components/message-model-pill";
 import { MissionEvidenceCard } from "@/components/mission-evidence-card";
 import {
@@ -98,6 +99,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAudioRecording } from "@/hooks/use-audio-recording";
+import { useAccessSummary } from "@/hooks/use-access-summary";
 import { useFileSuggestions } from "@/hooks/use-file-suggestions";
 import { useImageAttachments } from "@/hooks/use-image-attachments";
 import { useTextAttachments } from "@/hooks/use-text-attachments";
@@ -115,6 +117,11 @@ import {
   shouldShowThinkingIndicator,
   shouldUseChatListStreamingState,
 } from "@/lib/chat-streaming-state";
+import {
+  clearPendingPrompt,
+  loadPendingPrompt,
+  savePendingPrompt,
+} from "@/lib/chat/pending-prompt";
 import { ACCEPT_IMAGE_TYPES, isValidImageType } from "@/lib/image-utils";
 import {
   deriveMissionEvidence,
@@ -1232,6 +1239,20 @@ export function SessionChatContent({
     skillsLoading,
     refreshSkills,
   } = useSessionChatWorkspaceContext();
+  const {
+    summary: accessSummary,
+    loading: accessLoading,
+    refresh: refreshAccess,
+  } = useAccessSummary(chatInfo.modelId ?? undefined);
+  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+
+  useEffect(() => {
+    const pending = loadPendingPrompt(window.localStorage, chatInfo.id);
+    setPendingPrompt(pending?.text ?? null);
+    if (pending?.text) {
+      setInput((current) => current || pending.text);
+    }
+  }, [chatInfo.id]);
 
   // Ping the server to refresh the inactivity timer when the user focuses
   // the textarea. Throttled to at most once every 5 minutes so we don't
@@ -3888,6 +3909,20 @@ export function SessionChatContent({
                         isLoading={skillsLoading}
                       />
                     )}
+                    <ChatAccessNotice
+                      summary={accessSummary}
+                      pending={pendingPrompt !== null}
+                      checking={accessLoading}
+                      onResend={() => {
+                        void refreshAccess(chatInfo.modelId ?? undefined).then(
+                          (currentAccess) => {
+                            if (currentAccess?.eligible) {
+                              inputRef.current?.form?.requestSubmit();
+                            }
+                          },
+                        );
+                      }}
+                    />
                     {/* Pinned Todo Panel — sits above the input box */}
                     <PinnedTodoPanel todos={latestTodos} />
                     {/* Input form */}
@@ -3913,6 +3948,18 @@ export function SessionChatContent({
                           if (!hasContent) return;
 
                           const messageText = input;
+                          const currentAccess = await refreshAccess(
+                            chatInfo.modelId ?? undefined,
+                          );
+                          if (!currentAccess?.eligible) {
+                            savePendingPrompt(
+                              window.localStorage,
+                              chatInfo.id,
+                              messageText,
+                            );
+                            setPendingPrompt(messageText.trim());
+                            return;
+                          }
                           const files = getFileParts();
 
                           // Build the message payload. When text attachments are
@@ -4030,6 +4077,11 @@ export function SessionChatContent({
                           }
                           try {
                             await sendMessageWithPendingState(messagePayload);
+                            clearPendingPrompt(
+                              window.localStorage,
+                              chatInfo.id,
+                            );
+                            setPendingPrompt(null);
                           } catch (err) {
                             if (pendingOptimisticTitleChatIdRef.current) {
                               void clearChatTitle(
@@ -4190,6 +4242,7 @@ export function SessionChatContent({
                               type="button"
                               variant="ghost"
                               size="icon"
+                              aria-label="Attach file"
                               onClick={openFilePicker}
                               disabled={isArchived}
                               className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
@@ -4261,6 +4314,11 @@ export function SessionChatContent({
                               type="button"
                               variant="ghost"
                               size="icon"
+                              aria-label={
+                                recordingState === "recording"
+                                  ? "Stop voice recording"
+                                  : "Start voice recording"
+                              }
                               onClick={handleMicClick}
                               disabled={
                                 isArchived || recordingState === "processing"
@@ -4304,6 +4362,7 @@ export function SessionChatContent({
                               <Button
                                 type="button"
                                 size="icon"
+                                aria-label="Stop response"
                                 onClick={() => {
                                   stopChatStream();
                                   setHasPendingResponse(false);
@@ -4322,6 +4381,7 @@ export function SessionChatContent({
                                     <Button
                                       type="submit"
                                       size="icon"
+                                      aria-label="Send message"
                                       onTouchEnd={() => {
                                         // On iOS, tapping submit while the textarea is focused
                                         // causes the keyboard to briefly flash open then closed.

@@ -7,6 +7,7 @@ import {
 } from "ai";
 import {
   OPENROUTER_APP_NAME,
+  MissingOpenRouterApiKeyError,
   requireOpenRouterApiKey,
   resolveCanonicalAppUrl,
   resolveDefaultModelId,
@@ -16,6 +17,10 @@ import {
   getProviderOptionsForModel,
   type ProviderOptionsByProvider,
 } from "./provider-options";
+import {
+  type InferenceAccountingCallbacks,
+  withInferenceAccounting,
+} from "./inference-accounting";
 
 export type { JSONValue, LanguageModel, ModelId, ProviderOptionsByProvider };
 export {
@@ -37,54 +42,34 @@ export {
 export interface OpenRouterConfig {
   apiKey: string;
   baseURL?: string;
+  /** Server-only callbacks for one authorized provider call. */
+  accounting?: InferenceAccountingCallbacks;
 }
 
 export interface ModelFactoryOptions {
-  config?: OpenRouterConfig;
+  config: OpenRouterConfig;
   providerOptionsOverrides?: ProviderOptionsByProvider;
   appName?: string;
   appUrl?: string;
 }
 
-const providerCache = new Map<string, ReturnType<typeof createOpenRouter>>();
-
-function getProviderCacheKey(parts: {
-  apiKey: string;
-  baseURL?: string;
-  appName: string;
-  appUrl?: string;
-}): string {
-  return JSON.stringify(parts);
-}
-
 function getOpenRouterProvider(
   options: ModelFactoryOptions,
 ): ReturnType<typeof createOpenRouter> {
-  const apiKey = requireOpenRouterApiKey(options.config?.apiKey);
+  if (!options.config) {
+    throw new MissingOpenRouterApiKeyError();
+  }
+  const apiKey = requireOpenRouterApiKey(options.config.apiKey);
   const appName = options.appName ?? OPENROUTER_APP_NAME;
   const appUrl = resolveCanonicalAppUrl(options.appUrl);
-  const cacheKey = getProviderCacheKey({
-    apiKey,
-    baseURL: options.config?.baseURL,
-    appName,
-    appUrl,
-  });
 
-  const cached = providerCache.get(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  const provider = createOpenRouter({
+  return createOpenRouter({
     apiKey,
-    ...(options.config?.baseURL ? { baseURL: options.config.baseURL } : {}),
+    ...(options.config.baseURL ? { baseURL: options.config.baseURL } : {}),
     compatibility: "strict",
     appName,
     ...(appUrl ? { appUrl } : {}),
   });
-
-  providerCache.set(cacheKey, provider);
-  return provider;
 }
 
 /**
@@ -95,7 +80,7 @@ function getOpenRouterProvider(
  */
 export function model(
   modelId: ModelId,
-  options: ModelFactoryOptions = {},
+  options: ModelFactoryOptions,
 ): LanguageModel {
   const provider = getOpenRouterProvider(options);
   let languageModel: LanguageModel = provider.chat(modelId, {
@@ -116,11 +101,24 @@ export function model(
     });
   }
 
+  if (options.config.accounting) {
+    if (
+      typeof languageModel === "string" ||
+      languageModel.specificationVersion !== "v3"
+    ) {
+      throw new Error("Inference accounting requires a v3 language model");
+    }
+    languageModel = withInferenceAccounting(
+      languageModel,
+      options.config.accounting,
+    );
+  }
+
   return languageModel;
 }
 
 export function defaultLanguageModel(
-  options: ModelFactoryOptions = {},
+  options: ModelFactoryOptions,
 ): LanguageModel {
   return model(resolveDefaultModelId(), options);
 }

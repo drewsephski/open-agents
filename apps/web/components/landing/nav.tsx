@@ -32,9 +32,16 @@ export function LandingNav({
         >
           <Link
             href="/"
+            aria-label="Launchstack home"
             className="rounded-sm transition-opacity hover:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-4"
           >
             <Logo />
+          </Link>
+          <Link
+            href="/pricing"
+            className="ml-auto mr-5 text-sm underline underline-offset-4"
+          >
+            Pricing
           </Link>
 
           <div
