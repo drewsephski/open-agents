@@ -404,7 +404,7 @@ export function RepoSelectorCompact({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-0">
       {/* Top bar: org dropdown + search */}
-      <div className="flex items-stretch gap-0 overflow-hidden rounded-t-lg border border-border/70 dark:border-white/10">
+      <div className="flex shrink-0 items-stretch gap-0 overflow-hidden rounded-t-lg border border-border/70 dark:border-white/10">
         {/* Org dropdown */}
         <Popover open={ownerOpen} onOpenChange={setOwnerOpen}>
           <PopoverTrigger asChild>
@@ -470,14 +470,14 @@ export function RepoSelectorCompact({
         </Popover>
 
         {/* Search input */}
-        <div className="flex flex-1 items-center gap-2 bg-background/80 px-3 dark:bg-white/[0.03]">
+        <div className="flex min-w-0 flex-1 items-center gap-2 bg-background/80 px-3 dark:bg-white/[0.03]">
           <SearchIcon className="size-3.5 shrink-0 text-muted-foreground" />
           <input
             type="text"
             placeholder="Search repositories..."
             value={repoSearch}
             onChange={(e) => setRepoSearch(e.target.value)}
-            className="h-full w-full bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground"
+            className="h-full min-w-0 w-full bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground"
           />
           {repoSearch && (
             <button
@@ -550,7 +550,7 @@ export function RepoSelectorCompact({
       </div>
 
       {/* Footer: manage access + refresh */}
-      <div className="mt-1 flex items-center justify-between px-1 text-xs">
+      <div className="mt-1 flex shrink-0 items-center justify-between px-1 text-xs">
         <div className="flex items-center gap-3">
           {currentInstallation?.installationUrl && (
             <Link

@@ -39,6 +39,8 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 
 ## Next.js
 
+- Removing a temporary App Router QA page can leave a stale import in `.next/dev/types/validator.ts`. Clear or regenerate the generated route types before checking the final source tree.
+
 - Next.js emits an automatic icon link for `app/favicon.ico` alongside metadata-defined icons. Update that file when changing the brand favicon so browsers cannot select a stale mark. Keep the dedicated preview favicon for environment identification.
 - `ImageResponse` requires explicit flex or contents layout on a `div` with multiple children. Use a flex column with separate spans for multiline headlines; a text/`br`/text sequence without display styling fails while piping the image response.
 
@@ -135,6 +137,8 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - In the sandbox lifecycle evaluator, treat any non-null chat `activeStreamId` as an authoritative no-hibernate signal; do not inspect workflow status or clear stream ids from the lifecycle path, and recheck immediately before snapshotting to avoid racing a newly-started stream.
 
 ## Chat / Streaming UI
+
+- The fixed-height session starter must keep repository selection and expanded Git settings from shrinking below their content. Reserve a minimum height for the repository picker, keep its header/footer and the dialog actions non-shrinking, and let the middle section scroll when an inference notice reduces the available space.
 
 - In large chat/page client components, extract new feature-specific UI flows into colocated hooks and child components instead of adding more state/effects/handlers inline; if the feature state must survive dropdown/popover/dialog toggles, mount the hook in the parent view and pass its controls down.
 - In the web chat UI, do not keep `@ai-sdk/react` Chat instances alive after route transitions while they are still streaming; abort local stream processing and remove the instance on teardown, then rely on resumable stream reconnect when revisiting that chat.

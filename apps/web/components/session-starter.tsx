@@ -290,7 +290,7 @@ export function SessionStarter({
           ref={modeTabsRef}
           role="tablist"
           aria-label="Session type"
-          className="relative flex rounded-lg bg-muted p-1"
+          className="relative flex shrink-0 rounded-lg bg-muted p-1"
         >
           <SlidingTabIndicator box={activeModeTabBox} variant="pill" />
           <button
@@ -334,8 +334,8 @@ export function SessionStarter({
           {mode === "repo" && (
             <div
               className={cn(
-                "flex flex-col gap-3",
-                !isRepoSelectionComplete && "min-h-0 flex-1",
+                "flex shrink-0 flex-col gap-3",
+                !isRepoSelectionComplete && "min-h-48 flex-1",
               )}
             >
               <RepoSelectorCompact
@@ -433,7 +433,7 @@ export function SessionStarter({
           )}
 
           {mode === "repo" && gitSettingsExpanded && (
-            <div className="overflow-hidden rounded-lg border border-border bg-muted/40">
+            <div className="shrink-0 overflow-hidden rounded-lg border border-border bg-muted/40">
               <button
                 type="button"
                 onClick={() => setGitSettingsExpanded(false)}
@@ -476,7 +476,7 @@ export function SessionStarter({
         {accessBlocked && (
           <div
             role="status"
-            className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3"
+            className="flex shrink-0 items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3"
           >
             <ShieldAlert className="mt-0.5 size-4 shrink-0" />
             <div className="min-w-0 flex-1">
@@ -524,7 +524,7 @@ export function SessionStarter({
           onClick={() => void handleSubmit()}
           disabled={isSubmitDisabled}
           className={cn(
-            "flex w-full items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors",
+            "flex w-full shrink-0 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors",
             isSubmitDisabled
               ? "cursor-not-allowed bg-muted text-muted-foreground"
               : "bg-foreground text-background hover:bg-foreground/90",
@@ -538,7 +538,7 @@ export function SessionStarter({
               : buttonLabel}
         </button>
 
-        <p className="text-center text-xs text-muted-foreground">
+        <p className="shrink-0 text-center text-xs text-muted-foreground">
           Using {sandboxName} sandbox{" "}
           <span className="text-muted-foreground/60">&middot;</span>{" "}
           <Link
