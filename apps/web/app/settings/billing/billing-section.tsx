@@ -2,6 +2,7 @@
 
 import { AlertTriangle, CreditCard, KeyRound } from "lucide-react";
 import Link from "next/link";
+import { useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,6 +31,10 @@ export function BillingSection({
 }) {
   const { summary, loading, error: loadError, refresh } = useAccessSummary();
   const { action, error: actionError, openBilling } = useBillingActions();
+  const syncPayment = useCallback(async () => {
+    await fetch("/api/billing/sync", { method: "POST" }).catch(() => null);
+    return refresh();
+  }, [refresh]);
 
   if (loading && !summary) {
     return (
@@ -58,7 +63,7 @@ export function BillingSection({
   return (
     <div className="space-y-6">
       {checkoutReturned && (
-        <BillingCheckoutStatus confirmed={isPro} refresh={refresh} />
+        <BillingCheckoutStatus confirmed={isPro} refresh={syncPayment} />
       )}
       {actionError && (
         <p role="alert" className="text-pretty text-sm text-destructive">

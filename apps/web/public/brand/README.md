@@ -6,6 +6,7 @@ Generated with the built-in image_gen tool. The PNG files are original exports; 
 
 - `readme-cover.png` / `readme-cover.webp`: wide editorial README and marketing cover.
 - `product-workspace.png` / `product-workspace.webp`: transparent product illustration, used in the landing hero.
+- `workspace-{top,middle,bottom}.png` / `.webp`: separate transparent slabs for the interactive hero. PNGs are original generated exports; WebPs preserve alpha and use quality 90. The hero stays still until hover or explicit playback, then separates the slabs and applies individual parallax.
 - `logo-light.svg`: dark mark for light backgrounds.
 - `logo-dark.svg`: light mark for dark backgrounds.
 - `favicon.svg`: orange mark on a charcoal tile.
@@ -36,3 +37,15 @@ Composition: isolated centered entire object, fills central 75% of square canvas
 Lighting: soft broad studio light, silver edge highlights readable on both black and white, refined tiny contact occlusion between layers, no cast shadow on any background.
 Constraints: genuinely transparent background. No text or branding other than engraved >_ symbol. No floor, no scenery, no pedestal, no floating extra particles, no robots, no rockets, no purple or blue neon, no busy circuit-board detail, no watermark. Monochrome graphite and frosted silver with a single orange accent.
 ```
+
+### Interactive workspace layers
+
+Generated with the built-in `image_gen` tool, using `product-workspace.webp` as the edit target and style reference, with `transparent_background: true`. Each of the three calls used this prompt, substituting the corresponding extraction instruction below for `{layer}`:
+
+```text
+Use case: background-extraction / precise-object-edit. Asset type: a single separate transparent PNG layer for a web hero animation. Input image 1 is the edit target and exact style reference. Extract ONLY {layer} Render ONE complete freestanding slab centered in a square canvas. Exactly match the existing camera angle, perspective, diamond outline, beveled rounded corners, premium realistic studio lighting, graphite/glass material texture. Place slab horizontally centered; widest outer corners at x=10% and x=90%; top rear corner at y=22%; bottom front corner including thickness at y=78%. This fixed framing is crucial so separate panels have identical size and camera angle when composited. Entire object fits within canvas with clean antialiased alpha edges, no cropping. No background, cast ground shadow, additional objects, extra slabs, text, labels, watermark, or redesign. Preserve original realism and material. True transparent background.
+```
+
+- Top: `the TOP graphite metal terminal slab. Preserve the >_ engraved terminal mark and tiny orange square indicator. Remove both lower slabs. Reconstruct any edge necessary.`
+- Middle: `the MIDDLE frosted silver glass slab with an orange illuminated perimeter edge. Remove the upper graphite slab and the bottom graphite slab. Reconstruct the hidden upper rear part of this single slab so its entire diamond-shaped top face and entire outer perimeter are visible. NO terminal mark or indicator on this middle slab.`
+- Bottom: `the BOTTOM dark graphite metal slab. Remove the top terminal slab and the middle glass slab. Reconstruct the hidden rear upper portion of this single slab so its complete dark diamond-shaped top face is visible. NO symbols, terminal marks, or lights on this slab.`

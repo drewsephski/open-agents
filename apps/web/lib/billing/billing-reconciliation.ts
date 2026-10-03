@@ -74,7 +74,7 @@ export function createBillingEventProcessor(dependencies: {
   provider: { retrieveSubscription(id: string): Promise<SubscriptionSnapshot> };
   managedKeys: { sync(entitlement: ManagedEntitlementState): Promise<void> };
 }) {
-  async function loadOwned(id: string) {
+  async function loadOwned(id: string, expectedUserId?: string) {
     const subscription = await dependencies.provider.retrieveSubscription(id);
     if (subscription.providerProductId !== dependencies.proProductId)
       return null;
@@ -83,6 +83,8 @@ export function createBillingEventProcessor(dependencies: {
     );
     const candidate = subscription.metadataUserId ?? owner;
     if (!candidate) return null;
+    if (expectedUserId && candidate !== expectedUserId)
+      throw new BillingEventProcessingError();
     if (owner && owner !== candidate) throw new BillingEventProcessingError();
     if (
       !owner &&
@@ -100,6 +102,7 @@ export function createBillingEventProcessor(dependencies: {
   }
   async function reconcile(input: {
     id: string;
+    expectedUserId?: string;
     eventCreatedAt: Date;
     financial?: {
       state: FinancialState;
@@ -107,7 +110,7 @@ export function createBillingEventProcessor(dependencies: {
       eventId: string;
     };
   }) {
-    const owned = await loadOwned(input.id);
+    const owned = await loadOwned(input.id, input.expectedUserId);
     if (!owned) return;
     let entitlement = await dependencies.store.reconcileSubscription({
       ...owned,
@@ -200,6 +203,26 @@ export function createBillingEventProcessor(dependencies: {
     }
   }
   return {
+    // Only call with payment evidence retrieved using the server's Creem key.
+    async reconcileVerifiedPayment(input: {
+      userId: string;
+      subscriptionId: string;
+      transactionId: string;
+      paidAt: Date;
+      period: BillingPeriod;
+      financialState: FinancialState;
+    }): Promise<void> {
+      await reconcile({
+        id: input.subscriptionId,
+        expectedUserId: input.userId,
+        eventCreatedAt: input.paidAt,
+        financial: {
+          state: input.financialState,
+          period: input.period,
+          eventId: `creem_transaction_${input.transactionId}`,
+        },
+      });
+    },
     async process(input: unknown): Promise<{ duplicate: boolean }> {
       const event = eventSchema.parse(input);
       const receipt = await dependencies.store.claimEvent({

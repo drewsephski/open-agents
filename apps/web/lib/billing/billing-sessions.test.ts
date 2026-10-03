@@ -114,6 +114,48 @@ describe("Creem billing sessions", () => {
       fixture.service.createCheckout({ userId: "owner", email: null }),
     ).rejects.toThrow("billing_checkout_in_progress");
   });
+  test("reuses the saved redirect when Creem omits a pending checkout URL", async () => {
+    const fixture = setup();
+    const url = "https://www.creem.io/checkout/prod_pro/ch_1";
+    fixture.checkoutStore.claimCheckout = async () => ({
+      state: "existing",
+      session: {
+        id: "ch_1",
+        url,
+        expiresAt: new Date(Date.now() + 1000),
+      },
+    });
+    fixture.provider.getCheckout = async (id) => ({
+      id,
+      url: null,
+      status: "pending",
+    });
+    expect(
+      await fixture.service.createCheckout({ userId: "owner", email: null }),
+    ).toEqual({ id: "ch_1", url });
+    expect(fixture.requests).toHaveLength(0);
+  });
+  test("never uses the saved redirect for an in-flight or mismatched remote checkout", async () => {
+    for (const remote of [
+      { id: "ch_1", url: null, status: "processing" },
+      { id: "ch_other", url: null, status: "pending" },
+    ]) {
+      const fixture = setup();
+      fixture.checkoutStore.claimCheckout = async () => ({
+        state: "existing",
+        session: {
+          id: "ch_1",
+          url: "https://www.creem.io/checkout/prod_pro/ch_1",
+          expiresAt: new Date(Date.now() + 1000),
+        },
+      });
+      fixture.provider.getCheckout = async () => remote;
+      await expect(
+        fixture.service.createCheckout({ userId: "owner", email: null }),
+      ).rejects.toThrow("checkout_unavailable");
+      expect(fixture.requests).toHaveLength(0);
+    }
+  });
   test("uses only the authenticated owner's persisted customer for portal access", async () => {
     expect(await setup().service.createPortal({ userId: "owner" })).toEqual({
       url: "https://www.creem.io/customer-portal/cust_owned",

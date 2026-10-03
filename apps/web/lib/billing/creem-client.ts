@@ -4,6 +4,19 @@ import { Creem } from "creem";
 import { NextRequest } from "next/server";
 import type { BillingProviderSessions } from "./billing-sessions";
 import type { SubscriptionSnapshot } from "./billing-reconciliation";
+import {
+  recoveryPaymentSchema,
+  type RecoveryCheckout,
+} from "./billing-checkout-recovery";
+
+function metadataUserId(metadata: unknown): string | null {
+  return metadata &&
+    typeof metadata === "object" &&
+    "referenceId" in metadata &&
+    typeof metadata.referenceId === "string"
+    ? metadata.referenceId
+    : null;
+}
 
 export function createCreemBillingClient(config: {
   apiKey: string;
@@ -66,6 +79,45 @@ export function createCreemBillingClient(config: {
   };
   return {
     sessions,
+    async retrieveRecoveryCheckout(id: string): Promise<RecoveryCheckout> {
+      const remote = await sdk.checkouts.retrieve(id);
+      if (remote.mode !== (config.testMode ? "test" : "prod"))
+        throw new Error("billing_provider_mode_invalid");
+      return {
+        id: remote.id,
+        status: remote.status,
+        requestId: remote.requestId ?? null,
+        productId:
+          typeof remote.product === "string"
+            ? remote.product
+            : remote.product.id,
+        customerId:
+          typeof remote.customer === "string"
+            ? remote.customer
+            : (remote.customer?.id ?? null),
+        subscriptionId:
+          typeof remote.subscription === "string"
+            ? remote.subscription
+            : (remote.subscription?.id ?? null),
+        transactionId: remote.order?.transaction ?? null,
+        metadataUserId: metadataUserId(remote.metadata),
+      };
+    },
+    async retrieveRecoveryPayment(id: string) {
+      const remote = await sdk.transactions.getById(id);
+      if (remote.mode !== (config.testMode ? "test" : "prod"))
+        throw new Error("billing_provider_mode_invalid");
+      return recoveryPaymentSchema.parse({
+        id: remote.id,
+        subscriptionId: remote.subscription,
+        status: remote.status,
+        amountPaid: remote.amountPaid,
+        refundedAmount: remote.refundedAmount ?? 0,
+        paidAt: new Date(remote.createdAt),
+        periodStart: remote.periodStart ? new Date(remote.periodStart) : null,
+        periodEnd: remote.periodEnd ? new Date(remote.periodEnd) : null,
+      });
+    },
     async retrieveSubscription(id: string): Promise<SubscriptionSnapshot> {
       const remote = await sdk.subscriptions.get(id);
       if (
@@ -80,14 +132,6 @@ export function createCreemBillingClient(config: {
         typeof remote.customer === "string"
           ? remote.customer
           : remote.customer.id;
-      const metadata: unknown = remote.metadata;
-      const reference =
-        metadata &&
-        typeof metadata === "object" &&
-        "referenceId" in metadata &&
-        typeof metadata.referenceId === "string"
-          ? metadata.referenceId
-          : null;
       return {
         id: remote.id,
         providerCustomerId: customerId,
@@ -98,7 +142,7 @@ export function createCreemBillingClient(config: {
         periodStart: remote.currentPeriodStartDate,
         periodEnd: remote.currentPeriodEndDate,
         canceledAt: remote.canceledAt ?? null,
-        metadataUserId: reference,
+        metadataUserId: metadataUserId(remote.metadata),
       };
     },
   };

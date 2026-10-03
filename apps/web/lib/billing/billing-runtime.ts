@@ -18,6 +18,8 @@ import { managedInferenceKeyStore } from "./managed-key-store";
 import { createOpenRouterManagementClient } from "./openrouter-management";
 import { createCreemBillingClient } from "./creem-client";
 import { createCreemWebhookHandler } from "./creem-webhook";
+import { createBillingCheckoutRecovery } from "./billing-checkout-recovery";
+import { billingCheckoutRecoveryStore } from "./billing-checkout-recovery-store";
 function sessions() {
   const config = getCreemSessionConfig();
   return createBillingSessionService({
@@ -37,8 +39,8 @@ export async function createProCheckoutSession(input: {
 export async function createCustomerPortalSession(input: { userId: string }) {
   return sessions().createPortal(input);
 }
-export function getCreemWebhookHandler() {
-  const config = getCreemWebhookConfig();
+function paymentReconciliation() {
+  const config = getCreemSessionConfig();
   const keyring = loadCredentialKeyring();
   const managementKey = process.env.OPENROUTER_MANAGEMENT_API_KEY?.trim();
   if (!managementKey)
@@ -53,12 +55,27 @@ export function getCreemWebhookHandler() {
         provider: "openrouter",
       }),
   });
+  const provider = createCreemBillingClient(config);
   const eventProcessor = createBillingEventProcessor({
     proProductId: config.proProductId,
     store: billingStateStore,
-    provider: createCreemBillingClient(config),
+    provider,
     managedKeys,
   });
+  return { config, provider, eventProcessor };
+}
+export async function recoverProCheckout(userId: string): Promise<void> {
+  const { config, provider, eventProcessor } = paymentReconciliation();
+  await createBillingCheckoutRecovery({
+    store: billingCheckoutRecoveryStore,
+    provider,
+    reconciler: eventProcessor,
+    proProductId: config.proProductId,
+  }).recover(userId);
+}
+export function getCreemWebhookHandler() {
+  const config = getCreemWebhookConfig();
+  const { eventProcessor } = paymentReconciliation();
   return createCreemWebhookHandler({
     webhookSecret: config.webhookSecret,
     eventProcessor,

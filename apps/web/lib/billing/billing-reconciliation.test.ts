@@ -115,6 +115,21 @@ describe("Creem payment reconciliation", () => {
     });
     expect(f.synced[0]?.state).toBe("active");
   });
+  test("verified API recovery checks subscription ownership before linking or granting access", async () => {
+    const f = fixture();
+    await expect(
+      f.processor.reconcileVerifiedPayment({
+        userId: "different-owner",
+        subscriptionId: "sub_1",
+        transactionId: "tran_1",
+        paidAt: period.start,
+        period,
+        financialState: "paid",
+      }),
+    ).rejects.toThrow("billing_event_processing_failed");
+    expect(f.financial).toEqual([]);
+    expect(f.synced).toEqual([]);
+  });
   test("duplicates do not provision or reset the allowance twice", async () => {
     const f = fixture();
     const input = event("subscription.paid");

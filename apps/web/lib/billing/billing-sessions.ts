@@ -101,9 +101,16 @@ export function createBillingSessionService(dependencies: {
             throw new BillingSessionError("billing_checkout_in_progress");
           return this.createCheckout(input);
         }
-        if (remote.status !== "pending" || !remote.url)
+        // Creem can omit checkout_url when retrieving a pending session. The
+        // original provider redirect is already persisted with the reservation.
+        const url = remote.url ?? reservation.session.url;
+        if (
+          remote.id !== reservation.session.id ||
+          remote.status !== "pending" ||
+          !url
+        )
           throw new Error("checkout_unavailable");
-        return { id: remote.id, url: remote.url };
+        return { id: remote.id, url };
       }
       let claim = reservation.claim;
       let request = reservation.request;
