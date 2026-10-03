@@ -7,6 +7,9 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 
 ## General / Tooling
 
+- Convex function module paths reject hyphens. Use underscores for multiword files under `convex/` (for example, `daytona_check.ts`), even though application files otherwise use kebab-case. Typechecking alone does not catch this; verify with a development deployment push.
+- `convex run` emits empty stdout for functions returning `null`; CLI verification scripts must handle that before calling `JSON.parse`, including sandbox cleanup actions.
+
 - `git diff --check` does not inspect untracked files. After staging new assets, also run `git diff --cached --check`; vendor SVGs can have CRLF line endings that need normalization.
 
 - New sandbox adapters must preserve work inside `stop()` and expose restore metadata through `getState()`: the inactivity lifecycle calls those methods directly, not `snapshot()`. For providers whose stopped instances are terminal, checkpoint before terminating and retain the snapshot ID in `clearSandboxState()`. A files-only restore also needs to restart preview/editor processes and refresh their URLs.
