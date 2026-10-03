@@ -119,6 +119,43 @@ describe("Vercel project helpers", () => {
     expect(isVercelInvalidTokenError(thrownError)).toBe(true);
   });
 
+  test("reports missing team permission instead of claiming no projects match", async () => {
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL) => {
+        const url = new URL(input.toString());
+        return url.pathname === "/v2/teams"
+          ? Response.json(
+              {
+                error: {
+                  code: "forbidden",
+                  message: "You don't have permission to list the team.",
+                },
+              },
+              { status: 403 },
+            )
+          : Response.json({ projects: [] });
+      },
+      { preconnect: originalFetch.preconnect },
+    );
+    const {
+      listMatchingVercelProjects,
+      isVercelProjectAccessError,
+      isVercelInvalidTokenError,
+    } = await projectsModulePromise;
+    let failure: unknown;
+    try {
+      await listMatchingVercelProjects({
+        token: "active-token",
+        repoOwner: "acme",
+        repoName: "repo",
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(isVercelProjectAccessError(failure)).toBe(true);
+    expect(isVercelInvalidTokenError(failure)).toBe(false);
+  });
+
   test("selectDevelopmentEnvVars prefers more specific development targets and newer values", async () => {
     const { selectDevelopmentEnvVars } = await projectsModulePromise;
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getAuthPageHref } from "@/lib/auth/auth-href";
 import {
   deleteInstallationsByUserId,
   getInstallationsByUserId,
@@ -15,11 +16,6 @@ import { getServerSession } from "@/lib/session/get-server-session";
  * We sync installations and chain to the GitHub App install page if needed.
  */
 export async function GET(req: Request): Promise<Response> {
-  const session = await getServerSession();
-  if (!session?.user?.id) {
-    return NextResponse.redirect(new URL("/", req.url));
-  }
-
   const requestUrl = new URL(req.url);
   const next = sanitizeInternalRedirect(
     requestUrl.searchParams.get("next"),
@@ -27,6 +23,13 @@ export async function GET(req: Request): Promise<Response> {
     req.url,
   );
   const redirectUrl = new URL(next, req.url);
+
+  const session = await getServerSession();
+  if (!session?.user?.id) {
+    return NextResponse.redirect(
+      new URL(getAuthPageHref("/sign-in", next), req.url),
+    );
+  }
 
   if (isManagedTemplateTrialUser(session, req.url)) {
     await Promise.all([

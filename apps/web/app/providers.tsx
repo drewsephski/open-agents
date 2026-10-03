@@ -15,6 +15,7 @@ import { Toaster } from "sonner";
 import { SWRConfig } from "swr";
 import { GitHubReconnectGate } from "@/components/github-reconnect-gate";
 import { authClient } from "@/lib/auth/client";
+import { getAuthPageHref } from "@/lib/auth/auth-href";
 import { FetchError } from "@/lib/swr";
 
 const THEME_STORAGE_KEY = "open-agents-theme";
@@ -116,7 +117,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
           })
           .finally(() => {
             signingOut.current = false;
-            router.replace("/");
+            const { pathname, search, hash } = window.location;
+            router.replace(
+              getAuthPageHref("/sign-in", `${pathname}${search}${hash}`),
+            );
             router.refresh();
           });
       }

@@ -7,13 +7,15 @@
 - Webhook: `wh_35K0ij10Kofu4DBopMbgEn`, https://launchstack.sh/api/billing/webhook.
 - Support: drewsepeczi@gmail.com. Full refunds may be requested within seven days of initial payment or renewal. Public policies live at /terms, /privacy, /acceptable-use, /refunds and /support.
 
-Server configuration: `CREEM_API_KEY`, `CREEM_MODE=live`, `CREEM_PRO_PRODUCT_ID`, `CREEM_WEBHOOK_SECRET`, `OPENROUTER_MANAGEMENT_API_KEY`, base64 256-bit `ENCRYPTION_KEY`, `ENCRYPTION_KEY_VERSION=1`, `LAUNCHSTACK_APP_ORIGIN=https://launchstack.sh`, and `PRO_CHECKOUT_ENABLED`. The CLI remains live and does not persist newly supplied environment keys. Never print provider credentials or commit local environment files.
+Server configuration: `CREEM_API_KEY`, `CREEM_MODE=live`, `CREEM_PRO_PRODUCT_ID`, `CREEM_WEBHOOK_SECRET`, `OPENROUTER_MANAGEMENT_API_KEY`, base64 256-bit `ENCRYPTION_KEY`, `ENCRYPTION_KEY_VERSION=1`, and `LAUNCHSTACK_APP_ORIGIN=https://launchstack.sh`. Checkout validates all billing prerequisites, including the encryption keyring. The obsolete `PRO_CHECKOUT_ENABLED` flag has no effect. The CLI remains live and does not persist newly supplied environment keys. Never print provider credentials or commit local environment files.
 
 ## Launch gates
 
-`PRO_CHECKOUT_ENABLED=false` keeps purchases closed while Creem reviews the store and until a real customer-owned purchase proves fulfillment. Configure a test environment with isolated test credentials and a separate database for simulated paid events. Do not inject synthetic paid subscriptions into production. A live checkout created without a payment proves checkout rendering only, not payment, renewal, portal ownership, or refund processing. The owner must complete any real live purchase or provide test credentials for full payment lifecycle proof. Identity verification and new provider legal acceptance remain owner actions.
+The application exposes Pro checkout once its billing configuration is complete; Creem controls live account approval. Configure a test environment with a `creem_test_` key, `CREEM_MODE=test`, the test product and webhook secret, and a separate database for simulated paid events. Do not inject synthetic paid subscriptions into production. A live checkout created without a payment proves checkout rendering only, not payment, renewal, portal ownership, or refund processing. The owner must complete any real live purchase or provide test credentials for full payment lifecycle proof. Identity verification and new provider legal acceptance remain owner actions.
 
-After store approval, verify signed payment delivery, the linked authenticated customer, paid-period inference key provisioning, sandbox admission, portal cancellation at period end, renewal rotation, and refund revocation. Only then enable general sales and update public pricing availability consistently.
+Before accepting live payments, verify signed payment delivery, the linked authenticated customer, paid-period inference key provisioning, sandbox admission, portal cancellation at period end, renewal rotation, and refund revocation. The billing return page polls the access summary for up to one minute and offers a manual recheck afterward. A return URL alone never grants paid access.
+
+Customer copy describes included AI usage rather than a dollar credit. The internal hard spending cap remains unchanged, and billing displays percentage usage. Model and task choices affect consumption; unused allowances do not roll over.
 
 ## Recovery
 

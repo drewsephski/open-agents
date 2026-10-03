@@ -25,8 +25,8 @@ export function LandingPricing() {
             period.
           </p>
           <p className="mt-4 text-pretty text-sm leading-relaxed text-(--l-fg-2)">
-            Pro purchases are not open yet. We are completing payment review and
-            subscription fulfillment before accepting payments.
+            Start with your own OpenRouter key for free, or choose Pro to get
+            included AI usage and more cloud workspace time.
           </p>
         </div>
         <article className="border border-(--l-border) p-6 sm:p-8">
@@ -40,9 +40,7 @@ export function LandingPricing() {
             <span className="ml-2 text-(--l-fg-2)">USD / month</span>
           </p>
           <ul className="my-6 list-disc space-y-3 pl-5 text-(--l-fg-2)">
-            <li>
-              ${STORE.pro.inferenceUsd} of managed AI inference per paid period
-            </li>
+            <li>AI usage included each month; no API key needed to start</li>
             <li>
               {STORE.pro.sandboxHours} hours of running sandbox time per paid
               period
@@ -62,6 +60,12 @@ export function LandingPricing() {
             inference and sandbox time are separate limits; sandbox time
             measures running wall-clock time, including waits.
           </p>
+          <Link
+            href="/settings/billing"
+            className="mt-6 flex min-h-12 items-center justify-center bg-(--l-fg) px-5 py-3 font-medium text-(--l-bg) transition-opacity hover:opacity-90"
+          >
+            Get Pro — ${STORE.pro.monthlyPriceUsd}/month
+          </Link>
           <Link
             href="/pricing"
             className="mt-6 inline-block underline underline-offset-4"

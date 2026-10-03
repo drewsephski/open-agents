@@ -3,7 +3,7 @@
 import { useSession } from "@/hooks/use-session";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Lock } from "lucide-react";
+import { VercelConnectButton } from "@/components/vercel-connect-button";
 
 function VercelIcon({ className }: { className?: string }) {
   return (
@@ -45,7 +45,7 @@ export function VercelSectionSkeleton() {
 }
 
 export function VercelSection() {
-  const { session, loading } = useSession();
+  const { session, loading, hasVercelAccount } = useSession();
 
   if (loading) {
     return <VercelSectionSkeleton />;
@@ -64,7 +64,7 @@ export function VercelSection() {
           <span className="text-sm font-medium">Vercel</span>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          Login is managed by Vercel
+          Connect Vercel to sync project environments and find deployments.
         </p>
       </div>
 
@@ -87,10 +87,7 @@ export function VercelSection() {
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Lock className="size-3" />
-            <span>Managed</span>
-          </div>
+          <VercelConnectButton connected={hasVercelAccount} />
         </div>
       </div>
     </div>

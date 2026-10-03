@@ -1,10 +1,15 @@
 # Lessons Learned
 
-- Creem store `launchstackpro` reviews the public site at `https://launchstack.sh`, not `launchstackpro.com`. Pricing decisions are $29/month, $10 managed inference, 25 running sandbox hours, and two concurrent sandboxes. Do not expose checkout for paid plans until signed payment events and allowance fulfillment are implemented; public policy pages must work without a session. Keep `lib/store-details.ts`, Creem Store settings, and product descriptions consistent.
+- Creem store `launchstackpro` reviews the public site at `https://launchstack.sh`, not `launchstackpro.com`. Pro is $29/month with included AI usage, 25 running sandbox hours, and two concurrent sandboxes. The internal managed-inference cap remains $10; customer-facing copy describes included usage and shows percentage consumption. Checkout validates Creem/webhook configuration and the encryption keyring before creating a purchase; it no longer uses the obsolete `PRO_CHECKOUT_ENABLED` flag. Creem account approval is still required for live payments. Keep public policy pages accessible without a session and product descriptions consistent.
+- Creem's checkout return query is untrusted. Poll the authenticated access summary after returning, and show activation only after webhook-confirmed paid access. The CLI's stored key and another worktree's `.env.local` may be live credentials even when the Creem connector/dashboard is in test mode; verify the key prefix and use a separate database for payment tests.
 
 Hard-won knowledge from building this codebase. When you make a mistake or discover a non-obvious behavior, add it here.
 
 ## General / Tooling
+
+- `git diff --check` does not inspect untracked files. After staging new assets, also run `git diff --cached --check`; vendor SVGs can have CRLF line endings that need normalization.
+
+- New sandbox adapters must preserve work inside `stop()` and expose restore metadata through `getState()`: the inactivity lifecycle calls those methods directly, not `snapshot()`. For providers whose stopped instances are terminal, checkpoint before terminating and retain the snapshot ID in `clearSandboxState()`. A files-only restore also needs to restart preview/editor processes and refresh their URLs.
 
 - Dynamic external-action tools must be reconstructed inside `"use step"` functions from user/provider session IDs. Never put tool functions or Composio clients in Workflow inputs, step results, or sandbox state.
 - Composio session execution can inherit HTTP transport retries. Use a client with `maxRetries: 0` for Gmail dispatch and claim mutating tool calls in the database before execution; an uncertain send must not be automatically retried.
@@ -50,12 +55,20 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 
 ## Auth
 
+- Protected pages must redirect to `/sign-in` with a safe `next` destination, including the requested query string. Forward the actual request path from the proxy for server layouts (overwriting client headers), and keep a client guard for session expiry after navigation. Settings require a server auth boundary; a client-only fallback otherwise renders a plain sign-in prompt. Never use an auth page as its own callback destination.
+
+- Better Auth 1.6's Vercel provider does not implement `refreshAccessToken`, even though it accepts the shared provider option. Attach the refresh handler through plugin initialization and retain Better Auth's encrypted token persistence. Vercel refresh tokens rotate on each use; serialize token retrieval across instances, and do not revoke a linked account's token just to end a browser session.
+- Repository session creation must check inference access before persisting a session. A sandbox admission denial in a provisioning workflow must persist a failed lifecycle state and throw `FatalError`; otherwise retries leave the session displaying a provisioning spinner with no remediation.
+- Vercel project selection alone does not sync environment variables. Fresh-workspace provisioning must explicitly write Development variables to `.env.local` in the selected project's root directory; resumed workspaces must preserve their existing env file.
+
 - Email/password is the primary Better Auth method (`emailAndPassword.enabled`, no verification). Vercel OAuth is a secondary sign-in and optional linked account. Do not assume every session is a Vercel login.
 - Better Auth stores the password hash on `accounts.password` with `providerId: "credential"`. That column already exists here, so enabling email/password does not add an accounts column.
 - Gate Vercel project/token features on `hasVercelAccount` from linked accounts, not `authProvider`. Users can sign up with email and later link Vercel.
 - Better Auth's `twoFactor` plugin only applies to credential (email/password) accounts, not Vercel/GitHub OAuth.
 
 ## Sandbox Lifecycle
+
+- The sandbox picker catalog includes disabled coming-soon entries, while `SandboxType` remains limited to selectable providers. Do not widen persisted preferences or session API types just to display a future integration.
 
 - CodeSandbox SDK 2.4 command completion does not expose separate stdout,
   stderr, and exit status in the Vercel contract shape; capture them into

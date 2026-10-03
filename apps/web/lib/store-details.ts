@@ -8,7 +8,6 @@ export const STORE = {
   policyDate: "October 2, 2026",
   pro: {
     monthlyPriceUsd: 29,
-    inferenceUsd: 10,
     sandboxHours: 25,
     concurrentSandboxes: 2,
   },

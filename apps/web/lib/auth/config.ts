@@ -7,13 +7,19 @@ import type {
 import { nanoid } from "nanoid";
 import { getAllowedAuthHosts } from "@/lib/auth/allowed-hosts";
 import { deriveAuthUsername } from "@/lib/auth/username";
+import { vercelTokenRefresh } from "@/lib/auth/vercel-token-refresh";
 import { db } from "@/lib/db/client";
 import * as schema from "@/lib/db/schema";
 
 function getAuthBaseURLFallback(): string | undefined {
   return (
     process.env.BETTER_AUTH_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined)
+    (process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : undefined) ??
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : undefined)
   );
 }
 
@@ -43,6 +49,12 @@ const authBaseURLFallback = getAuthBaseURLFallback();
 const authAllowedHosts = getAllowedAuthHosts();
 
 export const auth = betterAuth({
+  plugins: [
+    vercelTokenRefresh({
+      clientId: process.env.NEXT_PUBLIC_VERCEL_APP_CLIENT_ID ?? "",
+      clientSecret: process.env.VERCEL_APP_CLIENT_SECRET ?? "",
+    }),
+  ],
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: {
     allowedHosts: authAllowedHosts,

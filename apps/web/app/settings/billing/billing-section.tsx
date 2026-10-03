@@ -2,16 +2,16 @@
 
 import { AlertTriangle, CreditCard, KeyRound } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAccessSummary } from "@/hooks/use-access-summary";
-import {
-  getAllowancePercent,
-  getAllowancePresentation,
-} from "@/lib/access/access-ui";
-import { cn } from "@/lib/utils";
+import { getAllowancePercent } from "@/lib/access/access-ui";
+import { STORE } from "@/lib/store-details";
+import { BillingAllowance } from "./billing-allowance";
+import { BillingCheckoutStatus } from "./billing-checkout-status";
+import { BillingUpgradeCard } from "./billing-upgrade-card";
+import { useBillingActions } from "./use-billing-actions";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -23,91 +23,13 @@ function formatDate(value: string | null): string {
   return value ? dateFormatter.format(new Date(value)) : "Not active";
 }
 
-function formatUsd(micros: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(micros / 1_000_000);
-}
-
-function Allowance({
-  label,
-  used,
-  limit,
-  display,
-  kind,
-}: {
-  label: string;
-  used: number;
-  limit: number;
-  display: string;
-  kind: "inference" | "sandbox";
-}) {
-  const percent = getAllowancePercent(used, limit);
-  const presentation = getAllowancePresentation(percent, kind);
-  return (
-    <div className="space-y-2">
-      <div className="flex justify-between gap-3 text-sm">
-        <span>{label}</span>
-        <span className="tabular-nums text-muted-foreground">{display}</span>
-      </div>
-      <div
-        role="progressbar"
-        aria-label={label}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(percent)}
-        className="h-2 overflow-hidden rounded-full bg-muted"
-      >
-        <div
-          className={cn(
-            "h-full rounded-full bg-foreground",
-            presentation.tone === "warning" && "bg-amber-500",
-            presentation.tone === "action" && "bg-destructive",
-          )}
-          style={{ width: String(percent) + "%" }}
-        />
-      </div>
-      {presentation.message && (
-        <p
-          className={cn(
-            "text-pretty text-xs text-muted-foreground",
-            presentation.tone === "warning" &&
-              "text-amber-700 dark:text-amber-400",
-            presentation.tone === "action" && "text-destructive",
-          )}
-        >
-          {presentation.message}
-        </p>
-      )}
-    </div>
-  );
-}
-
 export function BillingSection({
-  checkoutEnabled,
+  checkoutReturned,
 }: {
-  checkoutEnabled: boolean;
+  checkoutReturned: boolean;
 }) {
-  const { summary, loading, error: loadError } = useAccessSummary();
-  const [action, setAction] = useState<"checkout" | "portal" | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-
-  const openBilling = async (kind: "checkout" | "portal") => {
-    setAction(kind);
-    setActionError(null);
-    try {
-      const response = await fetch("/api/billing/" + kind, { method: "POST" });
-      const payload = (await response.json().catch(() => null)) as {
-        url?: string;
-      } | null;
-      if (!response.ok || !payload?.url) throw new Error("unavailable");
-      window.location.assign(payload.url);
-    } catch {
-      setActionError("This billing action is unavailable. Try again.");
-      setAction(null);
-    }
-  };
+  const { summary, loading, error: loadError, refresh } = useAccessSummary();
+  const { action, error: actionError, openBilling } = useBillingActions();
 
   if (loading && !summary) {
     return (
@@ -135,6 +57,21 @@ export function BillingSection({
 
   return (
     <div className="space-y-6">
+      {checkoutReturned && (
+        <BillingCheckoutStatus confirmed={isPro} refresh={refresh} />
+      )}
+      {actionError && (
+        <p role="alert" className="text-pretty text-sm text-destructive">
+          {actionError}
+        </p>
+      )}
+      {!isPro && (
+        <BillingUpgradeCard
+          pending={action === "checkout"}
+          disabled={action !== null || checkoutReturned}
+          onBuy={() => void openBilling("checkout")}
+        />
+      )}
       {warning && (
         <div
           role="status"
@@ -142,11 +79,11 @@ export function BillingSection({
         >
           <AlertTriangle className="mt-0.5 size-5 shrink-0" />
           <div>
-            <p className="font-medium">An allowance needs attention</p>
+            <p className="font-medium">You’re nearing a usage limit</p>
             <p className="text-pretty text-sm text-muted-foreground">
               {hasByok
-                ? "Your OpenRouter key is ready as an inference fallback."
-                : "Add an OpenRouter key for fallback, or review the reset dates below."}
+                ? "Your OpenRouter key can keep AI work going when included usage runs out."
+                : "Check the renewal dates below. You can add an OpenRouter key to continue AI work after your included usage runs out."}
             </p>
             {!hasByok && (
               <Button asChild variant="link" className="h-auto px-0">
@@ -168,20 +105,24 @@ export function BillingSection({
                 </CardTitle>
               </div>
               <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium tabular-nums">
-                {isPro ? "$29/month" : "$0"}
+                {isPro ? `$${STORE.pro.monthlyPriceUsd}/month` : "$0"}
               </span>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-pretty text-sm text-muted-foreground">
               {isPro
-                ? "Managed inference, BYOK fallback, and 25 sandbox hours per paid period."
-                : "Your OpenRouter key, 2 sandbox hours per UTC month, and 1 concurrent sandbox."}
+                ? "AI usage included, 25 hours of cloud workspace time, and 2 workspaces running at once."
+                : "Bring your own OpenRouter API key. Includes 2 hours of cloud workspace time each calendar month and 1 workspace running at a time."}
             </p>
             {summary.plan.status && (
               <p className="text-sm">
-                Subscription:{" "}
-                <span className="font-medium">{summary.plan.status}</span>
+                Billing status:{" "}
+                <span className="font-medium">
+                  {summary.plan.cancelAtPeriodEnd
+                    ? "Ends after this billing period"
+                    : summary.plan.status?.replaceAll("_", " ")}
+                </span>
               </p>
             )}
             {summary.plan.cancelAtPeriodEnd && (
@@ -194,18 +135,6 @@ export function BillingSection({
               </p>
             )}
             <div className="flex flex-wrap gap-2">
-              {!isPro && (
-                <Button
-                  disabled={action !== null || !checkoutEnabled}
-                  onClick={() => void openBilling("checkout")}
-                >
-                  {action === "checkout"
-                    ? "Opening checkout…"
-                    : checkoutEnabled
-                      ? "Upgrade to Pro"
-                      : "Pro coming soon"}
-                </Button>
-              )}
               {summary.plan.portalAvailable && (
                 <Button
                   variant="outline"
@@ -217,35 +146,26 @@ export function BillingSection({
                 </Button>
               )}
             </div>
-            {!isPro && !checkoutEnabled && (
-              <p className="text-sm text-muted-foreground">
-                Pro purchases will open after store approval and billing
-                verification.
-              </p>
-            )}
-            {actionError && (
-              <p role="alert" className="text-sm text-destructive">
-                {actionError}
-              </p>
-            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-balance">Inference source</CardTitle>
+            <CardTitle className="text-balance">Your AI connection</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-start gap-3">
               <KeyRound className="mt-0.5 size-5 text-muted-foreground" />
               <div>
                 <p className="font-medium">
-                  {hasByok ? "OpenRouter fallback ready" : "No BYOK fallback"}
+                  {hasByok
+                    ? "Your OpenRouter key is connected"
+                    : "No OpenRouter key connected"}
                 </p>
                 <p className="text-pretty text-sm text-muted-foreground">
                   {hasByok
-                    ? "Validated key ending in " + summary.credential.lastFour
-                    : "Add a key to run BYOK or continue after managed inference runs out."}
+                    ? "Key ending in " + summary.credential.lastFour
+                    : "Get started with Pro, or add your own key. Your key also lets you continue after included AI usage runs out."}
                 </p>
               </div>
             </div>
@@ -265,43 +185,42 @@ export function BillingSection({
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-balance">Managed inference</CardTitle>
+            <CardTitle className="text-balance">Included AI usage</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {isPro ? (
-              <Allowance
-                label="Paid-period allowance"
+              <BillingAllowance
+                label="Monthly usage"
                 used={summary.managedInference.usedMicros}
                 limit={summary.managedInference.limitMicros}
-                display={
-                  formatUsd(summary.managedInference.usedMicros) +
-                  " of " +
-                  formatUsd(summary.managedInference.limitMicros)
-                }
+                display={`${Math.round(getAllowancePercent(summary.managedInference.usedMicros, summary.managedInference.limitMicros))}% used`}
                 kind="inference"
               />
             ) : (
               <p className="text-pretty text-sm text-muted-foreground">
-                Pro includes $10 of managed inference per paid billing period,
-                with no overages and BYOK fallback.
+                Pro includes a monthly AI usage allowance, so you can start
+                without an API key. When it runs out, add your own OpenRouter
+                key or wait for renewal. Usage varies by model and task.
               </p>
             )}
-            <p className="text-sm text-muted-foreground">
-              Reset:{" "}
-              <span className="tabular-nums">
-                {formatDate(summary.managedInference.resetAt)}
-              </span>
-            </p>
+            {isPro && (
+              <p className="text-sm text-muted-foreground">
+                Renews:{" "}
+                <span className="tabular-nums">
+                  {formatDate(summary.managedInference.resetAt)}
+                </span>
+              </p>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-balance">Sandbox time</CardTitle>
+            <CardTitle className="text-balance">Cloud workspace time</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Allowance
-              label="Running time"
+            <BillingAllowance
+              label="Time used"
               used={summary.sandbox.usedMilliseconds}
               limit={summary.sandbox.limitMilliseconds}
               display={
@@ -315,10 +234,10 @@ export function BillingSection({
             <div className="flex flex-wrap justify-between gap-2 text-sm text-muted-foreground">
               <span className="tabular-nums">
                 {summary.sandbox.runningSandboxCount}/
-                {summary.sandbox.concurrencyLimit} concurrent
+                {summary.sandbox.concurrencyLimit} running
               </span>
               <span className="tabular-nums">
-                Reset: {formatDate(summary.sandbox.resetAt)}
+                Renews: {formatDate(summary.sandbox.resetAt)}
               </span>
             </div>
           </CardContent>

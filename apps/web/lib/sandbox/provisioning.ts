@@ -46,6 +46,7 @@ import {
 import { getSandboxProviderConfig } from "@/lib/sandbox/provider-config";
 import { sandboxProviderCircuit } from "@/lib/sandbox/provider-circuit";
 import { emitSandboxTelemetry } from "@/lib/sandbox/telemetry";
+import { syncProjectEnvironment } from "@/lib/sandbox/sync-project-environment";
 import { installGlobalSkills } from "@/lib/skills/global-skill-installer";
 import { eq } from "drizzle-orm";
 import {
@@ -299,6 +300,24 @@ export async function provisionSessionSandbox(params: {
     } finally {
       if (setupToken) {
         await revokeInstallationToken(setupToken.token);
+      }
+    }
+
+    if (didSetupWorkspace && session.vercelProjectId) {
+      try {
+        await syncProjectEnvironment({
+          userId: session.userId,
+          projectId: session.vercelProjectId,
+          teamId: session.vercelTeamId,
+          sandbox,
+        });
+      } catch (error) {
+        await sandbox.stop().catch(() => {
+          console.error(
+            `Failed to stop sandbox after environment sync failed for session ${session.id}`,
+          );
+        });
+        throw error;
       }
     }
 

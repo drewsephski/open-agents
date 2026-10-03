@@ -1,11 +1,10 @@
-import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { getLastRepoByUserId } from "@/lib/db/last-repo";
 import {
   getArchivedSessionCountByUserId,
   getSessionsWithUnreadByUserId,
 } from "@/lib/db/sessions";
-import { getServerSession } from "@/lib/session/get-server-session";
+import { requireServerSession } from "@/lib/session/require-server-session";
 import { SessionsRouteShell } from "./sessions-route-shell";
 
 type SessionsLayoutProps = {
@@ -15,10 +14,7 @@ type SessionsLayoutProps = {
 export default async function SessionsLayout({
   children,
 }: SessionsLayoutProps) {
-  const session = await getServerSession();
-  if (!session?.user) {
-    redirect("/");
-  }
+  const session = await requireServerSession("/sessions");
 
   const [lastRepo, sessions, archivedCount] = await Promise.all([
     getLastRepoByUserId(session.user.id),

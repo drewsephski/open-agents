@@ -1,37 +1,31 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { useSession } from "@/hooks/use-session";
-import { Button } from "@/components/ui/button";
+import { getAuthPageHref } from "@/lib/auth/auth-href";
 
 export function AuthGuard({
   children,
   loadingFallback,
-  unauthenticatedFallback,
 }: {
   children: React.ReactNode;
   loadingFallback?: React.ReactNode;
-  unauthenticatedFallback?: React.ReactNode;
 }) {
-  const { loading, isAuthenticated } = useSession();
+  const router = useRouter();
+  const { loading, isAuthenticated, session } = useSession();
 
-  if (loading) {
+  useEffect(() => {
+    if (!loading && session && !isAuthenticated) {
+      const { pathname, search, hash } = window.location;
+      router.replace(
+        getAuthPageHref("/sign-in", `${pathname}${search}${hash}`),
+      );
+    }
+  }, [loading, session, isAuthenticated, router]);
+
+  if (loading || !isAuthenticated) {
     return <>{loadingFallback ?? <div>Loading...</div>}</>;
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <>
-        {unauthenticatedFallback ?? (
-          <div className="flex flex-col items-center gap-4 p-8">
-            <p>Please sign in to continue</p>
-            <Button asChild>
-              <Link href="/sign-in">Sign in</Link>
-            </Button>
-          </div>
-        )}
-      </>
-    );
   }
 
   return <>{children}</>;

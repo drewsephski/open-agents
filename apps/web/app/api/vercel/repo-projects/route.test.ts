@@ -22,6 +22,7 @@ mock.module("@/lib/db/vercel-project-links", () => ({
 }));
 
 mock.module("@/lib/vercel/projects", () => ({
+  isVercelProjectAccessError: () => false,
   isVercelInvalidTokenError: (error: unknown) =>
     projectsError !== null && error === projectsError,
   listMatchingVercelProjects: async () => {

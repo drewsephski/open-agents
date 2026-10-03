@@ -230,11 +230,13 @@ export function SessionStarter({
   const handleSubmit = async () => {
     if (isSubmitDisabled) return;
 
-    if (mode === "empty" && initialMessage.trim()) {
+    if (initialMessage.trim()) {
       const currentAccess = await refreshAccess();
       if (!currentAccess?.eligible) {
-        savePendingPrompt(window.localStorage, "new-session", initialMessage);
-        setHasPendingPrompt(true);
+        if (mode === "empty") {
+          savePendingPrompt(window.localStorage, "new-session", initialMessage);
+          setHasPendingPrompt(true);
+        }
         setAccessBlocked(true);
         return;
       }
@@ -242,10 +244,10 @@ export function SessionStarter({
 
     let vercelProject: VercelProjectSelection | null | undefined;
     if (shouldLoadVercelProjects) {
-      if (repoProjectsError || !repoProjects) {
-        vercelProject = undefined;
-      } else if (vercelProjectChoice === null) {
+      if (vercelProjectChoice === null) {
         vercelProject = null;
+      } else if (repoProjectsError || !repoProjects) {
+        vercelProject = undefined;
       } else if (typeof vercelProjectChoice === "string") {
         vercelProject =
           repoProjects.projects.find(
@@ -471,7 +473,7 @@ export function SessionStarter({
           )}
         </div>
 
-        {accessBlocked && mode === "empty" && (
+        {accessBlocked && (
           <div
             role="status"
             className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3"
@@ -479,12 +481,16 @@ export function SessionStarter({
             <ShieldAlert className="mt-0.5 size-4 shrink-0" />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">
-                Pending prompt saved locally
+                {mode === "empty"
+                  ? "Pending prompt saved locally"
+                  : "Connect inference before starting"}
               </p>
               <p className="text-pretty text-xs text-muted-foreground">
                 {accessSummary?.eligible
                   ? "Access is ready. Choose Resend pending prompt when you want to send it."
-                  : "Add an OpenRouter key or upgrade to Pro. Launchstack will only send this prompt when you explicitly resend it."}
+                  : mode === "empty"
+                    ? "Add an OpenRouter key or upgrade to Pro. Launchstack will only send this prompt when you explicitly resend it."
+                    : "Add an OpenRouter key in Connections or activate Pro, then return to start this task."}
               </p>
               {accessError && (
                 <p className="mt-1 text-pretty text-xs text-destructive">

@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AuthScreen } from "@/components/auth/auth-screen";
-import {
-  getSingleSearchParam,
-  sanitizeInternalRedirect,
-} from "@/lib/redirect-safety";
+import { getAuthCallbackUrl } from "@/lib/auth/auth-href";
+import { getSingleSearchParam } from "@/lib/redirect-safety";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 export const metadata: Metadata = {
@@ -18,9 +16,8 @@ interface SignUpPageProps {
 }
 
 export default async function SignUpPage({ searchParams }: SignUpPageProps) {
-  const callbackUrl = sanitizeInternalRedirect(
+  const callbackUrl = getAuthCallbackUrl(
     getSingleSearchParam((await searchParams).next),
-    "/sessions",
   );
   const session = await getServerSession();
 

@@ -9,6 +9,8 @@ import {
   XCircleIcon,
 } from "lucide-react";
 import { useState } from "react";
+import { VercelConnectButton } from "./vercel-connect-button";
+import { Button } from "./ui/button";
 import type {
   VercelProjectSelection,
   VercelRepoProjectsResponse,
@@ -71,6 +73,16 @@ export function SessionStarterVercelSyncSection({
     icon: React.ReactNode;
     label: React.ReactNode;
   } | null => {
+    if (vercelProjectChoice === null) {
+      return {
+        icon: <XCircleIcon className="h-3.5 w-3.5 text-muted-foreground/50" />,
+        label: (
+          <span className="text-xs text-muted-foreground">
+            Env sync disabled for this session
+          </span>
+        ),
+      };
+    }
     if (isVercelLookupPending) {
       return {
         icon: (
@@ -116,16 +128,6 @@ export function SessionStarterVercelSyncSection({
             <span className="font-medium text-foreground/80">
               {formatVercelProjectLabel(selectedProject)}
             </span>
-          </span>
-        ),
-      };
-    }
-    if (vercelProjectChoice === null) {
-      return {
-        icon: <XCircleIcon className="h-3.5 w-3.5 text-muted-foreground/50" />,
-        label: (
-          <span className="text-xs text-muted-foreground">
-            Env sync disabled for this session
           </span>
         ),
       };
@@ -182,11 +184,29 @@ export function SessionStarterVercelSyncSection({
             </span>
           </div>
         ) : repoProjectsError ? (
-          <div className="flex items-start gap-2.5">
-            <AlertCircleIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {repoProjectsError}. Will fall back to any saved repo default.
-            </p>
+          <div className="space-y-3">
+            <div className="flex items-start gap-2.5">
+              <AlertCircleIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {repoProjectsError}. Reconnect Vercel or start without
+                environment sync.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <VercelConnectButton connected disabled={controlsDisabled} />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={controlsDisabled}
+                onClick={() => {
+                  onVercelProjectChoiceChange(null);
+                  setManualExpanded(false);
+                }}
+              >
+                Skip environment sync
+              </Button>
+            </div>
           </div>
         ) : repoProjects?.projects.length === 0 ? (
           <div className="flex items-start gap-2.5">

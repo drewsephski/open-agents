@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { STORE } from "@/lib/store-details";
 
 export const metadata: Metadata = {
@@ -16,15 +17,19 @@ export default function PricingPage() {
         ${STORE.pro.monthlyPriceUsd} USD per month
       </p>
       <p>
-        Pro purchases are not open yet. We are completing payment review and
-        subscription fulfillment before accepting payments. These are the
-        planned subscription price and allowances, not an offer of immediate
-        paid access.
+        AI coding in cloud workspaces, with included AI usage and more time to
+        build. Start without an API key, and manage your subscription through
+        secure Creem checkout.
       </p>
+      <Button asChild size="lg" className="h-12 w-full sm:w-auto">
+        <Link href="/settings/billing">
+          Get Pro — ${STORE.pro.monthlyPriceUsd}/month
+        </Link>
+      </Button>
       <section>
         <h2>Included each paid monthly period</h2>
         <ul>
-          <li>${STORE.pro.inferenceUsd} of managed AI inference.</li>
+          <li>A monthly AI usage allowance. No API key needed to start.</li>
           <li>
             {STORE.pro.sandboxHours} hours of running sandbox time, with up to{" "}
             {STORE.pro.concurrentSandboxes} concurrent running sandboxes.
@@ -53,17 +58,15 @@ export default function PricingPage() {
           sandbox allowances are separate.
         </p>
         <p>
-          Applicable taxes are disclosed at checkout before payment. The old
-          runtime illustration of $0.02 per minute is not the subscription price
-          or an extra customer charge.
+          Applicable taxes and the total are shown at checkout before payment.
         </p>
       </section>
       <section>
         <h2>Cancellation and refunds</h2>
         <p>
-          Once subscriptions open, you can cancel future renewals through the
-          Creem Customer Portal linked from your receipt. Cancellation keeps
-          access through the end of the paid period unless the payment is
+          Cancel future renewals using Manage billing in your billing settings
+          or the Creem Customer Portal linked from your receipt. Cancellation
+          keeps access through the end of the paid period unless the payment is
           refunded, disputed, or access is suspended for abuse.
         </p>
         <p>

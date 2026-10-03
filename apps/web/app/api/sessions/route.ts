@@ -1,6 +1,10 @@
 import { nanoid } from "nanoid";
 import { checkBotProtection } from "@/lib/botid";
 import {
+  resolveModelCredential,
+  toInferenceAccessErrorResponse,
+} from "@/lib/access/model-credential-resolver";
+import {
   countSessionsByUserId,
   createSessionWithInitialChat,
   getArchivedSessionCountByUserId,
@@ -31,6 +35,7 @@ import {
 } from "@/lib/managed-template-trial";
 import {
   isVercelInvalidTokenError,
+  isVercelProjectAccessError,
   listMatchingVercelProjects,
 } from "@/lib/vercel/projects";
 import { getUserVercelToken } from "@/lib/vercel/token";
@@ -381,6 +386,14 @@ export async function POST(req: Request) {
       session,
       req.url,
     );
+    if (hasRepository) {
+      const access = await resolveModelCredential({
+        userId: session.user.id,
+        modelId: preferences.defaultModelId,
+      });
+      if (!access.allowed)
+        return toInferenceAccessErrorResponse(access.failure);
+    }
     const effectiveAutoCommitPush =
       autoCommitPush ?? preferences.autoCommitPush;
     const effectiveAutoCreatePr = autoCreatePr ?? preferences.autoCreatePr;
@@ -425,6 +438,15 @@ export async function POST(req: Request) {
 
     return Response.json(result);
   } catch (error) {
+    if (isVercelProjectAccessError(error)) {
+      return Response.json(
+        {
+          error:
+            "Vercel has not granted access to this team's projects. Check the Vercel app permissions and reconnect",
+        },
+        { status: 403 },
+      );
+    }
     if (isVercelInvalidTokenError(error)) {
       console.warn(
         `Vercel token is invalid for user ${session.user.id}; reconnect required to create a session with env sync.`,

@@ -22,11 +22,27 @@ let savedLink: VercelProjectSelection | null = null;
 let currentVercelToken: string | null = "vercel-token";
 let matchingProjects: VercelProjectSelection[] = [];
 let matchingProjectsError: Error | null = null;
+let inferenceAllowed = true;
 const createCalls: Array<Record<string, unknown>> = [];
 const upsertCalls: Array<Record<string, unknown>> = [];
 const provisioningKickCalls: string[] = [];
 
 const originalNodeEnv = process.env.NODE_ENV;
+
+mock.module("@/lib/access/model-credential-resolver", () => ({
+  resolveModelCredential: async () =>
+    inferenceAllowed
+      ? { allowed: true }
+      : {
+          allowed: false,
+          failure: {
+            code: "inference_source_required",
+            remediation: ["add_byok", "upgrade_to_pro"],
+          },
+        },
+  toInferenceAccessErrorResponse: (failure: unknown) =>
+    Response.json({ error: failure }, { status: 403 }),
+}));
 
 mock.module("@/lib/session/get-server-session", () => ({
   getServerSession: async () => currentSession,
@@ -65,6 +81,7 @@ mock.module("@/lib/vercel/token", () => ({
 }));
 
 mock.module("@/lib/vercel/projects", () => ({
+  isVercelProjectAccessError: () => false,
   isVercelInvalidTokenError: (error: unknown) =>
     matchingProjectsError !== null && error === matchingProjectsError,
   listMatchingVercelProjects: async () => {
@@ -141,9 +158,24 @@ describe("/api/sessions POST vercel project linking", () => {
     currentVercelToken = "vercel-token";
     matchingProjects = [];
     matchingProjectsError = null;
+    inferenceAllowed = true;
     createCalls.length = 0;
     upsertCalls.length = 0;
     provisioningKickCalls.length = 0;
+  });
+
+  test("rejects repository tasks without inference access before creating a session", async () => {
+    inferenceAllowed = false;
+    const { POST } = await routeModulePromise;
+    const response = await POST(
+      createJsonRequest({ repoOwner: "acme", repoName: "repo" }),
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      error: { code: "inference_source_required" },
+    });
+    expect(createCalls).toHaveLength(0);
+    expect(provisioningKickCalls).toHaveLength(0);
   });
 
   test("blocks additional sessions for managed template trial users", async () => {

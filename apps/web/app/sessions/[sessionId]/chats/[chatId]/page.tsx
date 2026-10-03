@@ -26,7 +26,7 @@ import {
 } from "@/lib/managed-template-trial";
 import { getAllVariants } from "@/lib/model-variants";
 import { fetchAvailableLanguageModelsWithContext } from "@/lib/models-with-context";
-import { getServerSession } from "@/lib/session/get-server-session";
+import { requireServerSession } from "@/lib/session/require-server-session";
 import { getInitialIsOnlyChatInSession } from "./only-chat-in-session";
 import { SessionChatContent } from "./session-chat-content";
 import { SessionChatProvider } from "./session-chat-context";
@@ -80,7 +80,8 @@ async function getChatByIdWithRetry(
 export async function generateMetadata({
   params,
 }: SessionChatPageProps): Promise<Metadata> {
-  const { sessionId } = await params;
+  const { sessionId, chatId } = await params;
+  await requireServerSession(`/sessions/${sessionId}/chats/${chatId}`);
   const sessionRecord = await getSessionByIdCached(sessionId);
 
   return {
@@ -94,18 +95,11 @@ export default async function SessionChatPage({
 }: SessionChatPageProps) {
   const { sessionId, chatId } = await params;
 
-  // Start independent fetches in parallel
-  const sessionPromise = getServerSession();
-  const sessionRecordPromise = getSessionByIdCached(sessionId);
-
-  // Server-side auth check
-  const session = await sessionPromise;
-  if (!session?.user) {
-    redirect("/");
-  }
-
-  // Fetch session record
-  const sessionRecord = await sessionRecordPromise;
+  // Authenticate before fetching private session data.
+  const session = await requireServerSession(
+    `/sessions/${sessionId}/chats/${chatId}`,
+  );
+  const sessionRecord = await getSessionByIdCached(sessionId);
   if (!sessionRecord) {
     notFound();
   }

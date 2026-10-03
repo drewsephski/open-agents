@@ -56,22 +56,20 @@ export default function TermsPage() {
       <section>
         <h2>Subscriptions and billing</h2>
         <p>
-          Pro is planned at ${STORE.pro.monthlyPriceUsd} USD per month, with $
-          {STORE.pro.inferenceUsd} of managed inference,{" "}
-          {STORE.pro.sandboxHours} running sandbox hours, and up to{" "}
-          {STORE.pro.concurrentSandboxes} concurrent running sandboxes per paid
-          billing period. Purchases are not yet open. The{" "}
-          <Link href="/pricing">Pricing page</Link> explains limits, resets, and
-          availability. There is no free trial, allowance rollover, or metered
-          overage.
+          Pro costs ${STORE.pro.monthlyPriceUsd} USD per month, with a monthly
+          AI usage allowance, {STORE.pro.sandboxHours} running sandbox hours,
+          and up to {STORE.pro.concurrentSandboxes} concurrent running sandboxes
+          per paid billing period. The <Link href="/pricing">Pricing page</Link>{" "}
+          explains limits, resets, and availability. There is no free trial,
+          allowance rollover, or metered overage.
         </p>
         <p>
-          When available, subscriptions are sold through Creem as merchant of
-          record and renew monthly until canceled. Taxes and the total are shown
-          before payment. Cancel future renewals through the Creem Customer
-          Portal linked from your receipt or ask support for help. Scheduled
-          cancellation preserves the paid period. A full refund or dispute may
-          end paid access. Charges for your own OpenRouter key are separate.
+          Subscriptions are sold through Creem as merchant of record and renew
+          monthly until canceled. Taxes and the total are shown before payment.
+          Cancel future renewals through the Creem Customer Portal linked from
+          your receipt or ask support for help. Scheduled cancellation preserves
+          the paid period. A full refund or dispute may end paid access. Charges
+          for your own OpenRouter key are separate.
         </p>
         <p>
           Our <Link href="/refunds">Refund Policy</Link> allows full-refund

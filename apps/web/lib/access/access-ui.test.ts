@@ -45,8 +45,8 @@ describe("access UI policy", () => {
         id: "pro",
         price: "$29",
         features: expect.arrayContaining([
-          "$10 managed inference per billing period",
-          "BYOK fallback after managed allowance",
+          "AI usage included each month",
+          "Continue with your own OpenRouter key after included usage",
           "25 sandbox hours per billing period",
           "2 concurrent sandboxes",
         ]),

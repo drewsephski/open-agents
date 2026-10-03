@@ -77,6 +77,17 @@ describe("GET /api/github/app/install", () => {
     });
   });
 
+  test("redirects signed-out users to sign-in and resumes the install request", async () => {
+    authSession = null;
+    const { GET } = await routeModulePromise;
+    const path =
+      "/api/github/app/install?next=/settings/connections&reconnect=1";
+    const response = await GET(createRequest(`http://localhost${path}`));
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(location.pathname).toBe("/sign-in");
+    expect(location.searchParams.get("next")).toBe(path);
+  });
+
   test("redirects to get-started and preserves next when github not linked", async () => {
     hasLinkedGitHub = false;
     installations = [];

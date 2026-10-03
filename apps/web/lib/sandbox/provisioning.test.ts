@@ -7,6 +7,9 @@ const provisionCalls: unknown[][] = [];
 const revokeCalls: string[] = [];
 const updateCalls: unknown[][] = [];
 const installCalls: unknown[] = [];
+const envSyncCalls: unknown[] = [];
+let vercelProjectId: string | null = null;
+let envSyncError: Error | null = null;
 let updateResult: Record<string, unknown> | null;
 let stopCalls = 0;
 let sessionState: Record<string, unknown>;
@@ -81,6 +84,8 @@ mock.module("@/lib/db/sessions", () => ({
     prNumber: null,
     isNewBranch: false,
     globalSkillRefs,
+    vercelProjectId,
+    vercelTeamId: "team-1",
   }),
   updateSessionIfNotArchived: async (...args: unknown[]) => {
     updateCalls.push(args);
@@ -164,6 +169,12 @@ mock.module("@/lib/skills/global-skill-installer", () => ({
     installCalls.push(input);
   },
 }));
+mock.module("@/lib/sandbox/sync-project-environment", () => ({
+  syncProjectEnvironment: async (input: unknown) => {
+    envSyncCalls.push(input);
+    if (envSyncError) throw envSyncError;
+  },
+}));
 
 const provisioningModulePromise = import("./provisioning");
 
@@ -174,6 +185,9 @@ describe("session sandbox provisioning", () => {
     revokeCalls.length = 0;
     updateCalls.length = 0;
     installCalls.length = 0;
+    envSyncCalls.length = 0;
+    vercelProjectId = null;
+    envSyncError = null;
     stopCalls = 0;
     sessionState = { type: "vercel" };
     connectError = null;
@@ -286,5 +300,28 @@ describe("session sandbox provisioning", () => {
     ).rejects.toBeInstanceOf(SessionArchivedDuringProvisioningError);
     expect(stopCalls).toBe(1);
     expect(revokeCalls).toEqual(["scoped-token"]);
+  });
+
+  test("syncs the selected project when creating a fresh workspace", async () => {
+    vercelProjectId = "project-1";
+    const { provisionSessionSandbox } = await provisioningModulePromise;
+    await provisionSessionSandbox({ sessionId: "session-1" });
+    expect(envSyncCalls).toHaveLength(1);
+    expect(envSyncCalls[0]).toMatchObject({
+      userId: "user-1",
+      projectId: "project-1",
+      teamId: "team-1",
+    });
+  });
+
+  test("stops the allocated sandbox when requested environment sync fails", async () => {
+    vercelProjectId = "project-1";
+    envSyncError = new Error("Could not read Development environment");
+    const { provisionSessionSandbox } = await provisioningModulePromise;
+    await expect(
+      provisionSessionSandbox({ sessionId: "session-1" }),
+    ).rejects.toThrow("Could not read Development environment");
+    expect(stopCalls).toBe(1);
+    expect(updateCalls).toHaveLength(0);
   });
 });

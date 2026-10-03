@@ -1,5 +1,6 @@
 import { generateState } from "arctic";
 import { NextResponse, type NextRequest } from "next/server";
+import { getAuthPageHref } from "@/lib/auth/auth-href";
 import { getInstallationsByUserId } from "@/lib/db/installations";
 import { syncUserInstallations } from "@/lib/github/sync";
 import { getUserGitHubToken } from "@/lib/github/token";
@@ -44,7 +45,15 @@ export async function GET(req: NextRequest): Promise<Response> {
   );
 
   if (!session?.user?.id) {
-    return NextResponse.redirect(new URL("/", req.url));
+    return NextResponse.redirect(
+      new URL(
+        getAuthPageHref(
+          "/sign-in",
+          `${req.nextUrl.pathname}${req.nextUrl.search}`,
+        ),
+        req.url,
+      ),
+    );
   }
 
   if (isManagedTemplateTrialUser(session, req.url)) {

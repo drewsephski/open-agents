@@ -6,18 +6,21 @@ export const metadata: Metadata = {
   description: "Manage your Launchstack plan and allowances.",
 };
 
-export default function BillingPage() {
+export default async function BillingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ checkout?: string }>;
+}) {
+  const { checkout } = await searchParams;
   return (
     <div className="space-y-6">
       <div className="space-y-1">
         <h1 className="text-balance text-2xl font-semibold">Billing</h1>
         <p className="text-pretty text-sm text-muted-foreground">
-          Review your plan, provider fallback, and current allowances.
+          Choose your plan, track usage, and manage your subscription.
         </p>
       </div>
-      <BillingSection
-        checkoutEnabled={process.env.PRO_CHECKOUT_ENABLED === "true"}
-      />
+      <BillingSection checkoutReturned={checkout === "success"} />
     </div>
   );
 }

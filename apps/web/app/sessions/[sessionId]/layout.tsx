@@ -5,7 +5,7 @@ import { getChatSummariesBySessionId } from "@/lib/db/sessions";
 import { getSessionByIdCached } from "@/lib/db/sessions-cache";
 import { getUserPreferences } from "@/lib/db/user-preferences";
 import { sanitizeUserPreferencesForSession } from "@/lib/model-access";
-import { getServerSession } from "@/lib/session/get-server-session";
+import { requireServerSession } from "@/lib/session/require-server-session";
 import { SessionLayoutShell } from "./session-layout-shell";
 
 interface SessionLayoutProps {
@@ -19,15 +19,8 @@ export default async function SessionLayout({
 }: SessionLayoutProps) {
   const { sessionId } = await params;
 
-  const sessionPromise = getServerSession();
-  const sessionRecordPromise = getSessionByIdCached(sessionId);
-
-  const session = await sessionPromise;
-  if (!session?.user) {
-    redirect("/");
-  }
-
-  const sessionRecord = await sessionRecordPromise;
+  const session = await requireServerSession(`/sessions/${sessionId}`);
+  const sessionRecord = await getSessionByIdCached(sessionId);
   if (!sessionRecord) {
     notFound();
   }

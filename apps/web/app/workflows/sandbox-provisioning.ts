@@ -1,4 +1,5 @@
-import { getWorkflowMetadata } from "workflow";
+import { FatalError, getWorkflowMetadata } from "workflow";
+import { getAccessFailureMessage } from "@/lib/access/access-failure-message";
 import {
   claimSessionSandboxProvisioningRunId,
   clearSessionSandboxProvisioningRunIdIfOwned,
@@ -39,8 +40,13 @@ async function runProvisioning(sessionId: string, runId: string) {
     };
   } catch (error) {
     if (error instanceof SandboxAccessDeniedError) {
+      const message = getAccessFailureMessage(error.failure) ?? error.message;
+      await updateSession(sessionId, {
+        lifecycleState: "failed",
+        lifecycleError: message,
+      });
       await clearSessionSandboxProvisioningRunIdIfOwned(sessionId, runId);
-      throw error;
+      throw new FatalError(message);
     }
     if (error instanceof SessionArchivedDuringProvisioningError) {
       await clearSessionSandboxProvisioningRunIdIfOwned(sessionId, runId);

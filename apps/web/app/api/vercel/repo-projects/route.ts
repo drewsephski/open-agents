@@ -2,6 +2,7 @@ import { getVercelProjectLinkByRepo } from "@/lib/db/vercel-project-links";
 import { getServerSession } from "@/lib/session/get-server-session";
 import {
   isVercelInvalidTokenError,
+  isVercelProjectAccessError,
   listMatchingVercelProjects,
 } from "@/lib/vercel/projects";
 import { getUserVercelToken } from "@/lib/vercel/token";
@@ -54,6 +55,15 @@ export async function GET(req: Request) {
       selectedProjectId,
     });
   } catch (error) {
+    if (isVercelProjectAccessError(error)) {
+      return Response.json(
+        {
+          error:
+            "Vercel has not granted access to this team's projects. Check the Vercel app permissions and reconnect",
+        },
+        { status: 403 },
+      );
+    }
     if (isVercelInvalidTokenError(error)) {
       console.warn(
         `Vercel token is invalid for user ${session.user.id}; reconnect required to load repo projects.`,

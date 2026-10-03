@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { isManagedTemplateTrialUser } from "@/lib/managed-template-trial";
-import { getServerSession } from "@/lib/session/get-server-session";
+import { requireServerSession } from "@/lib/session/require-server-session";
 import { needsOnboarding } from "@/lib/onboarding";
 import { GetStartedFlow } from "./get-started-flow";
 
@@ -30,10 +30,7 @@ function getSingleSearchParam(
 export default async function GetStartedPage({
   searchParams,
 }: GetStartedPageProps) {
-  const session = await getServerSession();
-  if (!session?.user) {
-    redirect("/");
-  }
+  const session = await requireServerSession("/get-started");
 
   const resolvedSearchParams = await searchParams;
   const requestedStep = getSingleSearchParam(resolvedSearchParams.step);

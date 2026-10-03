@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { getSessionByIdCached } from "@/lib/db/sessions-cache";
 import { isManagedTemplateTrialUser } from "@/lib/managed-template-trial";
-import { getServerSession } from "@/lib/session/get-server-session";
+import { requireServerSession } from "@/lib/session/require-server-session";
 import { CodespaceProvider } from "./codespace-context";
 
 interface CodespaceLayoutProps {
@@ -17,14 +17,8 @@ export default async function CodespaceLayout({
 }: CodespaceLayoutProps) {
   const { sessionId } = await params;
 
-  const [session, sessionRecord] = await Promise.all([
-    getServerSession(),
-    getSessionByIdCached(sessionId),
-  ]);
-
-  if (!session?.user) {
-    redirect("/");
-  }
+  const session = await requireServerSession(`/codespace/${sessionId}`);
+  const sessionRecord = await getSessionByIdCached(sessionId);
 
   if (!sessionRecord) {
     notFound();

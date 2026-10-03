@@ -1,4 +1,5 @@
 "use client";
+import { getAccessFailureMessage } from "@/lib/access/access-failure-message";
 
 import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
@@ -147,11 +148,15 @@ export function useSessions(options?: {
       const responseData = (await res.json()) as {
         session?: Session;
         chat?: Chat;
-        error?: string;
+        error?: unknown;
       };
 
       if (!res.ok || !responseData.session || !responseData.chat) {
-        const message = responseData.error ?? "Failed to create session";
+        const message =
+          getAccessFailureMessage(responseData.error) ??
+          (typeof responseData.error === "string"
+            ? responseData.error
+            : "Failed to create session");
         toast.error(message);
         throw new Error(message);
       }

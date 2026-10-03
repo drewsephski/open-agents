@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { AUTH_REQUEST_PATH_HEADER } from "@/lib/auth/request-path";
 
 function wantsSharedMarkdown(acceptHeader: string | null): boolean {
   if (!acceptHeader) {
@@ -10,14 +11,11 @@ function wantsSharedMarkdown(acceptHeader: string | null): boolean {
 }
 
 export function proxy(request: NextRequest) {
-  if (request.method !== "GET") {
-    return NextResponse.next();
-  }
-
   const pathname = request.nextUrl.pathname;
   const segments = pathname.split("/").filter(Boolean);
 
   if (
+    request.method === "GET" &&
     segments.length === 2 &&
     segments[0] === "shared" &&
     wantsSharedMarkdown(request.headers.get("accept"))
@@ -27,9 +25,22 @@ export function proxy(request: NextRequest) {
     return NextResponse.rewrite(rewrittenUrl);
   }
 
-  return NextResponse.next();
+  const requestHeaders = new Headers(request.headers);
+  // Overwrite incoming values; only the actual request URL is authoritative.
+  requestHeaders.set(
+    AUTH_REQUEST_PATH_HEADER,
+    `${pathname}${request.nextUrl.search}`,
+  );
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {
-  matcher: ["/shared/:path*"],
+  matcher: [
+    "/shared/:path*",
+    "/settings/:path*",
+    "/sessions/:path*",
+    "/codespace/:path*",
+    "/get-started",
+    "/:username/:repo",
+  ],
 };

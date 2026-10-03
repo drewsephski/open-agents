@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { getAuthPageHref } from "@/lib/auth/auth-href";
 import { syncUserInstallations } from "@/lib/github/sync";
 import { getUserGitHubToken } from "@/lib/github/token";
 import { getGitHubUsername } from "@/lib/github/users";
@@ -42,7 +43,9 @@ export async function GET(req: Request): Promise<Response> {
 
   const session = await getServerSession();
   if (!session?.user?.id) {
-    return NextResponse.redirect(new URL("/", req.url));
+    return NextResponse.redirect(
+      new URL(getAuthPageHref("/sign-in", redirectTo), req.url),
+    );
   }
 
   const redirectUrl = new URL(redirectTo, req.url);

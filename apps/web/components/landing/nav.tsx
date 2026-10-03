@@ -37,14 +37,9 @@ export function LandingNav({
           >
             <Logo />
           </Link>
-          <Link
-            href="/pricing"
-            className="ml-auto mr-5 text-sm underline underline-offset-4"
-          >
-            Pricing
-          </Link>
-
           <div
+            inert={!showSignIn}
+            aria-hidden={!showSignIn}
             className={cn(
               "flex items-center gap-2 transition-all duration-150 [transition-timing-function:cubic-bezier(0.4,0.04,0.04,1)]",
               showSignIn
@@ -52,6 +47,9 @@ export function LandingNav({
                 : "pointer-events-none opacity-0 blur-xs",
             )}
           >
+            <Link href="/pricing" className="mr-3 text-sm">
+              Pricing
+            </Link>
             <AuthButtons size="sm" />
           </div>
         </div>

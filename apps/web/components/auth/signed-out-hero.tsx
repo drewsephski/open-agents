@@ -42,7 +42,9 @@ export function SignedOutHero() {
             <div>
               <div className="max-w-[740px]">
                 <h1 className="text-4xl font-semibold leading-[1.03] tracking-tighter sm:text-5xl md:text-7xl">
-                  Send coding work to the cloud.
+                  Send coding work
+                  <br />
+                  to the cloud.
                 </h1>
                 <p className="mt-4 text-balance text-base leading-relaxed text-(--l-fg-2) sm:mt-6 sm:text-xl">
                   Launchstack gives each coding agent an isolated branch and a
@@ -73,7 +75,6 @@ export function SignedOutHero() {
           </div>
         </section>
 
-        <LandingPricing />
         <LandingFeatures />
         <AgentArchitecture />
         <TechSelector />

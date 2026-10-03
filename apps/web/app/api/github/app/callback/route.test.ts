@@ -59,6 +59,17 @@ describe("GET /api/github/app/callback", () => {
     syncInstallationsError = null;
   });
 
+  test("redirects signed-out users to sign-in with the saved destination", async () => {
+    authSession = null;
+    const { GET } = await routeModulePromise;
+    const response = await GET(
+      new Request("http://localhost/api/github/app/callback"),
+    );
+    const destination = getRedirectUrl(response);
+    expect(destination.pathname).toBe("/sign-in");
+    expect(destination.searchParams.get("next")).toBe("/settings/connections");
+  });
+
   test("returns no_action when the user exits before selecting an installation", async () => {
     syncedInstallationsCount = 0;
     const { GET } = await routeModulePromise;

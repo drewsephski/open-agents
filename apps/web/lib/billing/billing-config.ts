@@ -1,4 +1,5 @@
 import "server-only";
+import { loadCredentialKeyring } from "@/lib/credentials/envelope-encryption";
 
 type BillingEnvironment = Readonly<Record<string, string | undefined>>;
 function requiredValue(environment: BillingEnvironment, name: string): string {
@@ -39,10 +40,9 @@ export function getCreemSessionConfig(
 export function assertCheckoutReady(
   environment: BillingEnvironment = process.env,
 ): void {
-  if (environment.PRO_CHECKOUT_ENABLED !== "true")
-    throw new Error("Pro purchases are not open yet");
+  getCreemWebhookConfig(environment);
   requiredValue(environment, "OPENROUTER_MANAGEMENT_API_KEY");
-  requiredValue(environment, "ENCRYPTION_KEY");
+  loadCredentialKeyring(environment);
 }
 export function getCreemWebhookConfig(
   environment: BillingEnvironment = process.env,

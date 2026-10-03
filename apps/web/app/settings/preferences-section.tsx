@@ -3,10 +3,8 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Plus, Search, Trash2, X } from "lucide-react";
 import { type ThemePreference, useTheme } from "@/app/providers";
-import {
-  DEFAULT_SANDBOX_TYPE,
-  type SandboxType,
-} from "@/components/sandbox-selector-compact";
+import { DEFAULT_SANDBOX_TYPE, type SandboxType } from "@/lib/sandbox-options";
+import { SandboxPreferenceSelect } from "@/components/sandbox-preference-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,10 +38,6 @@ import {
   getRecommendedModels,
 } from "@/lib/recommended-models";
 import { SettingsToggleRow } from "./settings-toggle-row";
-
-const SANDBOX_OPTIONS: Array<{ id: SandboxType; name: string }> = [
-  { id: "vercel", name: "Vercel" },
-];
 
 const THEME_OPTIONS: Array<{ id: ThemePreference; name: string }> = [
   { id: "system", name: "System" },
@@ -555,24 +549,11 @@ export function PreferencesSection() {
 
             <div className="grid gap-2">
               <Label htmlFor="sandbox">Default Sandbox</Label>
-              <Select
+              <SandboxPreferenceSelect
                 value={preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE}
-                onValueChange={(value) =>
-                  handleSandboxChange(value as SandboxType)
-                }
+                onChange={handleSandboxChange}
                 disabled={isSaving}
-              >
-                <SelectTrigger id="sandbox" className="w-full">
-                  <SelectValue placeholder="Select a sandbox type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SANDBOX_OPTIONS.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
             </div>
 
             <div className="grid gap-2">

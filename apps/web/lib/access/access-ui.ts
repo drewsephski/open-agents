@@ -63,10 +63,10 @@ export const PRICING_PLANS = [
     name: "Pro",
     price: "$29",
     cadence: "per month",
-    description: "Managed inference for regular cloud coding work.",
+    description: "AI included, with more time and room to build in the cloud.",
     features: [
-      "$10 managed inference per billing period",
-      "BYOK fallback after managed allowance",
+      "AI usage included each month",
+      "Continue with your own OpenRouter key after included usage",
       "Application default model included",
       "25 sandbox hours per billing period",
       "2 concurrent sandboxes",
@@ -95,22 +95,22 @@ export function getAllowancePresentation(
       tone: "action",
       message:
         kind === "inference"
-          ? "Managed inference is used up. Add an OpenRouter key or wait for reset."
-          : "Sandbox time is used up. Wait for reset or upgrade if available.",
+          ? "Included AI usage is used up. Use your OpenRouter key or wait for renewal."
+          : "Cloud workspace time is used up. Wait for renewal or upgrade your plan.",
     };
   }
   if (percent >= 90) {
     return {
       warning: "prominent",
       tone: "warning",
-      message: `You have used at least 90% of this ${kind} allowance.`,
+      message: `You have used at least 90% of your ${kind === "inference" ? "included AI usage" : "cloud workspace time"}.`,
     };
   }
   if (percent >= 75) {
     return {
       warning: "passive",
       tone: "neutral",
-      message: `You have used at least 75% of this ${kind} allowance.`,
+      message: `You have used at least 75% of your ${kind === "inference" ? "included AI usage" : "cloud workspace time"}.`,
     };
   }
   return {

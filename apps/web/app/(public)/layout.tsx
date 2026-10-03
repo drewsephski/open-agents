@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { PolicyLinks } from "@/components/policy-links";
 import { STORE } from "@/lib/store-details";
 
 export default function PublicLayout({
@@ -29,7 +28,6 @@ export default function PublicLayout({
         {children}
       </main>
       <footer className="mx-auto max-w-5xl space-y-4 border-t border-(--l-border) px-6 py-8">
-        <PolicyLinks />
         <p className="text-pretty text-sm text-(--l-fg-2)">
           {STORE.name} is operated by {STORE.operator}, {STORE.country}.
         </p>

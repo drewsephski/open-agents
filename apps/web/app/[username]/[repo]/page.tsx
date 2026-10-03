@@ -18,7 +18,7 @@ import {
 import { sanitizeUserPreferencesForSession } from "@/lib/model-access";
 import { DEFAULT_REPOSITORY_MISSION_TYPE } from "@/lib/missions";
 import { getRandomCityName } from "@/lib/random-city";
-import { getServerSession } from "@/lib/session/get-server-session";
+import { requireServerSession } from "@/lib/session/require-server-session";
 
 interface RepoPageProps {
   params: Promise<{ username: string; repo: string }>;
@@ -60,10 +60,9 @@ export default async function RepoPage({ params }: RepoPageProps) {
   const { username, repo } = await params;
 
   // Auth check -- redirect to sign-in, preserving the URL for return
-  const session = await getServerSession();
-  if (!session?.user) {
-    redirect("/");
-  }
+  const session = await requireServerSession(
+    `/${encodeURIComponent(username)}/${encodeURIComponent(repo)}`,
+  );
 
   const requestHost = (await nextHeaders()).get("host") ?? "";
   if (isManagedTemplateTrialUser(session, requestHost)) {

@@ -107,6 +107,14 @@ export function isVercelInvalidTokenError(error: unknown): boolean {
   );
 }
 
+export function isVercelProjectAccessError(error: unknown): boolean {
+  return (
+    error instanceof VercelApiError &&
+    error.status === 403 &&
+    !error.invalidToken
+  );
+}
+
 async function fetchVercelJson<T>(params: {
   path: string;
   token: string;
@@ -296,6 +304,13 @@ export async function listMatchingVercelProjects(params: {
   }
 
   const successfulMatches = fulfilledResults.flatMap((result) => result.value);
+  if (successfulMatches.length === 0) {
+    const failedScope = results.find((result) => result.status === "rejected");
+    // A personal-scope 200 with no projects does not prove a team repo has no
+    // linked project when team discovery or a team scope was denied.
+    if (teamListError) throw teamListError;
+    if (failedScope?.status === "rejected") throw failedScope.reason;
+  }
   const deduped = new Map<string, VercelProjectSelection>();
   for (const project of successfulMatches) {
     if (!deduped.has(project.projectId)) {
@@ -328,6 +343,21 @@ export async function listVercelProjectEnvs(params: {
   });
 
   return response.envs ?? [];
+}
+
+export async function getVercelProjectRootDirectory(params: {
+  token: string;
+  projectIdOrName: string;
+  teamId?: string | null;
+}): Promise<string | null> {
+  const query = new URLSearchParams();
+  if (params.teamId) query.set("teamId", params.teamId);
+  const project = await fetchVercelJson<{ rootDirectory?: string | null }>({
+    path: `/v9/projects/${encodeURIComponent(params.projectIdOrName)}`,
+    token: params.token,
+    query,
+  });
+  return project.rootDirectory ?? null;
 }
 
 export function selectDevelopmentEnvVars(
