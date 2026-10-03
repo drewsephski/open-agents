@@ -6,10 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { STORE } from "@/lib/store-details";
 
 export function BillingUpgradeCard({
+  checkoutEnabled,
   pending,
   disabled,
   onBuy,
 }: {
+  checkoutEnabled: boolean;
   pending: boolean;
   disabled: boolean;
   onBuy: () => void;
@@ -22,7 +24,8 @@ export function BillingUpgradeCard({
         </p>
         <CardTitle className="text-balance text-2xl">Launchstack Pro</CardTitle>
         <p className="text-pretty text-sm text-muted-foreground">
-          Start coding with AI included. No API key needed to get started.
+          Optional managed AI usage. Your own Codex subscription or API key
+          works on the free plan.
         </p>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -51,20 +54,23 @@ export function BillingUpgradeCard({
           <Button
             size="lg"
             className="h-12 w-full text-base"
-            disabled={disabled}
+            disabled={disabled || !checkoutEnabled}
             onClick={onBuy}
           >
             {pending ? (
               <Loader2 className="size-4 motion-safe:animate-spin" />
             ) : null}
-            {pending
-              ? "Opening checkout…"
-              : `Get Pro — $${STORE.pro.monthlyPriceUsd}/month`}
+            {!checkoutEnabled
+              ? "Managed AI checkout coming soon"
+              : pending
+                ? "Opening checkout…"
+                : `Get Pro — $${STORE.pro.monthlyPriceUsd}/month`}
             {!pending && <ArrowRight className="size-4" />}
           </Button>
           <p className="text-center text-pretty text-xs leading-relaxed text-muted-foreground">
-            Secure checkout with Creem. Renews monthly; cancel anytime.
-            Applicable taxes shown before payment. No automatic overage charges.
+            Live checkout opens after Creem account activation. When available,
+            renews monthly; cancel anytime. Applicable taxes shown before
+            payment. No automatic overage charges.
           </p>
         </div>
       </CardContent>

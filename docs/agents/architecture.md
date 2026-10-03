@@ -18,6 +18,10 @@ AI SDK tool/approval flow but never execute in the coding sandbox. See
 [Action Providers](action-providers.md) for session persistence, approval, and
 retry behavior.
 
+Agent response guidance and optional pstack engineering mode are shared between
+the built-in agent and connected Codex. See [Agent Behavior](../agent-behavior.md)
+for instruction layering, conversation commands, and compatibility boundaries.
+
 ## Key Packages
 
 - **packages/agent/** - Core agent implementation with tools, subagents, and context management

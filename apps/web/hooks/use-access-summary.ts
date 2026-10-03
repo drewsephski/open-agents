@@ -9,7 +9,7 @@ export function notifyAccessChanged(): void {
   window.dispatchEvent(new Event(ACCESS_CHANGED_EVENT));
 }
 
-export function useAccessSummary(modelId?: string) {
+export function useAccessSummary(modelId?: string, executionBackend?: string) {
   const [summary, setSummary] = useState<AccessSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +21,13 @@ export function useAccessSummary(modelId?: string) {
           ? "/api/settings/access-summary?modelId=" +
             encodeURIComponent(modelId)
           : "/api/settings/access-summary";
-        const response = await fetch(path, {
+        const requestPath = executionBackend
+          ? path +
+            (path.includes("?") ? "&" : "?") +
+            "executionBackend=" +
+            encodeURIComponent(executionBackend)
+          : path;
+        const response = await fetch(requestPath, {
           cache: "no-store",
         });
         const payload = (await response.json().catch(() => null)) as {
@@ -40,7 +46,7 @@ export function useAccessSummary(modelId?: string) {
         setLoading(false);
       }
     },
-    [],
+    [executionBackend],
   );
 
   useEffect(() => {

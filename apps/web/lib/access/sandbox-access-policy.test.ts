@@ -40,6 +40,31 @@ function sandboxRequest(
 }
 
 describe("access policy sandbox admission", () => {
+  test("admits a connected Codex User on the free tier without native credentials or Pro", () => {
+    const decision = evaluateAccessPolicy(
+      sandboxRequest({
+        byokCredentialState: "missing",
+        codexConnected: true,
+        subscription: null,
+      }),
+    );
+    expect(decision).toMatchObject({
+      allowed: true,
+      tier: "byok",
+      concurrencyLimit: 1,
+      allowanceMilliseconds: BYOK_SANDBOX_ALLOWANCE_MILLISECONDS,
+    });
+    expect(
+      evaluateAccessPolicy(
+        sandboxRequest({
+          byokCredentialState: "missing",
+          codexConnected: false,
+          subscription: null,
+        }),
+      ).allowed,
+    ).toBe(false);
+  });
+
   test("grants BYOK two UTC-calendar-month hours and one concurrent sandbox", () => {
     expect(evaluateAccessPolicy(sandboxRequest())).toEqual({
       allowed: true,

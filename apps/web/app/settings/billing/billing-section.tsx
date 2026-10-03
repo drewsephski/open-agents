@@ -26,8 +26,10 @@ function formatDate(value: string | null): string {
 
 export function BillingSection({
   checkoutReturned,
+  checkoutEnabled,
 }: {
   checkoutReturned: boolean;
+  checkoutEnabled: boolean;
 }) {
   const { summary, loading, error: loadError, refresh } = useAccessSummary();
   const { action, error: actionError, openBilling } = useBillingActions();
@@ -53,6 +55,7 @@ export function BillingSection({
   }
 
   const isPro = summary.plan.id === "pro";
+  const hasCodex = summary.codex?.connected ?? false;
   const hasByok = summary.credential.state === "valid";
   const warning =
     summary.managedInference.warning === "prominent" ||
@@ -71,7 +74,25 @@ export function BillingSection({
         </p>
       )}
       {!isPro && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Use your own AI for free</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-pretty text-sm text-muted-foreground">
+              Connect your existing Codex subscription or an OpenRouter key. No
+              Launchstack subscription required. Pro is optional when you want
+              us to manage AI usage.
+            </p>
+            <Button asChild variant="outline">
+              <Link href="/settings/connections">Connect your AI</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+      {!isPro && (
         <BillingUpgradeCard
+          checkoutEnabled={checkoutEnabled}
           pending={action === "checkout"}
           disabled={action !== null || checkoutReturned}
           onBuy={() => void openBilling("checkout")}
@@ -106,7 +127,7 @@ export function BillingSection({
               <div>
                 <p className="text-sm text-muted-foreground">Current plan</p>
                 <CardTitle className="mt-1 text-balance text-2xl">
-                  {isPro ? "Pro" : "BYOK"}
+                  {isPro ? "Pro" : "Free"}
                 </CardTitle>
               </div>
               <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium tabular-nums">
@@ -118,7 +139,7 @@ export function BillingSection({
             <p className="text-pretty text-sm text-muted-foreground">
               {isPro
                 ? "AI usage included, 25 hours of cloud workspace time, and 2 workspaces running at once."
-                : "Bring your own OpenRouter API key. Includes 2 hours of cloud workspace time each calendar month and 1 workspace running at a time."}
+                : "Use your Codex subscription or an OpenRouter key. Includes 2 hours of cloud workspace time each calendar month and 1 workspace running at a time."}
             </p>
             {summary.plan.status && (
               <p className="text-sm">
@@ -136,7 +157,7 @@ export function BillingSection({
                 <span className="tabular-nums">
                   {formatDate(summary.plan.periodEnd)}
                 </span>
-                , then returns to BYOK.
+                , then returns to Free.
               </p>
             )}
             <div className="flex flex-wrap gap-2">
@@ -163,14 +184,18 @@ export function BillingSection({
               <KeyRound className="mt-0.5 size-5 text-muted-foreground" />
               <div>
                 <p className="font-medium">
-                  {hasByok
-                    ? "Your OpenRouter key is connected"
-                    : "No OpenRouter key connected"}
+                  {hasCodex
+                    ? "Codex subscription connected"
+                    : hasByok
+                      ? "Your OpenRouter key is connected"
+                      : "No AI provider connected"}
                 </p>
                 <p className="text-pretty text-sm text-muted-foreground">
-                  {hasByok
-                    ? "Key ending in " + summary.credential.lastFour
-                    : "Get started with Pro, or add your own key. Your key also lets you continue after included AI usage runs out."}
+                  {hasCodex
+                    ? "New chats use your existing Codex subscription."
+                    : hasByok
+                      ? "Key ending in " + summary.credential.lastFour
+                      : "Connect Codex or OpenRouter for free. Choose Pro if you want Launchstack to manage your AI usage."}
                 </p>
               </div>
             </div>
@@ -180,7 +205,9 @@ export function BillingSection({
             </p>
             <Button asChild variant="outline">
               <Link href="/settings/connections">
-                {hasByok ? "Manage API key" : "Add API key"}
+                {hasByok || hasCodex
+                  ? "Manage AI connection"
+                  : "Connect your AI"}
               </Link>
             </Button>
           </CardContent>

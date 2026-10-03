@@ -1,3 +1,4 @@
+import { isLiveCheckoutEnabled } from "@/lib/billing/billing-config";
 import { createProCheckoutSession } from "@/lib/billing/billing-runtime";
 import { BillingSessionError } from "@/lib/billing/billing-sessions";
 import { getServerSession } from "@/lib/session/get-server-session";
@@ -15,6 +16,8 @@ export async function POST(request: Request) {
   if (request.headers.get("origin") !== new URL(request.url).origin)
     return errorResponse("invalid_origin", 403);
 
+  if (!isLiveCheckoutEnabled())
+    return errorResponse("live_payments_not_enabled", 503);
   try {
     const checkout = await createProCheckoutSession({
       userId: session.user.id,

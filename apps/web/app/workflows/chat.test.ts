@@ -585,6 +585,66 @@ describe("runAgentWorkflow", () => {
     expect(agentCallOptions?.missionInstructions).toBeUndefined();
   });
 
+  test("adds response guidance while retaining mission and file-link instructions", async () => {
+    testSessionRecord.missionType = "ship_feature";
+    await runAgentWorkflow(makeOptions());
+
+    expect(agentCallOptions?.customInstructions).toEqual(
+      expect.stringContaining("# Response style"),
+    );
+    expect(agentCallOptions?.customInstructions).toEqual(
+      expect.stringContaining("# Engineering mode: standard"),
+    );
+    expect(agentCallOptions?.customInstructions).toEqual(
+      expect.stringContaining("Whole-file links only"),
+    );
+    expect(agentCallOptions?.missionInstructions).toEqual(
+      expect.stringContaining("# Mission: Ship a feature"),
+    );
+  });
+
+  test("keeps pstack active across turns and respects a later opt-out", async () => {
+    const messages = [
+      {
+        id: "mode",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "/pstack" }],
+      },
+      {
+        id: "task",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "Fix the bug" }],
+      },
+    ];
+    await runAgentWorkflow(makeOptions({ messages }));
+    expect(agentCallOptions?.customInstructions).toEqual(
+      expect.stringContaining("# Engineering mode: pstack"),
+    );
+    expect(agentInputMessages).toEqual([
+      { role: "user", content: [{ type: "text", text: "/pstack" }] },
+      { role: "user", content: [{ type: "text", text: "Fix the bug" }] },
+    ]);
+
+    await runAgentWorkflow(
+      makeOptions({
+        messages: [
+          ...messages,
+          {
+            id: "off",
+            role: "user",
+            parts: [{ type: "text", text: "/pstack-off" }],
+          },
+        ],
+      }),
+    );
+    expect(agentCallOptions?.customInstructions).toEqual(
+      expect.stringContaining("# Engineering mode: standard"),
+    );
+    expect(agentCallOptions?.customInstructions).toEqual(
+      expect.stringContaining("only changes the mode"),
+    );
+  });
+
   test("throws when no messages provided", async () => {
     try {
       await runAgentWorkflow(makeOptions({ messages: [] }));

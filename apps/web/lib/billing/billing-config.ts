@@ -37,10 +37,21 @@ export function getCreemSessionConfig(
     appOrigin: getBillingAppOrigin(environment),
   };
 }
+export function isLiveCheckoutEnabled(
+  environment: BillingEnvironment = process.env,
+): boolean {
+  return (
+    environment.CREEM_API_KEY?.startsWith("creem_test_") === true ||
+    environment.CREEM_LIVE_PAYMENTS_ENABLED === "true"
+  );
+}
+
 export function assertCheckoutReady(
   environment: BillingEnvironment = process.env,
 ): void {
   getCreemWebhookConfig(environment);
+  if (!isLiveCheckoutEnabled(environment))
+    throw new Error("Creem live payments are not enabled");
   requiredValue(environment, "OPENROUTER_MANAGEMENT_API_KEY");
   loadCredentialKeyring(environment);
 }

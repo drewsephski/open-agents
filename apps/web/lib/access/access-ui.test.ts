@@ -55,6 +55,6 @@ describe("access UI policy", () => {
     expect(JSON.stringify(PRICING_PLANS).toLowerCase()).not.toContain(
       "unlimited",
     );
-    expect(JSON.stringify(PRICING_PLANS)).not.toMatch(/Codex|OpenCode/);
+    expect(JSON.stringify(PRICING_PLANS)).toContain("Codex subscription");
   });
 });

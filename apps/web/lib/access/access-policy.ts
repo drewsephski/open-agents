@@ -49,6 +49,7 @@ export type InferenceAccessDecision = InferenceAccessAllowed | AccessDenied;
 
 export interface SandboxAccessRequest {
   kind: "sandbox";
+  codexConnected?: boolean;
   operation: "create" | "resume";
   now: Date;
   byokCredentialState: CredentialState;
@@ -252,7 +253,7 @@ export function evaluateSandboxAccess(
   const hasPaidThrough = paidSubscription !== null;
   const hasValidByok = request.byokCredentialState === "valid";
 
-  if (!hasPaidThrough && !hasValidByok) {
+  if (!hasPaidThrough && !hasValidByok && !request.codexConnected) {
     if (
       request.byokCredentialState === "invalid" ||
       request.byokCredentialState === "revoked"

@@ -30,6 +30,7 @@ type ChatRecord = {
   sessionId: string;
   title: string;
   modelId: string;
+  executionBackend?: "launchstack_native" | "codex";
 };
 
 let authResult: AuthResult = { ok: true, userId: "user-1" };
@@ -37,6 +38,10 @@ let ownedSessionResult: OwnedSessionResult = {
   ok: true,
   sessionRecord: { id: "session-1" },
 };
+mock.module("@/lib/access/chat-backend", () => ({
+  getNewChatBackend: async () => "launchstack_native",
+}));
+
 let currentSession: {
   authProvider?: "vercel" | "github";
   user: { id: string; email?: string; username?: string; avatar?: string };
@@ -59,6 +64,7 @@ const createChatCalls: Array<{
   sessionId: string;
   title: string;
   modelId: string;
+  executionBackend?: "launchstack_native" | "codex";
 }> = [];
 
 mock.module("@/app/api/sessions/_lib/session-context", () => ({
@@ -85,6 +91,7 @@ mock.module("@/lib/db/sessions", () => ({
     sessionId: string;
     title: string;
     modelId: string;
+    executionBackend?: "launchstack_native" | "codex";
   }) => {
     createChatCalls.push(input);
     return createdChat;
@@ -139,6 +146,7 @@ describe("/api/sessions/[sessionId]/chats", () => {
       sessionId: "session-1",
       title: "New chat",
       modelId: "model-default",
+      executionBackend: "launchstack_native",
     };
     getSummaryCalls.length = 0;
     createChatCalls.length = 0;
@@ -263,6 +271,7 @@ describe("/api/sessions/[sessionId]/chats", () => {
         sessionId: "session-abc",
         title: "New chat",
         modelId: "model-default",
+        executionBackend: "launchstack_native",
       },
     ]);
     expect(body.chat.id).toBe("generated-chat-id");

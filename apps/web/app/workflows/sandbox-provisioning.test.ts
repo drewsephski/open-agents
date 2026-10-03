@@ -50,7 +50,7 @@ test("persists actionable access denials and stops workflow retries", async () =
     {
       lifecycleState: "failed",
       lifecycleError:
-        "Add an OpenRouter API key in Connections or activate Pro before starting a task.",
+        "Connect your Codex subscription or an OpenRouter key in Connections to use Launchstack for free. Pro is optional for managed AI usage.",
     },
   ]);
   expect(cleared).toEqual([["session-1", "run-1"]]);

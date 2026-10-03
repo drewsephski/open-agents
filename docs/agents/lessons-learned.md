@@ -178,6 +178,8 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 
 ## Models / OpenRouter
 
+- Conversation-wide behavior must be supplied on every agent step and through the separate Codex prompt path. Resolve built-in mode commands only from user text, reserve their names against skill shadowing, and preserve action approvals and mission guidance.
+
 - This repo uses `@openrouter/ai-sdk-provider` with AI SDK 6 (`createOpenRouter` + `provider.chat`). Do not point `createGateway()` at OpenRouter and do not use `@ai-sdk/openai` as the OpenRouter transport.
 - Importing `@open-agents/agent` must not require `OPENROUTER_API_KEY`. `ToolLoopAgent` constructors use `constructorPlaceholderModel()`; real OpenRouter transport is created in `prepareCall` / `defaultLanguageModel()`.
 - Workflow VMs should import `extractModelCost` from `@open-agents/agent/usage-metadata`, not the package barrel, so they do not load `createOpenRouter`.
@@ -196,3 +198,5 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 
 - The SVGL public API can return 403 from Vercel egress while succeeding locally. Keep a validated, attributed snapshot of its official catalog for upstream failures so stack recommendations still use real catalog entries.
 - The hero workspace artwork is a flattened transparent image. Independent layer separation needs complete per-slab assets, including formerly occluded surfaces; the `workspace-{top,middle,bottom}` assets provide those surfaces. Keep the hero still by default, activate on hover or explicit playback, and pause offscreen or in hidden tabs while honoring reduced motion.
+
+- A Codex backend enum is not a working Provider Connection: subscription-backed runs need the official CLI, their own login, backend-specific admission, and sandbox eligibility. Preserve pinned existing chats. Serialize refresh per User, keep tokens out of Workflow inputs/results and the repository, and do not grant managed inference from Codex access. Creem live checkout must remain disabled until account activation is confirmed.

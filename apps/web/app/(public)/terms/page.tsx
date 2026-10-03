@@ -56,6 +56,12 @@ export default function TermsPage() {
       <section>
         <h2>Subscriptions and billing</h2>
         <p>
+          Launchstack is free when you connect your own Codex subscription or
+          OpenRouter key, subject to the free cloud workspace limits shown on
+          Pricing. Your provider’s subscription limits and separate usage
+          charges still apply. Pro is optional for managed AI usage.
+        </p>
+        <p>
           Pro costs ${STORE.pro.monthlyPriceUsd} USD per month, with a monthly
           AI usage allowance, {STORE.pro.sandboxHours} running sandbox hours,
           and up to {STORE.pro.concurrentSandboxes} concurrent running sandboxes

@@ -10,6 +10,8 @@ const billingResponseSchema = z.object({
 
 function errorMessage(code?: string): string {
   switch (code) {
+    case "live_payments_not_enabled":
+      return "Managed AI checkout is not available yet. Connect your Codex subscription or an OpenRouter key in Connections to use Launchstack for free.";
     case "not_authenticated":
       return "Your session expired. Sign in again to manage billing.";
     case "pro_subscription_exists":

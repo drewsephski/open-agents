@@ -115,6 +115,14 @@ export async function PATCH(req: Request, context: RouteContext) {
   if (nextTitle) {
     updatePayload.title = nextTitle;
   }
+  if (nextModelId && chatContext.chat.executionBackend === "codex")
+    return Response.json(
+      {
+        error:
+          "Codex chooses models available to your subscription. Start a new chat to use another backend.",
+      },
+      { status: 400 },
+    );
   if (nextModelId) {
     const preferences = await getUserPreferences(authResult.userId);
     const sanitizedModelId = sanitizeSelectedModelIdForSession(

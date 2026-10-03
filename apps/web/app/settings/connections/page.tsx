@@ -5,6 +5,8 @@ import { VercelSection, VercelSectionSkeleton } from "../vercel-section";
 import { GmailSection } from "./gmail-section";
 import { OpenRouterCredentialPanel } from "@/components/openrouter-credential-panel";
 
+import { CodexCredentialPanel } from "@/components/codex-credential-panel";
+
 export const metadata: Metadata = {
   title: "Connections",
   description: "Manage your connected accounts and integrations.",
@@ -19,6 +21,7 @@ export default function ConnectionsPage() {
           Manage provider credentials and source-control access.
         </p>
       </div>
+      <CodexCredentialPanel />
       <OpenRouterCredentialPanel />
       <Suspense fallback={<VercelSectionSkeleton />}>
         <VercelSection />

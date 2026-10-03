@@ -40,6 +40,7 @@ import {
   sendFinish,
 } from "./chat-post-finish";
 import { dedupeMessageReasoning } from "@/lib/chat/dedupe-message-reasoning";
+import { getResponseGuidance } from "@/lib/chat/response-guidance";
 import { getChatById, getSessionById } from "@/lib/db/sessions";
 import { getUserPreferences } from "@/lib/db/user-preferences";
 import {
@@ -728,6 +729,13 @@ export async function runAgentWorkflow(options: Options) {
     const agentOptions: UnresolvedOpenAgentCallOptions = {
       ...modelRuntime.agentOptions,
       ...options.agentOptions,
+      customInstructions: [
+        getResponseGuidance(options.messages),
+        options.agentOptions?.customInstructions ??
+          modelRuntime.agentOptions.customInstructions,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
       sandbox: {
         state: runtime.sandboxState,
         workingDirectory: runtime.workingDirectory,

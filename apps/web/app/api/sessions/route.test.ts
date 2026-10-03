@@ -2,6 +2,10 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import type { VercelProjectSelection } from "@/lib/vercel/types";
 
+mock.module("@/lib/access/chat-backend", () => ({
+  getNewChatBackend: async () => "launchstack_native",
+}));
+
 let currentSession: {
   authProvider?: "vercel" | "github";
   user: {

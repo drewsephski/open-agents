@@ -82,6 +82,14 @@ export default function PrivacyPage() {
           are authorized to share the information needed for your tasks.
         </p>
         <p>
+          If you connect Codex, we encrypt and store the login file you import,
+          including subscription authorization tokens. Tokens are used
+          temporarily in your isolated workspace and refreshed by the official
+          Codex CLI. Disconnecting deletes the saved connection. Codex tasks
+          send relevant prompts, code, and conversation context directly to
+          OpenAI under your account.
+        </p>
+        <p>
           Prompts, relevant code, attachments, and conversation context may be
           sent through OpenRouter to the selected model provider to produce
           responses. These providers have their own processing and retention

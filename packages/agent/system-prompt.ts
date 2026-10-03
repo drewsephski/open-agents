@@ -390,6 +390,7 @@ If you see a <command-name> tag in the conversation, the skill is already loaded
 
 IMPORTANT - Slash command detection:
 When the user's message starts with "/<name>", they are invoking a skill.
+The app's built-in /pstack and /pstack-off commands are exceptions: their instructions are already supplied in the system prompt. Do not invoke the skill tool for these commands.
 Check if "<name>" matches an available skill above. If it does, your FIRST tool call MUST be the skill tool -- do not
 read files, search code, or take any other action before invoking the skill.
 

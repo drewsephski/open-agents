@@ -19,15 +19,19 @@ import { billingCustomers, sandboxUsagePeriods } from "@/lib/db/schema";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import { accrueRunningSandboxMilliseconds } from "@/lib/sandbox/allowance";
 
+import { getCodexConnection } from "@/lib/codex/credentials";
+import type { ExecutionBackend } from "./execution-backend";
+
 export async function getAccessSummary(
   userId: string,
   now = new Date(),
   modelId = APP_DEFAULT_MODEL_ID,
+  executionBackend?: ExecutionBackend,
 ): Promise<AccessSummary> {
-  const [credential, billing, resolution, [customer]] = await Promise.all([
+  const [credential, billing, codex, [customer]] = await Promise.all([
     getOpenRouterCredentialStatus(userId),
     getBillingCredentialAccessState(userId),
-    resolveModelCredential({ userId, modelId }),
+    getCodexConnection(userId),
     db
       .select({ id: billingCustomers.id })
       .from(billingCustomers)
@@ -35,6 +39,11 @@ export async function getAccessSummary(
       .limit(1),
   ]);
 
+  const usesCodex =
+    executionBackend === "codex" || (!executionBackend && codex.connected);
+  const resolution = usesCodex
+    ? null
+    : await resolveModelCredential({ userId, modelId });
   const paidSubscription = hasPaidThroughAccess(billing.subscription, now)
     ? billing.subscription
     : null;
@@ -76,15 +85,20 @@ export async function getAccessSummary(
     billing.managedInference.reservedMicros;
 
   return {
-    eligible: resolution.allowed,
-    inferenceSource: resolution.allowed
-      ? resolution.source === "administrative"
-        ? null
-        : resolution.source
-      : null,
+    eligible: usesCodex ? codex.connected : (resolution?.allowed ?? false),
+    codex,
+    inferenceSource: usesCodex
+      ? codex.connected
+        ? "codex"
+        : null
+      : resolution?.allowed
+        ? resolution.source === "administrative"
+          ? null
+          : resolution.source
+        : null,
     defaultModel: {
-      id: APP_DEFAULT_MODEL_ID,
-      label: APP_DEFAULT_MODEL_ID,
+      id: usesCodex ? "codex" : APP_DEFAULT_MODEL_ID,
+      label: usesCodex ? "Codex · your subscription" : APP_DEFAULT_MODEL_ID,
     },
     credential,
     plan: {

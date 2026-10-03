@@ -4,7 +4,7 @@ import { db } from "@/lib/db/client";
 import { providerCredentials } from "@/lib/db/schema";
 import type { CredentialEnvelope } from "./envelope-encryption";
 
-const PROVIDER = "openrouter" as const;
+type CredentialProvider = "openrouter" | "codex";
 
 export interface StoredProviderCredential extends CredentialEnvelope {
   label: string;
@@ -41,45 +41,33 @@ const credentialSelection = {
   revokedAt: providerCredentials.revokedAt,
 };
 
-export const providerCredentialStore: ProviderCredentialStore = {
-  async getForUser(userId) {
-    const [credential] = await db
-      .select(credentialSelection)
-      .from(providerCredentials)
-      .where(
-        and(
-          eq(providerCredentials.userId, userId),
-          eq(providerCredentials.provider, PROVIDER),
-        ),
-      )
-      .limit(1);
+export function createProviderCredentialStore(
+  provider: CredentialProvider,
+): ProviderCredentialStore {
+  return {
+    async getForUser(userId) {
+      const [credential] = await db
+        .select(credentialSelection)
+        .from(providerCredentials)
+        .where(
+          and(
+            eq(providerCredentials.userId, userId),
+            eq(providerCredentials.provider, provider),
+          ),
+        )
+        .limit(1);
 
-    return credential ?? null;
-  },
+      return credential ?? null;
+    },
 
-  async upsertForUser(input) {
-    const now = new Date();
-    const [credential] = await db
-      .insert(providerCredentials)
-      .values({
-        id: crypto.randomUUID(),
-        userId: input.userId,
-        provider: PROVIDER,
-        ciphertext: input.ciphertext,
-        nonce: input.nonce,
-        authenticationTag: input.authenticationTag,
-        encryptionKeyVersion: input.encryptionKeyVersion,
-        label: input.label,
-        lastFour: input.lastFour,
-        validationState: "valid",
-        validatedAt: input.validatedAt,
-        validationErrorCode: null,
-        revokedAt: null,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [providerCredentials.userId, providerCredentials.provider],
-        set: {
+    async upsertForUser(input) {
+      const now = new Date();
+      const [credential] = await db
+        .insert(providerCredentials)
+        .values({
+          id: crypto.randomUUID(),
+          userId: input.userId,
+          provider: provider,
           ciphertext: input.ciphertext,
           nonce: input.nonce,
           authenticationTag: input.authenticationTag,
@@ -91,27 +79,47 @@ export const providerCredentialStore: ProviderCredentialStore = {
           validationErrorCode: null,
           revokedAt: null,
           updatedAt: now,
-        },
-      })
-      .returning(credentialSelection);
+        })
+        .onConflictDoUpdate({
+          target: [providerCredentials.userId, providerCredentials.provider],
+          set: {
+            ciphertext: input.ciphertext,
+            nonce: input.nonce,
+            authenticationTag: input.authenticationTag,
+            encryptionKeyVersion: input.encryptionKeyVersion,
+            label: input.label,
+            lastFour: input.lastFour,
+            validationState: "valid",
+            validatedAt: input.validatedAt,
+            validationErrorCode: null,
+            revokedAt: null,
+            updatedAt: now,
+          },
+        })
+        .returning(credentialSelection);
 
-    if (!credential) {
-      throw new Error("Credential replacement failed");
-    }
-    return credential;
-  },
+      if (!credential) {
+        throw new Error("Credential replacement failed");
+      }
+      return credential;
+    },
 
-  async deleteForUser(userId) {
-    const deleted = await db
-      .delete(providerCredentials)
-      .where(
-        and(
-          eq(providerCredentials.userId, userId),
-          eq(providerCredentials.provider, PROVIDER),
-        ),
-      )
-      .returning({ id: providerCredentials.id });
+    async deleteForUser(userId) {
+      const deleted = await db
+        .delete(providerCredentials)
+        .where(
+          and(
+            eq(providerCredentials.userId, userId),
+            eq(providerCredentials.provider, provider),
+          ),
+        )
+        .returning({ id: providerCredentials.id });
 
-    return deleted.length > 0;
-  },
-};
+      return deleted.length > 0;
+    },
+  };
+}
+
+export const providerCredentialStore =
+  createProviderCredentialStore("openrouter");
+export const codexCredentialStore = createProviderCredentialStore("codex");

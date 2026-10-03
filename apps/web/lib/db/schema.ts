@@ -80,7 +80,7 @@ export const providerCredentials = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    provider: text("provider", { enum: ["openrouter"] }).notNull(),
+    provider: text("provider", { enum: ["openrouter", "codex"] }).notNull(),
     ciphertext: text("ciphertext").notNull(),
     nonce: text("nonce").notNull(),
     authenticationTag: text("authentication_tag").notNull(),
@@ -105,6 +105,14 @@ export const providerCredentials = pgTable(
     ),
   ],
 );
+
+export const codexRunLeases = pgTable("codex_run_leases", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  runId: text("run_id").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
 
 export const billingCustomers = pgTable(
   "billing_customers",

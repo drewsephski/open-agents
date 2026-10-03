@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import type { SkillSuggestion } from "@/app/api/sessions/[sessionId]/skills/route";
+import { withEngineeringModeCommands } from "@/lib/chat/engineering-mode";
 
 interface UseSlashCommandsOptions {
   inputValue: string;
@@ -97,9 +98,14 @@ export function useSlashCommands({
 
   // Filter suggestions based on partial command
   const slashSuggestions = useMemo(() => {
-    if (!slashInfo || !skills) return [];
-    return filterSkillSuggestions(skills, slashInfo.partialCommand);
-  }, [slashInfo, skills]);
+    if (!slashInfo) return [];
+    const isLeadingCommand =
+      inputValue.slice(0, slashInfo.slashStart).trim().length === 0;
+    return filterSkillSuggestions(
+      isLeadingCommand ? withEngineeringModeCommands(skills) : (skills ?? []),
+      slashInfo.partialCommand,
+    );
+  }, [slashInfo, skills, inputValue]);
 
   const showSlashCommands = slashInfo !== null && slashSuggestions.length > 0;
 

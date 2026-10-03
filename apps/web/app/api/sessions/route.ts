@@ -44,6 +44,8 @@ import {
   type VercelProjectSelection,
 } from "@/lib/vercel/types";
 
+import { getNewChatBackend } from "@/lib/access/chat-backend";
+
 interface CreateSessionRequest {
   title?: string;
   repoOwner?: string;
@@ -386,7 +388,8 @@ export async function POST(req: Request) {
       session,
       req.url,
     );
-    if (hasRepository) {
+    const executionBackend = await getNewChatBackend(session.user.id);
+    if (hasRepository && executionBackend === "launchstack_native") {
       const access = await resolveModelCredential({
         userId: session.user.id,
         modelId: preferences.defaultModelId,
@@ -425,7 +428,9 @@ export async function POST(req: Request) {
       initialChat: {
         id: nanoid(),
         title: "New chat",
-        modelId: preferences.defaultModelId,
+        modelId:
+          executionBackend === "codex" ? "codex" : preferences.defaultModelId,
+        executionBackend,
       },
     });
 

@@ -10,7 +10,7 @@ import {
  * Built-in commands that skills cannot shadow.
  * Skills with these names will be unreachable via slash command.
  */
-const BUILTIN_COMMANDS = ["model", "resume", "new"];
+const BUILTIN_COMMANDS = ["model", "resume", "new", "pstack", "pstack-off"];
 
 /**
  * Parse YAML frontmatter from SKILL.md content.

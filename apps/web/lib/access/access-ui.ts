@@ -9,7 +9,8 @@ export type AllowanceWarning = "none" | "passive" | "prominent" | "exhausted";
 
 export interface AccessSummary {
   eligible: boolean;
-  inferenceSource: "byok" | "managed" | null;
+  inferenceSource: "byok" | "managed" | "codex" | null;
+  codex?: { connected: boolean };
   defaultModel: { id: string; label: string };
   credential: {
     state: SafeCredentialState;
@@ -47,11 +48,13 @@ export interface AccessSummary {
 export const PRICING_PLANS = [
   {
     id: "byok",
-    name: "BYOK",
+    name: "Free",
     price: "$0",
     cadence: "forever",
-    description: "Bring an OpenRouter key and pay the provider directly.",
+    description:
+      "Use your Codex subscription or bring an OpenRouter key. No Launchstack subscription required.",
     features: [
+      "Your existing Codex subscription",
       "Your own OpenRouter key",
       "Application default model",
       "2 sandbox hours per UTC month",
@@ -63,7 +66,8 @@ export const PRICING_PLANS = [
     name: "Pro",
     price: "$29",
     cadence: "per month",
-    description: "AI included, with more time and room to build in the cloud.",
+    description:
+      "Choose Pro when you want Launchstack to manage your AI usage.",
     features: [
       "AI usage included each month",
       "Continue with your own OpenRouter key after included usage",

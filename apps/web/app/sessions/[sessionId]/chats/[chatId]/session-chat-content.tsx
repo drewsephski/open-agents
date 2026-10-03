@@ -1243,7 +1243,10 @@ export function SessionChatContent({
     summary: accessSummary,
     loading: accessLoading,
     refresh: refreshAccess,
-  } = useAccessSummary(chatInfo.modelId ?? undefined);
+  } = useAccessSummary(
+    chatInfo.modelId ?? undefined,
+    chatInfo.executionBackend,
+  );
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
 
   useEffect(() => {
@@ -4249,48 +4252,54 @@ export function SessionChatContent({
                             >
                               <Paperclip className="h-4 w-4" />
                             </Button>
-                            {chatInfo.modelId && (
-                              <div
-                                className={
-                                  isChatInFlight ||
-                                  isUpdatingModel ||
-                                  modelOptionsLoading
-                                    ? "pointer-events-none opacity-60"
-                                    : undefined
-                                }
-                              >
-                                <ModelSelectorCompact
-                                  value={chatInfo.modelId}
-                                  modelOptions={modelOptions}
-                                  disabled={
+                            {chatInfo.executionBackend === "codex" && (
+                              <span className="px-2 text-xs text-muted-foreground">
+                                Codex · your subscription
+                              </span>
+                            )}
+                            {chatInfo.modelId &&
+                              chatInfo.executionBackend !== "codex" && (
+                                <div
+                                  className={
                                     isChatInFlight ||
                                     isUpdatingModel ||
                                     modelOptionsLoading
+                                      ? "pointer-events-none opacity-60"
+                                      : undefined
                                   }
-                                  onCloseAutoFocus={() => {
-                                    window.requestAnimationFrame(() => {
-                                      const textarea = inputRef.current;
-                                      if (!textarea) {
-                                        return;
-                                      }
+                                >
+                                  <ModelSelectorCompact
+                                    value={chatInfo.modelId}
+                                    modelOptions={modelOptions}
+                                    disabled={
+                                      isChatInFlight ||
+                                      isUpdatingModel ||
+                                      modelOptionsLoading
+                                    }
+                                    onCloseAutoFocus={() => {
+                                      window.requestAnimationFrame(() => {
+                                        const textarea = inputRef.current;
+                                        if (!textarea) {
+                                          return;
+                                        }
 
-                                      textarea.focus();
-                                      const nextCursorPosition = Math.min(
-                                        cursorPosition,
-                                        textarea.value.length,
-                                      );
-                                      textarea.setSelectionRange(
-                                        nextCursorPosition,
-                                        nextCursorPosition,
-                                      );
-                                    });
-                                  }}
-                                  onChange={(modelId) => {
-                                    void handleModelChange(modelId);
-                                  }}
-                                />
-                              </div>
-                            )}
+                                        textarea.focus();
+                                        const nextCursorPosition = Math.min(
+                                          cursorPosition,
+                                          textarea.value.length,
+                                        );
+                                        textarea.setSelectionRange(
+                                          nextCursorPosition,
+                                          nextCursorPosition,
+                                        );
+                                      });
+                                    }}
+                                    onChange={(modelId) => {
+                                      void handleModelChange(modelId);
+                                    }}
+                                  />
+                                </div>
+                              )}
                             <ContextUsageIndicator
                               inputTokens={tokenUsage.inputTokens}
                               conversationInputTokens={

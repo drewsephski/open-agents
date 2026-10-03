@@ -4,6 +4,7 @@ import {
   requireOwnedChatById,
 } from "@/app/api/chat/_lib/chat-context";
 import type { WebAgentUIMessage } from "@/app/types";
+import { isSandboxActive } from "@/lib/sandbox/utils";
 import {
   compareAndSetChatActiveStreamId,
   createChatMessageIfNotExists,
@@ -48,6 +49,17 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   try {
+    if (
+      chat.executionBackend === "codex" &&
+      isSandboxActive(chatContext.sessionRecord.sandboxState)
+    ) {
+      const { stopCodexRun } = await import("@/lib/codex/runtime");
+      await stopCodexRun(
+        chatContext.sessionRecord.sandboxState,
+        chat.activeStreamId,
+        authResult.userId,
+      );
+    }
     const run = getRun(chat.activeStreamId);
     await run.cancel();
   } catch (error) {

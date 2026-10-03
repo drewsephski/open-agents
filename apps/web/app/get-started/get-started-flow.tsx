@@ -16,6 +16,8 @@ import { useSession } from "@/hooks/use-session";
 import { authClient } from "@/lib/auth/client";
 import { sanitizeInternalRedirect } from "@/lib/redirect-safety";
 
+import { CodexCredentialPanel } from "@/components/codex-credential-panel";
+
 type StepId = 1 | 2 | 3;
 
 export function GetStartedFlow() {
@@ -63,7 +65,7 @@ export function GetStartedFlow() {
 
   const steps: { id: StepId; title: string }[] = [
     { id: 1, title: "Your account" },
-    { id: 2, title: "Add OpenRouter key" },
+    { id: 2, title: "Connect your AI" },
     { id: 3, title: "Connect GitHub" },
   ];
 
@@ -192,13 +194,15 @@ function OpenRouterStep({ onComplete }: { onComplete: () => void }) {
     <div className="space-y-3">
       <div>
         <p className="text-pretty text-sm text-zinc-300">
-          Add your own OpenRouter key to run agents on the free BYOK plan.
+          Connect your Codex subscription or add an OpenRouter key to use
+          Launchstack for free.
         </p>
         <p className="mt-1 text-pretty text-xs text-zinc-500">
           This is optional during setup. Without a key or Pro, your first prompt
           stays on this device until you choose to resend it.
         </p>
       </div>
+      <CodexCredentialPanel />
       <OpenRouterCredentialPanel compact dark onStatusChange={setStatus} />
       <div className="flex flex-wrap gap-2">
         {hasValidKey && (

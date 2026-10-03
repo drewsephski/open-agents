@@ -36,6 +36,19 @@ describe("checkout readiness", () => {
     );
   });
 
+  test("requires explicit activation for live checkout but leaves test checkout available", () => {
+    const live = {
+      ...configured,
+      CREEM_API_KEY: "creem_live_local",
+      CREEM_MODE: "live",
+    };
+    expect(() => assertCheckoutReady(live)).toThrow("live payments");
+    expect(() =>
+      assertCheckoutReady({ ...live, CREEM_LIVE_PAYMENTS_ENABLED: "true" }),
+    ).not.toThrow();
+    expect(() => assertCheckoutReady(configured)).not.toThrow();
+  });
+
   test("rejects invalid encryption keys and mismatched provider environments", () => {
     expect(() =>
       assertCheckoutReady({ ...configured, ENCRYPTION_KEY: "invalid" }),

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { BillingSection } from "./billing-section";
 
+import { isLiveCheckoutEnabled } from "@/lib/billing/billing-config";
+
 export const metadata: Metadata = {
   title: "Billing",
   description: "Manage your Launchstack plan and allowances.",
@@ -20,7 +22,10 @@ export default async function BillingPage({
           Choose your plan, track usage, and manage your subscription.
         </p>
       </div>
-      <BillingSection checkoutReturned={checkout === "success"} />
+      <BillingSection
+        checkoutReturned={checkout === "success"}
+        checkoutEnabled={isLiveCheckoutEnabled()}
+      />
     </div>
   );
 }

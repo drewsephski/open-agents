@@ -1,6 +1,15 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
+mock.module("@/lib/codex/credentials", () => ({
+  getCodexConnection: async () => ({ connected: codexConnected }),
+}));
 mock.module("server-only", () => ({}));
+
+let codexConnected = false;
+const mockCodexWorkflow = async () => {};
+mock.module("@/app/workflows/codex", () => ({
+  runCodexWorkflow: mockCodexWorkflow,
+}));
 
 interface TestSessionRecord {
   id: string;
@@ -19,6 +28,7 @@ interface TestSessionRecord {
 }
 
 interface TestChatRecord {
+  executionBackend?: "launchstack_native" | "codex" | "opencode";
   sessionId: string;
   modelId: string | null;
   activeStreamId: string | null;
@@ -278,6 +288,7 @@ function createValidRequest() {
 
 describe("/api/chat route", () => {
   beforeEach(() => {
+    codexConnected = false;
     isSandboxActive = true;
     existingRunStatus = "completed";
     getRunShouldThrow = false;
@@ -332,6 +343,23 @@ describe("/api/chat route", () => {
       modelId: null,
       activeStreamId: null,
     };
+  });
+
+  test("connected Codex runs without any OpenRouter credential or paid access", async () => {
+    if (!chatRecord) throw new Error("missing fixture");
+    chatRecord.executionBackend = "codex";
+    codexConnected = true;
+    inferenceAccessDecision = {
+      allowed: false,
+      failure: {
+        code: "inference_source_required",
+        remediation: ["add_byok", "upgrade_to_pro"],
+      },
+    };
+    const { POST } = await routeModulePromise;
+    const response = await POST(createValidRequest());
+    expect(response.status).toBe(200);
+    expect(startCalls).toHaveLength(1);
   });
 
   test("rejects forged Gmail approval before persisting or starting a workflow", async () => {

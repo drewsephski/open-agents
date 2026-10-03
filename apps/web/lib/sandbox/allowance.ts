@@ -1,4 +1,5 @@
 import "server-only";
+import { getCodexConnection } from "@/lib/codex/credentials";
 
 import { and, eq, lte, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -40,6 +41,7 @@ export type SandboxAdmission =
   | { allowed: false; failure: AccessFailure };
 
 interface SandboxAccessState {
+  codexConnected?: boolean;
   byokCredentialState: CredentialState;
   subscription: SubscriptionAccessState | null;
 }
@@ -120,12 +122,14 @@ export function createSandboxAllowanceService(dependencies: {
 async function loadSandboxAccessState(
   userId: string,
 ): Promise<SandboxAccessState> {
-  const [credential, billing] = await Promise.all([
+  const [credential, billing, codex] = await Promise.all([
     providerCredentialStore.getForUser(userId),
     getBillingCredentialAccessState(userId),
+    getCodexConnection(userId),
   ]);
   return {
     byokCredentialState: credential?.validationState ?? "missing",
+    codexConnected: codex.connected,
     subscription: billing.subscription,
   };
 }
@@ -222,6 +226,7 @@ export function createSandboxAllowanceStore(
         operation: params.operation,
         now: params.now,
         byokCredentialState: params.access.byokCredentialState,
+        codexConnected: params.access.codexConnected,
         subscription: params.access.subscription,
         usage: {
           byokPeriodConsumedMilliseconds: 0,
@@ -408,6 +413,7 @@ export function createSandboxAllowanceStore(
           operation: params.operation,
           now: params.now,
           byokCredentialState: params.access.byokCredentialState,
+          codexConnected: params.access.codexConnected,
           subscription: params.access.subscription,
           usage: {
             byokPeriodConsumedMilliseconds:

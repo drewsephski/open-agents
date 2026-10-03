@@ -38,6 +38,7 @@ import {
   getRecommendedModels,
 } from "@/lib/recommended-models";
 import { SettingsToggleRow } from "./settings-toggle-row";
+import { AgentBehaviorSection } from "./agent-behavior-section";
 
 const THEME_OPTIONS: Array<{ id: ThemePreference; name: string }> = [
   { id: "system", name: "System" },
@@ -523,6 +524,8 @@ export function PreferencesSection() {
   return (
     <div className="space-y-8">
       {/* ── General: Theme, Notifications, Environment, Automation ── */}
+      <AgentBehaviorSection />
+      <div className="border-t border-border/50" />
       <div className="space-y-4">
         <SectionHeader>General</SectionHeader>
         <div className="grid gap-6 sm:grid-cols-2">

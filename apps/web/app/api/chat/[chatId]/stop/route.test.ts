@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { SandboxState } from "@open-agents/sandbox";
 
 // ── Mutable state ──────────────────────────────────────────────────
 
@@ -9,6 +10,7 @@ let currentAuthSession: { user: { id: string } } | null = {
 let chatRecord: {
   sessionId: string;
   activeStreamId: string | null;
+  executionBackend?: "codex" | "launchstack_native";
 } | null = {
   sessionId: "session-1",
   activeStreamId: "wrun_active-123",
@@ -17,6 +19,7 @@ let chatRecord: {
 let sessionRecord: {
   id: string;
   userId: string;
+  sandboxState?: SandboxState;
 } | null = {
   id: "session-1",
   userId: "user-1",
@@ -25,6 +28,9 @@ let sessionRecord: {
 let cancelShouldThrow = false;
 
 const spies = {
+  stopCodexRun: mock(
+    async (_state: SandboxState, _runId: string, _userId: string) => {},
+  ),
   cancel: mock(() => {
     if (cancelShouldThrow) throw new Error("Cancel failed");
     return Promise.resolve();
@@ -49,6 +55,9 @@ mock.module("workflow/api", () => ({
   getRun: () => ({
     cancel: spies.cancel,
   }),
+}));
+mock.module("@/lib/codex/runtime", () => ({
+  stopCodexRun: spies.stopCodexRun,
 }));
 
 mock.module("@/lib/session/get-server-session", () => ({
@@ -100,6 +109,68 @@ beforeEach(() => {
 });
 
 describe("POST /api/chat/[chatId]/stop", () => {
+  test("stops the owned Codex process before cancelling its workflow", async () => {
+    const sandboxState: SandboxState = {
+      type: "vercel",
+      sandboxName: "owned-vm",
+      expiresAt: Date.now() + 600000,
+    };
+    sessionRecord = { id: "session-1", userId: "user-1", sandboxState };
+    chatRecord = {
+      sessionId: "session-1",
+      activeStreamId: "wrun_active-123",
+      executionBackend: "codex",
+    };
+    const { POST } = await routeModulePromise;
+    expect((await POST(createStopRequest(), routeContext)).status).toBe(200);
+    expect(spies.stopCodexRun).toHaveBeenCalledWith(
+      sandboxState,
+      "wrun_active-123",
+      "user-1",
+    );
+    expect(spies.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  test("cancellation during provisioning never creates a sandbox just to stop Codex", async () => {
+    sessionRecord = {
+      id: "session-1",
+      userId: "user-1",
+      sandboxState: { type: "vercel" },
+    };
+    chatRecord = {
+      sessionId: "session-1",
+      activeStreamId: "wrun_active-123",
+      executionBackend: "codex",
+    };
+    const { POST } = await routeModulePromise;
+    expect((await POST(createStopRequest(), routeContext)).status).toBe(200);
+    expect(spies.stopCodexRun).not.toHaveBeenCalled();
+    expect(spies.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  test("failed Codex termination does not clear the active run or allow a competing task", async () => {
+    sessionRecord = {
+      id: "session-1",
+      userId: "user-1",
+      sandboxState: {
+        type: "vercel",
+        sandboxName: "owned-vm",
+        expiresAt: Date.now() + 600000,
+      },
+    };
+    chatRecord = {
+      sessionId: "session-1",
+      activeStreamId: "wrun_active-123",
+      executionBackend: "codex",
+    };
+    spies.stopCodexRun.mockRejectedValueOnce(
+      new Error("Workspace unavailable"),
+    );
+    const { POST } = await routeModulePromise;
+    expect((await POST(createStopRequest(), routeContext)).status).toBe(500);
+    expect(spies.cancel).not.toHaveBeenCalled();
+    expect(spies.compareAndSetChatActiveStreamId).not.toHaveBeenCalled();
+  });
   test("returns 401 when not authenticated", async () => {
     currentAuthSession = null;
     const { POST } = await routeModulePromise;

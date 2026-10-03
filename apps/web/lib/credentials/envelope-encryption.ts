@@ -30,7 +30,7 @@ type CredentialEncryptionEnvironment = Readonly<
 interface CredentialCryptographyContext {
   keyring: CredentialKeyring;
   userId: string;
-  provider: "openrouter";
+  provider: "openrouter" | "codex";
 }
 
 export function createCredentialKeyring(

@@ -6,7 +6,7 @@ import {
 const messages: Record<AccessFailureCode, string> = {
   access_state_invalid: "Could not check access. Please try again.",
   inference_source_required:
-    "Add an OpenRouter API key in Connections or activate Pro before starting a task.",
+    "Connect your Codex subscription or an OpenRouter key in Connections to use Launchstack for free. Pro is optional for managed AI usage.",
   byok_credential_invalid:
     "Reconnect your OpenRouter API key in Connections before starting a task.",
   model_requires_byok:

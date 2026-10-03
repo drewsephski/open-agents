@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 mock.module("server-only", () => ({}));
 
+let liveEnabled = true;
+mock.module("@/lib/billing/billing-config", () => ({
+  isLiveCheckoutEnabled: () => liveEnabled,
+}));
+
 let session: { user: { id: string; email?: string } } | null = {
   user: { id: "user-1", email: "owner@example.com" },
 };
@@ -30,6 +35,23 @@ describe("POST /api/billing/checkout", () => {
   beforeEach(() => {
     session = { user: { id: "user-1", email: "owner@example.com" } };
     checkoutCalls.length = 0;
+    liveEnabled = true;
+  });
+
+  test("never creates a checkout while live payments are disabled", async () => {
+    liveEnabled = false;
+    const { POST } = await routeModulePromise;
+    const response = await POST(
+      new Request("https://launchstack.sh/api/billing/checkout", {
+        method: "POST",
+        headers: { origin: "https://launchstack.sh" },
+      }),
+    );
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: { code: "live_payments_not_enabled" },
+    });
+    expect(checkoutCalls).toHaveLength(0);
   });
 
   test("requires authentication", async () => {

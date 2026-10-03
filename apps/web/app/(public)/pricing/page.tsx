@@ -12,12 +12,22 @@ export const metadata: Metadata = {
 export default function PricingPage() {
   return (
     <>
-      <h1>Launchstack Pro pricing</h1>
+      <h1>Use your own AI for free</h1>
+      <p>
+        Connect your existing Codex subscription or an OpenRouter key. No
+        Launchstack payment is required. OpenAI subscription limits or your
+        provider’s own charges still apply. The free plan includes two sandbox
+        hours per UTC month and one concurrent sandbox.
+      </p>
+      <Button asChild variant="outline">
+        <Link href="/get-started">Start for free</Link>
+      </Button>
+      <h2>Optional Pro: managed AI usage</h2>
       <p className="text-3xl font-semibold tabular-nums">
         ${STORE.pro.monthlyPriceUsd} USD per month
       </p>
       <p>
-        AI coding in cloud workspaces, with included AI usage and more time to
+        Choose Pro if you want Launchstack to manage AI usage, with more time to
         build. Start without an API key, and manage your subscription through
         secure Creem checkout.
       </p>

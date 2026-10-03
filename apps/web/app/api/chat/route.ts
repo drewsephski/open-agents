@@ -32,6 +32,8 @@ import { runAgentWorkflow } from "@/app/workflows/chat";
 import { validateGmailApprovalMessages } from "@/lib/actions/approval";
 import { persistAssistantMessagesWithToolResults } from "./_lib/persist-tool-results";
 
+import { getCodexConnection } from "@/lib/codex/credentials";
+
 type WebAgentUIMessageChunk = InferUIMessageChunk<WebAgentUIMessage>;
 
 export async function POST(req: Request) {
@@ -79,10 +81,38 @@ export async function POST(req: Request) {
     return Response.json({ error: "Session is archived" }, { status: 400 });
   }
 
-  const admission = await resolveModelCredential({
-    userId,
-    modelId: chat.modelId ?? APP_DEFAULT_MODEL_ID,
-  });
+  const usesCodex = chat.executionBackend === "codex";
+  if (chat.executionBackend === "opencode")
+    return Response.json(
+      { error: "OpenCode execution is not available." },
+      { status: 400 },
+    );
+  if (usesCodex && !(await getCodexConnection(userId)).connected)
+    return Response.json(
+      {
+        error: { code: "inference_source_required", remediation: ["add_byok"] },
+      },
+      { status: 403 },
+    );
+  if (
+    usesCodex &&
+    messages.some((message) =>
+      message.parts.some((part) => part.type === "file"),
+    )
+  )
+    return Response.json(
+      {
+        error:
+          "Codex chats currently support text and workspace snippets. Add files to the workspace before asking Codex to inspect them.",
+      },
+      { status: 400 },
+    );
+  const admission = usesCodex
+    ? { allowed: true as const }
+    : await resolveModelCredential({
+        userId,
+        modelId: chat.modelId ?? APP_DEFAULT_MODEL_ID,
+      });
   if (!admission.allowed) {
     return toInferenceAccessErrorResponse(admission.failure);
   }
@@ -131,18 +161,22 @@ export async function POST(req: Request) {
   ]);
 
   // Start the durable workflow
-  const run = await start(runAgentWorkflow, [
-    {
-      messages,
-      chatId,
-      sessionId,
-      userId,
-      requestUrl: req.url,
-      authSession: session ?? null,
-      assistantId: generateId(),
-      maxSteps: 500,
-    },
-  ]);
+  const runCodexWorkflow = usesCodex
+    ? (await import("@/app/workflows/codex")).runCodexWorkflow
+    : null;
+  const workflowOptions = {
+    messages,
+    chatId,
+    sessionId,
+    userId,
+    requestUrl: req.url,
+    authSession: session ?? null,
+    assistantId: generateId(),
+    maxSteps: 500,
+  };
+  const run = runCodexWorkflow
+    ? await start(runCodexWorkflow, [workflowOptions])
+    : await start(runAgentWorkflow, [workflowOptions]);
 
   // Idempotently claim the activeStreamId slot for the workflow we just
   // started. This succeeds both when the slot is still null and when the

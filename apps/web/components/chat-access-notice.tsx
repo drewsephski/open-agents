@@ -61,7 +61,9 @@ export function ChatAccessNotice({
           {pending
             ? eligible
               ? "Access is ready. Resend only when you choose."
-              : "Add an OpenRouter key or upgrade. This prompt will not send automatically."
+              : summary?.codex?.connected
+                ? "Codex is connected. Start a new chat to use it; this chat keeps its original backend."
+                : "Connect your Codex subscription or an OpenRouter key for free. This prompt will not send automatically."
             : "Review exact usage and reset timing in Billing before starting more work."}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -79,11 +81,11 @@ export function ChatAccessNotice({
             <>
               {!eligible ? (
                 <Button asChild type="button" size="sm" variant="outline">
-                  <Link href="/settings/connections">Add API key</Link>
+                  <Link href="/settings/connections">Connect AI</Link>
                 </Button>
               ) : (
                 <Button asChild type="button" size="sm" variant="outline">
-                  <Link href="/settings/connections">Manage API key</Link>
+                  <Link href="/settings/connections">Manage AI connection</Link>
                 </Button>
               )}
               <Button asChild type="button" size="sm" variant="outline">

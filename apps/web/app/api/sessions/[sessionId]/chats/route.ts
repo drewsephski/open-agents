@@ -12,6 +12,8 @@ import { getUserPreferences } from "@/lib/db/user-preferences";
 import { sanitizeUserPreferencesForSession } from "@/lib/model-access";
 import { getServerSession } from "@/lib/session/get-server-session";
 
+import { getNewChatBackend } from "@/lib/access/chat-backend";
+
 type RouteContext = {
   params: Promise<{ sessionId: string }>;
 };
@@ -95,11 +97,14 @@ export async function POST(req: Request, context: RouteContext) {
     session,
     req.url,
   );
+  const executionBackend = await getNewChatBackend(authResult.userId);
   const chat = await createChat({
     id: requestedChatId ?? nanoid(),
     sessionId,
     title: "New chat",
-    modelId: preferences.defaultModelId,
+    modelId:
+      executionBackend === "codex" ? "codex" : preferences.defaultModelId,
+    executionBackend,
   });
 
   return Response.json({ chat });

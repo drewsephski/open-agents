@@ -113,7 +113,7 @@ export async function createSession(data: NewSession) {
 
 interface CreateSessionWithInitialChatInput {
   session: NewSession;
-  initialChat: Pick<NewChat, "id" | "title" | "modelId">;
+  initialChat: Pick<NewChat, "id" | "title" | "modelId" | "executionBackend">;
 }
 
 export async function createSessionWithInitialChat(
@@ -135,6 +135,7 @@ export async function createSessionWithInitialChat(
         sessionId: session.id,
         title: input.initialChat.title,
         modelId: input.initialChat.modelId,
+        executionBackend: input.initialChat.executionBackend,
       })
       .returning();
     if (!chat) {
