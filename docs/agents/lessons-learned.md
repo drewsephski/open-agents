@@ -1,5 +1,14 @@
 # Lessons Learned
 
+## Do not cache deployment builds that apply migrations
+
+The first Action-hardening preview built successfully, but a subsequent
+documentation/CI update hit Turbo's build cache. The task declared only `dist/**`,
+so no Next.js artifacts were restored and Vercel could not find its routes
+manifest. Build outputs now include `.next/**` excluding its internal cache.
+The build task also runs database migrations, so caching is disabled to keep
+each deployment's migration step authoritative.
+
 ## Match CI's Bun version to migration validation
 
 The Action binding upgrade passed locally with Bun 1.4.0, but CI's pinned Bun

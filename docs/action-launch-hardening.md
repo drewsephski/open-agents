@@ -99,6 +99,9 @@ unused remote records; no garbage collector or revocation webhook is introduced.
   is compilation/function-output evidence, not production credential/auth proof.
 - The PR's automatic hosted Vercel preview also reported success. Its live
   runtime, provider credentials and deployed upgrade behavior were not exercised.
+- A subsequent preview exposed a pre-existing Turbo output/cache bug: a cache
+  hit restored no Next.js routes manifest and skipped the migration-bearing
+  build. Build caching is now disabled and Next.js artifacts are declared.
 - **Browser inspection:** real local readiness showed sandbox-capacity blockers.
   Existing local database lacks PR #10's Stack tables, so saved-Stack/provider UI
   states used labeled browser-only fixtures. Multiple Gmail selection removed its
