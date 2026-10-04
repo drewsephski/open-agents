@@ -213,3 +213,6 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - The hero workspace artwork is a flattened transparent image. Independent layer separation needs complete per-slab assets, including formerly occluded surfaces; the `workspace-{top,middle,bottom}` assets provide those surfaces. Keep the hero still by default, activate on hover or explicit playback, and pause offscreen or in hidden tabs while honoring reduced motion.
 
 - A Codex backend enum is not a working Provider Connection: subscription-backed runs need the official CLI, their own login, backend-specific admission, and sandbox eligibility. Preserve pinned existing chats. Serialize refresh per User, keep tokens out of Workflow inputs/results and the repository, and do not grant managed inference from Codex access. Creem live checkout must remain disabled until account activation is confirmed.
+
+- Composio connected accounts are reusable user authorization, but Tool Router execution sessions carry tool/account policy. Never execute a worker through the broad connection-management session; persist a Chat plus exact-tool/account scope and reconstruct it server-side.
+- Drizzle can generate a replacement composite primary key before adding its new column. Review generated DDL order and run the full migration chain, including legacy rows, before shipping.

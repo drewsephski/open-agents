@@ -3,7 +3,7 @@ import { toUserPreferencesData } from "@/lib/db/user-preferences";
 import { afterAll, beforeEach, expect, mock, test } from "bun:test";
 import { dynamicTool } from "ai";
 import { z } from "zod";
-import type { ActionSession } from "./provider";
+import type { ActionSession, ActionExecutionSession } from "./provider";
 import type { ActionExecution } from "./execution";
 
 mock.module("server-only", () => ({}));
@@ -21,7 +21,19 @@ const dispatch = mock(async (_input: unknown) => ({
   successful: true,
   data: { id: "sent-1" },
 }));
-const getTools = mock(async (_session: ActionSession) => ({
+const getTools = mock(async (_session: ActionExecutionSession) => ({
+  LINEAR_SEARCH_ISSUES: dynamicTool({
+    inputSchema: z.object({}),
+    execute: async () => ({ issues: [] }),
+  }),
+  LINEAR_GET_LINEAR_ISSUE: dynamicTool({
+    inputSchema: z.object({}),
+    execute: async () => ({ id: "issue-1" }),
+  }),
+  LINEAR_CREATE_LINEAR_ISSUE: dynamicTool({
+    inputSchema: z.object({}),
+    execute: dispatch,
+  }),
   GMAIL_FETCH_EMAILS: dynamicTool({
     inputSchema: z.object({ query: z.string() }),
     execute: async () => ({ emails: [] }),
@@ -36,7 +48,23 @@ const getTools = mock(async (_session: ActionSession) => ({
     execute: dispatch,
   }),
 }));
-const findSession = mock(async (_userId: string, _providerId: string) => saved);
+const findSession = mock(
+  async (_userId: string, _providerId: string, _toolkit: string) => saved,
+);
+const ensureRuntime = mock(
+  async (
+    context: { userId: string; chatId: string },
+    _provider: unknown,
+    scope: ActionExecutionSession["scope"],
+  ) => ({
+    userId: context.userId,
+    sessionId: `runtime-${context.chatId}`,
+    scope,
+  }),
+);
+mock.module("@/lib/db/action-runtime-sessions", () => ({
+  ensureActionRuntimeSession: ensureRuntime,
+}));
 mock.module("@/lib/db/action-sessions", () => ({
   findActionSession: findSession,
 }));
@@ -44,8 +72,10 @@ mock.module("./composio", () => ({
   createComposioActionProvider: () => ({
     id: "composio",
     getTools,
-    getConnectionStatus: async () =>
-      connected ? "connected" : "not_connected",
+    getConnection: async () =>
+      connected
+        ? { status: "connected", accountId: "ca-user-1" }
+        : { status: "not_connected" },
   }),
 }));
 mock.module("@/lib/db/action-executions", () => ({
@@ -74,6 +104,7 @@ beforeEach(() => {
   dispatch.mockClear();
   getTools.mockClear();
   findSession.mockClear();
+  ensureRuntime.mockClear();
 });
 afterAll(() => {
   if (originalKey === undefined) delete process.env.COMPOSIO_API_KEY;
@@ -102,8 +133,9 @@ test("disabled or disconnected integration exposes no tools and never creates se
 test("reconstructs from the persisted user's session and guards sends across reconstruction", async () => {
   const context = { userId: "user-1", chatId: "chat-1" };
   const tools = await getUserActionTools(context);
-  expect(findSession.mock.calls[0]).toEqual(["user-1", "composio"]);
-  expect(getTools.mock.calls[0]).toEqual([saved!]);
+  expect(findSession.mock.calls[0]).toEqual(["user-1", "composio", "gmail"]);
+  expect(getTools.mock.calls[0]?.[0].sessionId).toBe("runtime-chat-1");
+  expect(getTools.mock.calls[0]?.[0].sessionId).not.toBe(saved!.sessionId);
   expect(tools.GMAIL_SEND_EMAIL?.needsApproval).toBe(true);
   const execute = tools.GMAIL_SEND_EMAIL?.execute;
   if (!execute) throw new Error("Missing send tool");
@@ -153,4 +185,71 @@ test("the server registry excludes meta tools and forces mutation approval even 
   });
   expect(tools.COMPOSIO_EXECUTE_TOOL).toBeUndefined();
   expect(tools.GMAIL_SEND_EMAIL?.needsApproval).toBe(true);
+});
+
+test("Linear-only scope never inherits Gmail; both toolkits survive durable reconstruction", async () => {
+  const configuration = buildDefaultStack(
+    toUserPreferencesData(),
+    "launchstack_native",
+  );
+  configuration.actions.capabilities = [{ toolkit: "linear", access: "read" }];
+  codingSession.stackSnapshot = {
+    name: "Linear reader",
+    version: 1,
+    configuration,
+  };
+  const context = { userId: "user-1", chatId: "linear-chat" };
+  expect(Object.keys(await getUserActionTools(context)).sort()).toEqual([
+    "LINEAR_GET_LINEAR_ISSUE",
+    "LINEAR_SEARCH_ISSUES",
+  ]);
+  const firstScope = getTools.mock.calls[0]?.[0].scope;
+  await getUserActionTools(structuredClone(context));
+  expect(getTools.mock.calls[1]?.[0].scope).toEqual(firstScope);
+  expect(firstScope).toEqual({
+    tools: ["LINEAR_GET_LINEAR_ISSUE", "LINEAR_SEARCH_ISSUES"],
+    connectedAccounts: { linear: "ca-user-1" },
+  });
+  expect(dispatch).not.toHaveBeenCalled();
+  configuration.actions.capabilities.push({ toolkit: "gmail", access: "read" });
+  codingSession.stackSnapshot = {
+    name: "Both readers",
+    version: 1,
+    configuration,
+  };
+  const tools = await getUserActionTools({ ...context, chatId: "both-chat" });
+  expect(tools.GMAIL_FETCH_EMAILS).toBeDefined();
+  expect(tools.LINEAR_SEARCH_ISSUES).toBeDefined();
+  expect(tools.GMAIL_SEND_EMAIL).toBeUndefined();
+});
+
+test("missing required connection fails clearly before runtime creation or dispatch", async () => {
+  const configuration = buildDefaultStack(
+    toUserPreferencesData(),
+    "launchstack_native",
+  );
+  configuration.actions.capabilities = [{ toolkit: "linear", access: "read" }];
+  codingSession.stackSnapshot = {
+    name: "Linear reader",
+    version: 1,
+    configuration,
+  };
+  connected = false;
+  await expect(
+    getUserActionTools({ userId: "user-1", chatId: "chat-1" }),
+  ).rejects.toThrow("Linear is required by this Stack");
+  expect(ensureRuntime).not.toHaveBeenCalled();
+  expect(getTools).not.toHaveBeenCalled();
+  expect(dispatch).not.toHaveBeenCalled();
+});
+
+test("malformed snapshots fail closed before provider loading", async () => {
+  codingSession.stackSnapshot = {
+    configuration: { actions: { capabilities: [{ toolkit: "slack" }] } },
+  };
+  await expect(
+    getUserActionTools({ userId: "user-1", chatId: "chat-1" }),
+  ).rejects.toThrow();
+  expect(ensureRuntime).not.toHaveBeenCalled();
+  expect(getTools).not.toHaveBeenCalled();
 });

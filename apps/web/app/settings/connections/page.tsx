@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { AccountsSection, AccountsSectionSkeleton } from "../accounts-section";
 import { VercelSection, VercelSectionSkeleton } from "../vercel-section";
-import { GmailSection } from "./gmail-section";
+import { ActionConnectionSection } from "./action-connection-section";
 import { OpenRouterCredentialPanel } from "@/components/openrouter-credential-panel";
 
 import { CodexCredentialPanel } from "@/components/codex-credential-panel";
@@ -29,7 +29,8 @@ export default function ConnectionsPage() {
       <Suspense fallback={<AccountsSectionSkeleton />}>
         <AccountsSection />
       </Suspense>
-      <GmailSection />
+      <ActionConnectionSection toolkit="gmail" />
+      <ActionConnectionSection toolkit="linear" />
     </>
   );
 }

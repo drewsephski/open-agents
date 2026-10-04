@@ -1,3 +1,4 @@
+import type { ActionExecutionScope } from "@/lib/actions/scope";
 import type { InferenceAccountingSettlement } from "@open-agents/agent";
 import type { SandboxState } from "@open-agents/sandbox";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
@@ -46,6 +47,7 @@ export const users = pgTable(
 );
 
 // Server-side external-action session references (never OAuth credentials).
+// User-owned connection management contexts; never used for worker execution.
 export const actionProviderSessions = pgTable(
   "action_provider_sessions",
   {
@@ -53,10 +55,15 @@ export const actionProviderSessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     providerId: text("provider_id").notNull(),
+    toolkit: text("toolkit", { enum: ["gmail", "linear"] })
+      .default("gmail")
+      .notNull(),
     sessionId: text("session_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [primaryKey({ columns: [table.userId, table.providerId] })],
+  (table) => [
+    primaryKey({ columns: [table.userId, table.providerId, table.toolkit] }),
+  ],
 );
 
 // oauth provider accounts
@@ -686,6 +693,28 @@ export const shares = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [uniqueIndex("shares_chat_id_idx").on(table.chatId)],
+);
+
+export const actionRuntimeSessions = pgTable(
+  "action_runtime_sessions",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    providerId: text("provider_id").notNull(),
+    scopeKey: text("scope_key").notNull(),
+    scope: jsonb("scope").$type<ActionExecutionScope>().notNull(),
+    sessionId: text("session_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.userId, table.chatId, table.providerId, table.scopeKey],
+    }),
+  ],
 );
 
 export const actionExecutions = pgTable(

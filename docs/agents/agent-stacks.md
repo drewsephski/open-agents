@@ -1,6 +1,6 @@
 # Agent Stacks
 
-Analysis baseline: `origin/main` at `64d981aa` (2026-10-04). The local checkout
+Initial Stack milestone baseline: `origin/main` at `64d981aa` (2026-10-04). The local checkout
 matched the fetched remote before implementation.
 
 ## Architectural assessment
@@ -24,8 +24,9 @@ Current constraints shape the first milestone:
   verification is not a hard prerequisite for delivery today.
 - Global skills are install references; repository skills are discovered from
   the workspace. Freezing references does not pin remote skill content.
-- Composio connections are user-owned. Only four server-allowlisted Gmail tools
-  exist. Reads are automatic, mutations require server-bound approval, and writes
+- Composio connections are user-owned. The server Action Registry supports Gmail
+  reads/approved writes and Linear reads with Chat-scoped execution sessions.
+  Reads are automatic, mutations require server-bound approval, and writes
   use an at-most-once persisted dispatch claim with transport retries disabled.
 
 ## First milestone
@@ -66,18 +67,19 @@ credential state, billing entitlement, repository contents, or third-party APIs.
 
 ## Action authority
 
-A Stack can disable Gmail, permit reads, or permit reads plus approved draft/send
-actions. The policy vocabulary is `read: automatic`, `write: approval`, and
-`destructive: denied`; these policies cannot be weakened in this milestone.
-Unknown capabilities and fields fail validation. Toolkit expansion requires
-server code, not a prompt or Composio discovery.
+A Stack can select Gmail reads or reads plus approved draft/send actions, and
+Linear search/issue reads. Omitted toolkits grant no tools. The fixed policy is
+`read: automatic`, `write: approval`, `destructive: denied`. Strict capability
+schemas reject unknown toolkits, duplicate entries and policy weakening.
 
-Every durable reconstruction loads the owned Chat's Session snapshot, intersects
-its capabilities with the server Gmail registry, and independently forces
-mutation approval. No capabilities means no connection lookup. The existing
-Composio session, authoritative connection check, exact payload approval binding,
-action-execution persistence, and retry settings remain in place. Subagents do
-not receive external tools. Credentials never enter the Stack or coding sandbox.
+Every durable reconstruction loads the owned Chat's Session snapshot, resolves
+its subset of the server Action Registry, and independently forces mutation
+approval. No capabilities means no connection lookup. User-owned connection
+contexts are separate from runtime sessions scoped by Chat, exact tools and
+connected-account IDs. Broader or other-Chat sessions are never reused. See
+[Action Providers](action-providers.md) for migration, SDK configuration and
+reconstruction details. Subagents and Codex do not receive external tools.
+Credentials never enter the Stack or coding sandbox.
 This policy covers control-plane tools; it is not a network-egress restriction
 on coding sandboxes or a general prohibition on shell-side effects.
 
@@ -97,18 +99,14 @@ authorization gates even when configuration is frozen.
 
 ## Next changes
 
-1. **Action registry:** extract Gmail-specific policy/approval metadata into a
-   small server registry with provider, toolkit, tool, risk, and connection scope.
-   Preserve exact-payload approval and at-most-once dispatch. Add Linear reads
-   first, then approved writes with provider integration tests.
-2. **Verification and delivery:** add explicit Stack check requirements and a
+1. **Verification and delivery:** add explicit Stack check requirements and a
    persisted verification result that gates auto delivery. Reuse Mission Evidence
    and existing commit/PR helpers; establish runtime capability support before
    offering Codex automatic delivery or external tools.
-3. **Connections and Slack:** expose capability-aware connection readiness,
+2. **Connections:** expose capability-aware connection readiness,
    required account selection, and richer approval summaries. Keep destructive
    operations denied until individually supported and tested.
-4. **Triggered execution:** extract the current authenticated launch orchestration
+3. **Triggered execution:** extract the current authenticated launch orchestration
    into a shared server service. Add event receipts, deduplication, work provenance,
    pinned Stack versions, and trigger-specific authorization. Start with one
    bounded GitHub issue or CI trigger; do not run directly from webhook payloads.

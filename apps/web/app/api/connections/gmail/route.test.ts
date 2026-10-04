@@ -13,6 +13,7 @@ const ensure = mock(async (id: string, _provider: ActionProvider) => ({
 const connect = mock(
   async (
     _session: { userId: string; sessionId: string },
+    _toolkit: string,
     _callback: string,
   ) => {
     if (fail) throw new Error("private server key");
@@ -32,7 +33,7 @@ mock.module("@/lib/actions/runtime", () => ({
       ? {
           id: "composio",
           connect,
-          getConnectionStatus: async () => status,
+          getConnection: async () => ({ status, accountId: "ca-user-1" }),
         }
       : undefined,
 }));
@@ -91,6 +92,7 @@ describe("Gmail connection API", () => {
     expect(ensure.mock.calls[0]?.[0]).toBe("user-1");
     expect(connect.mock.calls[0]).toEqual([
       { userId: "user-1", sessionId: "trs-owned" },
+      "gmail",
       "https://launchstack.sh/settings/connections",
     ]);
     expect(await response.json()).toEqual({
@@ -103,4 +105,18 @@ describe("Gmail connection API", () => {
     expect(response.status).toBe(502);
     expect(await response.text()).not.toContain("private server key");
   });
+});
+
+const { GET: getToolkit, POST: postToolkit } =
+  await import("../[toolkit]/route");
+test("generic connection route supports Linear and rejects unknown toolkits", async () => {
+  const context = { params: Promise.resolve({ toolkit: "linear" }) };
+  expect((await getToolkit(request(), context)).status).toBe(200);
+  expect((await postToolkit(request(), context)).status).toBe(200);
+  expect(connect.mock.calls[0]?.[1]).toBe("linear");
+  ensure.mockClear();
+  const unknown = { params: Promise.resolve({ toolkit: "slack" }) };
+  expect((await getToolkit(request(), unknown)).status).toBe(404);
+  expect((await postToolkit(request(), unknown)).status).toBe(404);
+  expect(ensure).not.toHaveBeenCalled();
 });

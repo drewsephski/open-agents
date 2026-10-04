@@ -1121,8 +1121,8 @@ const runAgentStep = async (
 
   try {
     const { getUserActionTools } = await import("@/lib/actions/runtime");
-    const { GMAIL_AGENT_INSTRUCTIONS } =
-      await import("@/lib/actions/gmail-instructions");
+    const { getActionInstructions } =
+      await import("@/lib/actions/instructions");
     const actionTools = await getUserActionTools({ userId, chatId });
     const { createOpenAgent } = await import("@open-agents/agent");
     const agent =
@@ -1163,7 +1163,7 @@ const runAgentStep = async (
         ? {
             customInstructions: [
               agentOptions.customInstructions,
-              GMAIL_AGENT_INSTRUCTIONS,
+              getActionInstructions(Object.keys(actionTools)),
             ]
               .filter(Boolean)
               .join("\n\n"),

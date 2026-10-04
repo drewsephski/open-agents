@@ -33,6 +33,10 @@ export default function PrivacyPage() {
             records of approvals and action results.
           </li>
           <li>
+            If you connect Linear, issue details and search results accessed for
+            your requested tasks, plus records of action results.
+          </li>
+          <li>
             Prompts, attachments, repository files the agent reads, generated
             code, messages, command output, session history, and usage records.
           </li>
@@ -75,11 +79,11 @@ export default function PrivacyPage() {
           and Vercel accounts are used according to the permissions you grant.
         </p>
         <p>
-          Optional Gmail actions use Composio to connect to Google and execute
-          the actions you authorize. Gmail connection credentials remain with
-          Composio. Retrieved email content may enter the conversation context
-          sent to the selected model provider. Connect an account only if you
-          are authorized to share the information needed for your tasks.
+          Optional Gmail and Linear actions use Composio to connect accounts and
+          execute the actions you authorize. Connection credentials remain with
+          Composio. Retrieved email and issue content may enter the conversation
+          context sent to the selected model provider. Connect an account only
+          if you are authorized to share the information needed for your tasks.
         </p>
         <p>
           If you connect Codex, we encrypt and store the login file you import,
