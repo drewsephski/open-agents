@@ -1,5 +1,6 @@
 "use client";
 import { useState, type ReactNode } from "react";
+import { StackActionFields } from "./stack-action-fields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -276,39 +277,10 @@ export function StackEditor({
         </Field>
         {native && (
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Gmail capabilities">
-              <select
-                className={selectClass}
-                value={configuration.actions.capabilities[0]?.access ?? "none"}
-                onChange={(event) =>
-                  update({
-                    actions: {
-                      ...configuration.actions,
-                      capabilities:
-                        event.target.value === "none"
-                          ? []
-                          : [
-                              {
-                                toolkit: "gmail",
-                                access:
-                                  event.target.value === "read"
-                                    ? "read"
-                                    : "read_write",
-                              },
-                            ],
-                    },
-                  })
-                }
-              >
-                <option value="none">Disabled</option>
-                <option value="read">Read only</option>
-                <option value="read_write">Read, draft, and send</option>
-              </select>
-              <span className="text-xs font-normal text-muted-foreground">
-                Requires your Gmail connection. Every draft and send requires
-                approval.
-              </span>
-            </Field>
+            <StackActionFields
+              actions={configuration.actions}
+              onChange={(actions) => update({ actions })}
+            />
             <div className="space-y-3">
               <label className="flex items-center gap-2 text-sm">
                 <input

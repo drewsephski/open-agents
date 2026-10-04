@@ -29,7 +29,7 @@ import {
 } from "./_lib/chat-context";
 import { parseChatRequestBody, requireChatIdentifiers } from "./_lib/request";
 import { runAgentWorkflow } from "@/app/workflows/chat";
-import { validateGmailApprovalMessages } from "@/lib/actions/approval";
+import { validateActionApprovalMessages } from "@/lib/actions/approval";
 import { persistAssistantMessagesWithToolResults } from "./_lib/persist-tool-results";
 
 import { getCodexConnection } from "@/lib/codex/credentials";
@@ -148,7 +148,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const validActionApprovals = await validateGmailApprovalMessages(
+  const validActionApprovals = await validateActionApprovalMessages(
     messages,
     async (id) => {
       const saved = await getChatMessageByIdForChat(id, chatId);
@@ -157,7 +157,7 @@ export async function POST(req: Request) {
   );
   if (!validActionApprovals) {
     return Response.json(
-      { error: "Invalid Gmail approval response" },
+      { error: "Invalid external action approval response" },
       { status: 403 },
     );
   }

@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
-import { isMutatingGmailAction } from "./gmail-policy";
+import { isAction, requiresActionApproval } from "./registry";
 
 const messageSchema = z.object({
   id: z.string(),
@@ -17,7 +17,7 @@ function toolName(part: Record<string, unknown>): string {
 }
 
 /** Bind client approval responses to the exact server-persisted tool payload. */
-export async function validateGmailApprovalMessages(
+export async function validateActionApprovalMessages(
   messages: unknown,
   loadMessage: (id: string) => Promise<unknown>,
 ): Promise<boolean> {
@@ -26,17 +26,39 @@ export async function validateGmailApprovalMessages(
     const parsed = messageSchema.safeParse(rawMessage);
     if (!parsed.success) return false;
     const message = parsed.data;
-    const mutations = message.parts.filter((part) =>
-      isMutatingGmailAction(toolName(part)),
+    // Unknown dynamic actions fail closed. Coding tools use static tool-* parts.
+    if (
+      message.parts.some(
+        (part) => part.type === "dynamic-tool" && !isAction(toolName(part)),
+      )
+    )
+      return false;
+    const candidates = message.parts.filter(
+      (part) => isAction(toolName(part)) || part.state === "approval-responded",
     );
-    if (mutations.length === 0) continue;
-    if (message.role !== "assistant") return false;
+    if (!candidates.length) continue;
     const saved = messageSchema.safeParse(await loadMessage(message.id));
-    if (!saved.success || saved.data.role !== "assistant") return false;
-    for (const part of mutations) {
-      const original = saved.data.parts.find(
-        (candidate) => candidate.toolCallId === part.toolCallId,
-      );
+    for (const part of candidates) {
+      const original = saved.success
+        ? saved.data.parts.find(
+            (candidate) => candidate.toolCallId === part.toolCallId,
+          )
+        : undefined;
+      const name = toolName(part);
+      const originalName = original ? toolName(original) : "";
+      if (
+        !requiresActionApproval(name) &&
+        !requiresActionApproval(originalName)
+      ) {
+        if (part.state === "approval-responded" && isAction(name)) return false;
+        continue;
+      }
+      if (
+        message.role !== "assistant" ||
+        !saved.success ||
+        saved.data.role !== "assistant"
+      )
+        return false;
       if (
         !original ||
         typeof part.toolCallId !== "string" ||
@@ -45,6 +67,7 @@ export async function validateGmailApprovalMessages(
       )
         return false;
       if (part.state === "approval-responded") {
+        if (!requiresActionApproval(name)) return false;
         const approval = z
           .object({
             id: z.string(),

@@ -1,80 +1,155 @@
 # Authenticated external actions
 
-External actions execute in the Launchstack web control plane. `packages/agent`
-accepts an additional AI SDK `ToolSet` through `createOpenAgent`; it does not know
-about Composio, OAuth credentials, or the sandbox execution backend.
+External actions execute in the LaunchStack web control plane. `packages/agent`
+accepts an additional AI SDK `ToolSet` through `createOpenAgent`; credentials,
+Composio clients, OAuth and action execution never enter the coding sandbox.
+Subagents and Codex do not receive these tools.
 
-`apps/web/lib/actions/provider.ts` defines the small Action Provider boundary:
-create a user session, initiate a connection, check connection status, and build
-tools. Composio is the initial implementation. It uses `@composio/core` and
-`@composio/vercel`, with a direct-tools session limited to Gmail:
+```text
+Frozen Stack snapshot
+  ↓
+Action capability (Gmail read / read_write; Linear read)
+  ↓
+LaunchStack Action Registry
+  ↓
+Scoped Composio runtime session
+  ↓
+User-owned connected account (pinned by ID)
+  ↓
+Exact provider tool
+  ↓
+Fixed approval policy
+  ↓
+Durable execution
+```
 
-- `GMAIL_FETCH_EMAILS`
-- `GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID`
-- `GMAIL_CREATE_EMAIL_DRAFT`
-- `GMAIL_SEND_EMAIL`
+## Registry and capabilities
 
-Composio discovery, generic execution, workbench, Instant, and other toolkit
-actions are unavailable. A second local allowlist rejects unexpected schemas.
-The Composio project key is server-only; Gmail credentials remain with Composio.
-Neither credentials nor the provider client are included in sandbox state or
-environment variables.
+`apps/web/lib/actions/registry.ts` owns the complete supported external surface:
 
-## Sessions and durable steps
+| Toolkit | Exact tool | Behavior | Approval |
+| --- | --- | --- | --- |
+| Gmail | `GMAIL_FETCH_EMAILS` | Read | Automatic |
+| Gmail | `GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID` | Read | Automatic |
+| Gmail | `GMAIL_CREATE_EMAIL_DRAFT` | Write | Required |
+| Gmail | `GMAIL_SEND_EMAIL` | Write | Required |
+| Linear | `LINEAR_SEARCH_ISSUES` | Read | Automatic |
+| Linear | `LINEAR_GET_LINEAR_ISSUE` | Read | Automatic |
 
-`action_provider_sessions` stores one provider session ID per Launchstack user.
-First connection uses a PostgreSQL advisory transaction lock to serialize
-concurrent creation. Chatting does not create sessions or initiate OAuth.
+Stack capabilities use a strict discriminated union. Unknown toolkit/action IDs,
+extra fields, duplicate toolkit declarations, Linear writes and weakened policies
+fail validation. The fixed policies remain `read: automatic`, `write: approval`,
+`destructive: denied`. No destructive actions are registered. A Stack selects a
+subset of the registry; neither prompts nor generic discovery can add authority.
+Legacy sessions without snapshots retain precisely the four Gmail tools when
+connected; they do not inherit Linear. Malformed snapshots fail closed.
 
-`/api/connections/gmail` derives user identity from Better Auth. POST initiates
-OAuth and supplies a fixed return path to `/settings/connections`; GET reads
-Composio's authoritative connection state. Callback query parameters never
-establish connection status. Browser responses contain status or an OAuth
-redirect URL, never provider session IDs or credentials.
+Composio is the authentication/execution provider, not the policy authority.
+The provider creates sessions with exact toolkit/tool enable lists and preloads
+only the selected tools (at most six schemas). A second registry/scope filter
+rejects unexpected schemas and checks the slug again at dispatch. The native
+runtime independently filters and enforces approval even if a provider returns
+extra tools or the wrong approval metadata. No generic execute, discovery,
+GraphQL, proxy, workbench, Instant or connection-management tools reach the model.
 
-Message conversion and each agent step reconstruct tools server-side from the
-authenticated user ID and database session ID. Tools, client objects, and
-closures never cross a Vercel Workflow step boundary. Each agent instance merges
-its action tools with the existing coding tools and rejects name collisions.
-Delegated coding subagents do not receive Gmail tools.
+## Connections versus execution sessions
+
+Connected accounts are reusable, user-owned authorization relationships managed
+by Composio. They survive the creation of narrower runtime sessions; existing
+Gmail users do not need new OAuth because of this migration.
+
+`action_provider_sessions` now stores one **connection management context** per
+`(user, provider, toolkit)`. New contexts have zero executable tools. Existing
+Gmail contexts are preserved, including their remote configuration, but are used
+only for authorization/status APIs. Workers never load or execute their tools.
+Connection status comes from Composio's `ACTIVE` account state, never callback
+query parameters. Credentials remain with Composio; browser responses expose only
+connection status or an HTTPS authorization URL, never account/session IDs.
+
+`action_runtime_sessions` stores worker contexts keyed by
+`(user, chat, provider, scope hash)`. The hash covers a canonical exact tool list
+and exact connected-account IDs. A Chat with a narrower capability set or a
+different connected account cannot reuse a broader session. Different Chats do
+not share runtime sessions. Reconnection can select a new account and hence
+creates a new context with the same frozen tool policy; it cannot widen the
+Stack. There is no runtime session update/widening operation in LaunchStack.
+The stored scope is validated and compared before reuse.
+
+First creation holds a PostgreSQL advisory transaction lock through provider
+creation and insert; a composite primary key provides an additional database
+boundary. Concurrent requests for an identical scope reuse the winner. A crash
+between remote creation and database commit can leave an unused remote session;
+no actions are executed during creation and it is never reused implicitly.
+
+Each durable message conversion/agent step reloads the owned Chat's Session
+snapshot, resolves allowed tools through the registry, checks the required
+connections, and ensures the same scoped runtime. Only serializable user/Chat
+IDs cross Workflow boundaries; clients, tool functions and OAuth state are rebuilt
+inside steps. A missing connection or unconfigured deployment produces a clear
+error before runtime creation/dispatch for a frozen Stack. No capabilities means
+no provider/connection lookup. Legacy disconnected sessions retain their
+coding-only fallback.
 
 ## Approval and retry behavior
 
-Creating a Gmail draft and sending an email always set AI SDK `needsApproval:
-true`. Fetches do not. The existing chat pause/resume and Approve/Deny controls
-handle these actions. The Gmail renderer shows the entire email input before
-approval. The chat API checks mutation parts against the server-persisted
-assistant message, including tool call ID, payload, approval ID, and decision.
+Registered writes always set AI SDK `needsApproval: true`; reads set false.
+The shared action renderer shows the full write payload, including recipients,
+subject, body, cc and bcc for Gmail, before the existing Approve/Deny controls.
+The chat API binds responses to the persisted assistant message in the same
+owned Chat: message/call IDs, tool name, complete input, approval ID and prior
+decision. Tool substitution (including a write renamed to a read), changed
+arguments, forged approvals and replaced denials are rejected. Unknown dynamic
+actions fail closed. Read calls need no approval.
 
-`action_executions` records approved mutations before remote dispatch. A replay
-of a completed call returns its stored output; a concurrent or uncertain call
-does not dispatch again. Session execution uses a Composio client with transport
-retries disabled. A timeout, crash, or failure to persist a successful response
-leaves the call claimed: check Gmail before asking for a new action. This is
-at-most-once dispatch, not a guarantee of exactly-once remote delivery.
+`action_executions` still claims writes before dispatch using
+`(user, chat, tool call ID)`. A completed replay returns its stored result only
+when tool and input match. An in-flight/uncertain replay never dispatches again.
+Composio session execution uses `maxRetries: 0`. A timeout, crash, provider error,
+or failure to persist a successful result leaves the claim intact. The user
+must check the connected app before requesting a new action. This is at-most-once
+dispatch, not exactly-once remote delivery. Error messages never include private
+provider details.
 
-Sending uses `GMAIL_SEND_EMAIL` with the complete reviewed payload rather than
-an externally editable draft ID. It does not remove a previously saved draft.
-Saving a Gmail draft is optional; a reply can first be drafted as chat text,
-then sent after the separate send approval.
+Sending uses the complete reviewed `GMAIL_SEND_EMAIL` payload rather than an
+externally editable draft ID. Draft creation and send remain separate approvals;
+sending does not delete a saved draft. No external write is autonomous.
 
-## Setup and proof
+## SDK/API evidence and rollout
 
-1. Set `COMPOSIO_API_KEY` in the web application's server environment. Optionally
-   set `COMPOSIO_GMAIL_AUTH_CONFIG_ID` to a custom Gmail auth config. Never pass
-   these variables to a coding sandbox.
-2. Apply generated migration `0042_rainy_korath.sql` through the existing migration
-   script/deployment flow. Preserve preceding migrations.
-3. Sign in to Launchstack, open Settings → Connections, and connect Gmail.
-4. In a chat, ask to read a specific email and draft a reply. Review and approve
-   creation if saving the draft to Gmail.
-5. Ask to send the reply. Review recipients, subject, body, cc, and bcc in the
-   send tool card; Approve sends, Deny does not.
-6. Check the sent message in Gmail. Repeating the same approved tool call must
-   reuse its recorded result instead of sending again.
+Audited baseline: fetched `origin/main` at `716491a0` (merged PR #10).
+Installed SDKs: `@composio/core` **0.22.0**, `@composio/vercel` **0.12.1**.
+Their installed declarations and implementations were inspected alongside the
+[current session configuration docs](https://docs.composio.dev/docs/configuring-sessions),
+[connected-account docs](https://docs.composio.dev/docs/auth-configuration/connected-accounts)
+and [Linear catalog](https://composio.dev/toolkits/linear).
+The Linear slugs above were verified in the catalog's published tool data.
 
-The SDK integration tests use the real Composio and AI SDK implementations with
-stubbed HTTP, including reconstruction between approval request and response.
-Other tests cover per-user persistence, concurrent session creation, approval
-tampering, rendering, API authentication/origin checks, and mutation replay.
-They do not replace live OAuth, Gmail delivery, or deployed Workflow proof.
+The installed SDK's `SessionPreset.DIRECT_TOOLS` disables search, multi-execute,
+connection management and workbench by default. We also explicitly disable
+connection management, sandbox and Instant, supply exact preloaded tools and
+pin `connectedAccounts`. `getRawToolRouterSessionTools` loads session-filtered
+schemas; `session.execute` dispatches a single exact slug. No SDK upgrade is
+needed. Installed `toolkits`/`authorize` methods do not accept a separate request
+options argument; session retrieval, creation, schema loading and execution do.
+
+Set server-only `COMPOSIO_API_KEY`. Optional `COMPOSIO_GMAIL_AUTH_CONFIG_ID` and
+`COMPOSIO_LINEAR_AUTH_CONFIG_ID` select custom auth configurations; otherwise
+Composio-managed authentication is used. Never forward these to a sandbox.
+Settings → Connections uses the same component/API handler for both toolkits.
+`/api/connections/:toolkit` rejects unknown names, authenticates users, checks
+same-origin POSTs and fixes the callback to `/settings/connections`. The existing
+`/api/connections/gmail` URL remains compatible. Stack editing does not require
+an existing connection.
+
+Migration `0046_stormy_wild_child.sql` adds the runtime table and extends the
+connection-context primary key, tagging all existing rows as Gmail. It does not
+rewrite Stack versions, snapshots, action execution claims or remote accounts.
+Apply the normal migration/deployment chain; never `db:push`.
+
+Tests use real installed Composio/AI SDKs with stubbed HTTP to check exact session
+configuration, unexpected-schema filtering, Linear reads, durable reconstruction,
+approval pause/resume/denial and disabled dispatch retries. Database tests cover
+concurrent creation, scope isolation and the entire migration chain with an old
+Gmail row. Registry, Stack, API, renderer and at-most-once tests cover the remaining
+policy boundaries. These tests do not prove live OAuth, Gmail delivery, Linear
+reads with real credentials, or deployed Workflow execution.

@@ -1,14 +1,12 @@
 "use client";
 
-import { Mail } from "lucide-react";
+import { Mail, CircleDot } from "lucide-react";
 import type { WebAgentUIToolPart } from "@/app/types";
 import type { ToolRenderState } from "@/app/lib/render-tool";
-import { GMAIL_ACTIONS } from "@/lib/actions/gmail-policy";
+import { ACTION_REGISTRY, type ActionId } from "@/lib/actions/registry";
 import { ToolLayout } from "../tool-layout";
 
-type GmailActionName = keyof typeof GMAIL_ACTIONS;
-
-export function GmailRenderer({
+export function ActionRenderer({
   part,
   state,
   name,
@@ -17,11 +15,11 @@ export function GmailRenderer({
 }: {
   part: WebAgentUIToolPart;
   state: ToolRenderState;
-  name: GmailActionName;
+  name: ActionId;
   onApprove?: (id: string) => void;
   onDeny?: (id: string, reason?: string) => void;
 }) {
-  const action = GMAIL_ACTIONS[name];
+  const action = ACTION_REGISTRY[name];
   const input: unknown = part.input;
   const output: unknown =
     part.state === "output-available" ? part.output : undefined;
@@ -31,14 +29,22 @@ export function GmailRenderer({
     "successful" in output &&
     output.successful === false;
   const mergedState = failed
-    ? { ...state, error: "Gmail action failed" }
+    ? { ...state, error: "External action failed" }
     : state;
   return (
     <ToolLayout
       name={action.label}
-      icon={<Mail className="size-3.5" />}
+      icon={
+        action.toolkit === "gmail" ? (
+          <Mail className="size-3.5" />
+        ) : (
+          <CircleDot className="size-3.5" />
+        )
+      }
       summary={
-        action.mutating ? "Review email details" : "Connected Gmail account"
+        action.behavior === "write"
+          ? "Review email details"
+          : `Connected ${action.toolkit === "gmail" ? "Gmail" : "Linear"} account`
       }
       state={mergedState}
       onApprove={onApprove}
@@ -51,7 +57,7 @@ export function GmailRenderer({
         )
       }
     >
-      {action.mutating && input !== undefined && (
+      {action.behavior === "write" && input !== undefined && (
         <div className="mt-2 rounded-md border border-border/50 p-3">
           <p className="mb-2 text-xs font-medium">
             {name === "GMAIL_SEND_EMAIL"

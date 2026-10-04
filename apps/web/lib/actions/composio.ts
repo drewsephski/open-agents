@@ -2,8 +2,24 @@ import "server-only";
 import { Composio, SessionPreset } from "@composio/core";
 import { VercelProvider } from "@composio/vercel";
 import { dynamicTool, type ToolSet } from "ai";
-import { GMAIL_ACTIONS, isGmailAction } from "./gmail-policy";
+import {
+  ACTION_REGISTRY,
+  actionToolkitSchema,
+  isAction,
+  requiresActionApproval,
+} from "./registry";
+import { normalizeActionScope } from "./scope";
 import type { ActionProvider } from "./provider";
+
+function authConfigs(toolkits: Array<"gmail" | "linear">) {
+  return Object.fromEntries(
+    toolkits.flatMap((toolkit) => {
+      const id =
+        process.env[`COMPOSIO_${toolkit.toUpperCase()}_AUTH_CONFIG_ID`];
+      return id ? [[toolkit, id]] : [];
+    }),
+  );
+}
 
 export function createComposioActionProvider(apiKey: string): ActionProvider {
   const provider = new VercelProvider();
@@ -21,68 +37,98 @@ export function createComposioActionProvider(apiKey: string): ActionProvider {
 
   return {
     id: "composio",
-    async createSession(userId) {
+    async createSession(userId, value) {
+      const scope = normalizeActionScope(value);
+      const toolkits = [
+        ...new Set(scope.tools.map((name) => ACTION_REGISTRY[name].toolkit)),
+      ];
       const session = await composio.create(
         userId,
         {
           sessionPreset: SessionPreset.DIRECT_TOOLS,
-          toolkits: ["gmail"],
-          tools: { gmail: { enable: Object.keys(GMAIL_ACTIONS) } },
+          toolkits: { enable: toolkits },
+          tools: Object.fromEntries(
+            toolkits.map((toolkit) => [
+              toolkit,
+              {
+                enable: scope.tools.filter(
+                  (name) => ACTION_REGISTRY[name].toolkit === toolkit,
+                ),
+              },
+            ]),
+          ),
+          preload: { tools: scope.tools },
+          connectedAccounts: scope.connectedAccounts,
+          authConfigs: authConfigs(toolkits),
           manageConnections: false,
           sandbox: { enable: false },
           instant: false,
-          ...(process.env.COMPOSIO_GMAIL_AUTH_CONFIG_ID
-            ? {
-                authConfigs: {
-                  gmail: process.env.COMPOSIO_GMAIL_AUTH_CONFIG_ID,
-                },
-              }
-            : {}),
         },
         requestOptions(),
       );
       return session.sessionId;
     },
-    async getConnectionStatus({ sessionId }) {
-      const session = await composio.use(
-        sessionId,
-        undefined,
+    async createConnectionSession(userId, toolkit) {
+      actionToolkitSchema.parse(toolkit);
+      // UI authorization context only. Never load or execute tools from it.
+      const session = await composio.create(
+        userId,
+        {
+          sessionPreset: SessionPreset.DIRECT_TOOLS,
+          toolkits: { enable: [toolkit] },
+          tools: { [toolkit]: { enable: [] } },
+          preload: { tools: [] },
+          authConfigs: authConfigs([toolkit]),
+          manageConnections: false,
+          sandbox: { enable: false },
+          instant: false,
+        },
         requestOptions(),
       );
-      const { items } = await session.toolkits({ toolkits: ["gmail"] });
-      return items.some(
-        (item) => item.slug === "gmail" && item.connection?.isActive,
-      )
-        ? "connected"
-        : "not_connected";
+      return session.sessionId;
     },
-    async connect({ sessionId }, callbackUrl) {
+    async getConnection({ sessionId }, toolkit) {
+      actionToolkitSchema.parse(toolkit);
       const session = await composio.use(
         sessionId,
         undefined,
         requestOptions(),
       );
-      const connection = await session.authorize("gmail", { callbackUrl });
-      if (!connection.redirectUrl) {
-        throw new Error("Gmail authorization did not return a redirect URL");
-      }
+      const { items } = await session.toolkits({ toolkits: [toolkit] });
+      const connection = items.find(
+        (item) => item.slug === toolkit,
+      )?.connection;
+      return connection?.isActive && connection.connectedAccount
+        ? { status: "connected", accountId: connection.connectedAccount.id }
+        : { status: "not_connected" };
+    },
+    async connect({ sessionId }, toolkit, callbackUrl) {
+      actionToolkitSchema.parse(toolkit);
+      const session = await composio.use(
+        sessionId,
+        undefined,
+        requestOptions(),
+      );
+      const connection = await session.authorize(toolkit, { callbackUrl });
+      if (!connection.redirectUrl)
+        throw new Error("Authorization did not return a redirect URL");
       const url = new URL(connection.redirectUrl);
-      if (url.protocol !== "https:") {
-        throw new Error("Invalid Gmail authorization URL");
-      }
+      if (url.protocol !== "https:")
+        throw new Error("Invalid authorization URL");
       return url.href;
     },
-    async getTools({ sessionId }) {
+    async getTools({ sessionId, scope: value }) {
+      const scope = normalizeActionScope(value);
+      const allowed = (name: string) =>
+        isAction(name) && scope.tools.includes(name);
       const schemas = await composio.tools.getRawToolRouterSessionTools(
         sessionId,
         undefined,
         requestOptions(),
       );
-      const allowedSchemas = schemas.filter((schema) =>
-        isGmailAction(schema.slug),
-      );
+      const allowedSchemas = schemas.filter((schema) => allowed(schema.slug));
       const wrapped = provider.wrapTools(allowedSchemas, async (slug, args) => {
-        if (!isGmailAction(slug)) {
+        if (!allowed(slug)) {
           throw new Error("Action is not allowed");
         }
         const result = await client.toolRouter.session.execute(
@@ -98,17 +144,21 @@ export function createComposioActionProvider(apiKey: string): ActionProvider {
       });
       const tools: ToolSet = {};
       for (const [name, definition] of Object.entries(wrapped)) {
-        if (isGmailAction(name)) {
+        if (allowed(name)) {
           const execute = definition.execute;
-          if (!execute) throw new Error("Gmail tool has no executor");
+          if (!execute) throw new Error("Action tool has no executor");
           tools[name] = dynamicTool({
             description: definition.description,
             inputSchema: definition.inputSchema,
             execute: (input, options) => execute(input, options),
-            needsApproval: GMAIL_ACTIONS[name].mutating,
+            needsApproval: requiresActionApproval(name),
           });
         }
       }
+      if (scope.tools.some((name) => !tools[name]))
+        throw new Error(
+          "Required action schemas are unavailable for this execution scope",
+        );
       return tools;
     },
   };

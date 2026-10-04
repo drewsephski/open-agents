@@ -6,7 +6,15 @@ import {
   type ToolSet,
 } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
-import { GMAIL_ACTIONS } from "./gmail-policy";
+import { ACTION_IDS, ACTION_REGISTRY } from "./registry";
+import type { ActionExecutionScope } from "./scope";
+const gmailTools = ACTION_IDS.filter(
+  (name) => ACTION_REGISTRY[name].toolkit === "gmail",
+);
+const scope: ActionExecutionScope = {
+  tools: gmailTools,
+  connectedAccounts: { gmail: "ca-user-1" },
+};
 
 mock.module("server-only", () => ({}));
 const { createComposioActionProvider } = await import("./composio");
@@ -19,7 +27,7 @@ const session = {
   session_id: "trs-user-1",
   mcp: { url: "https://backend.composio.dev/mcp" },
   config: {
-    preload: { tools: Object.keys(GMAIL_ACTIONS) },
+    preload: { tools: gmailTools },
     workbench: { enable: false },
   },
 };
@@ -73,7 +81,8 @@ beforeEach(() => {
     if (url.includes("/tools")) {
       return Response.json({
         items: [
-          ...Object.keys(GMAIL_ACTIONS),
+          ...ACTION_IDS,
+          "LINEAR_CREATE_LINEAR_ISSUE",
           "COMPOSIO_MULTI_EXECUTE_TOOL",
           "GMAIL_DELETE_MESSAGE",
         ].map((slug) => ({
@@ -159,9 +168,9 @@ function approvalRequest(messages: ModelMessage[]) {
 }
 
 describe("Composio Gmail vertical with real SDKs and stubbed HTTP", () => {
-  test("creates a restricted per-user session, connects Gmail, and resumes it", async () => {
+  test("creates a restricted runtime, connects Gmail, and resumes it", async () => {
     const provider = createComposioActionProvider("test-server-key");
-    expect(await provider.createSession("launchstack-user-1")).toBe(
+    expect(await provider.createSession("launchstack-user-1", scope)).toBe(
       "trs-user-1",
     );
     const create = requests.find(
@@ -169,17 +178,26 @@ describe("Composio Gmail vertical with real SDKs and stubbed HTTP", () => {
     )!;
     expect(create.body).toMatchObject({
       toolkits: { enable: ["gmail"] },
-      tools: { gmail: { enable: Object.keys(GMAIL_ACTIONS) } },
+      connected_accounts: { gmail: ["ca-user-1"] },
+      preload: { tools: [...gmailTools].sort() },
+      tools: { gmail: { enable: [...gmailTools].sort() } },
       manage_connections: { enable: false },
       workbench: { enable: false },
       search: { enable: false },
       execute: { enable_multi_execute: false },
     });
-    const reference = { userId: "launchstack-user-1", sessionId: "trs-user-1" };
-    expect(await provider.getConnectionStatus(reference)).toBe("not_connected");
+    const reference = {
+      userId: "launchstack-user-1",
+      sessionId: "trs-user-1",
+      scope,
+    };
+    expect(await provider.getConnection(reference, "gmail")).toEqual({
+      status: "not_connected",
+    });
     expect(
       await provider.connect(
         reference,
+        "gmail",
         "https://launchstack.sh/settings/connections",
       ),
     ).toBe("https://connect.composio.dev/oauth/gmail");
@@ -190,7 +208,10 @@ describe("Composio Gmail vertical with real SDKs and stubbed HTTP", () => {
       callback_url: "https://launchstack.sh/settings/connections",
     });
     connected = true; // OAuth provider completion; callback query parameters are not trusted.
-    expect(await provider.getConnectionStatus(reference)).toBe("connected");
+    expect(await provider.getConnection(reference, "gmail")).toEqual({
+      status: "connected",
+      accountId: "ca-user-1",
+    });
     expect(requests.filter((request) => request.body.user_id).length).toBe(1);
   });
 
@@ -199,8 +220,9 @@ describe("Composio Gmail vertical with real SDKs and stubbed HTTP", () => {
     const tools = await provider.getTools({
       userId: "user-1",
       sessionId: "trs-user-1",
+      scope,
     });
-    expect(Object.keys(tools)).toEqual(Object.keys(GMAIL_ACTIONS));
+    expect(Object.keys(tools)).toEqual(gmailTools);
     expect(tools.GMAIL_SEND_EMAIL?.needsApproval).toBe(true);
     const read = await requestAction(tools, "GMAIL_FETCH_EMAILS");
     expect(read.toolResults.length).toBe(1);
@@ -220,7 +242,7 @@ describe("Composio Gmail vertical with real SDKs and stubbed HTTP", () => {
       // Rebuild provider and tools as the next durable step would, using IDs only.
       const resumedTools = await createComposioActionProvider(
         "test-server-key",
-      ).getTools({ userId: "user-1", sessionId: "trs-user-1" });
+      ).getTools({ userId: "user-1", sessionId: "trs-user-1", scope });
       const messages = await convertToModelMessages(
         [
           {
@@ -260,7 +282,7 @@ describe("Composio Gmail vertical with real SDKs and stubbed HTTP", () => {
   test("denying a send never executes it", async () => {
     const tools = await createComposioActionProvider(
       "test-server-key",
-    ).getTools({ userId: "user-1", sessionId: "trs-user-1" });
+    ).getTools({ userId: "user-1", sessionId: "trs-user-1", scope });
     const result = await requestAction(tools, "GMAIL_SEND_EMAIL");
     const approval = approvalRequest(result.response.messages);
     await generateText({
@@ -289,7 +311,7 @@ describe("Composio Gmail vertical with real SDKs and stubbed HTTP", () => {
     executeStatus = 500;
     const tools = await createComposioActionProvider(
       "test-server-key",
-    ).getTools({ userId: "user-1", sessionId: "trs-user-1" });
+    ).getTools({ userId: "user-1", sessionId: "trs-user-1", scope });
     const send = tools.GMAIL_SEND_EMAIL?.execute;
     if (!send) throw new Error("Missing send tool");
     await expect(
@@ -301,4 +323,83 @@ describe("Composio Gmail vertical with real SDKs and stubbed HTTP", () => {
       requests.filter((request) => request.url.endsWith("/execute")).length,
     ).toBe(1);
   });
+});
+
+test("read-only and Linear sessions configure exact provider scopes before schemas load", async () => {
+  const provider = createComposioActionProvider("test-server-key");
+  for (const scoped of [
+    {
+      tools: ["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"],
+      connectedAccounts: { gmail: "ca-user-1" },
+    },
+    {
+      tools: ["LINEAR_SEARCH_ISSUES", "LINEAR_GET_LINEAR_ISSUE"],
+      connectedAccounts: { linear: "ca-linear" },
+    },
+    {
+      tools: ["GMAIL_FETCH_EMAILS", "LINEAR_SEARCH_ISSUES"],
+      connectedAccounts: { gmail: "ca-user-1", linear: "ca-linear" },
+    },
+  ] satisfies ActionExecutionScope[]) {
+    await provider.createSession("scoped-user", scoped);
+    const create = requests.findLast(
+      (request) => request.body.user_id === "scoped-user",
+    )!;
+    expect(create.body.preload).toEqual({ tools: [...scoped.tools].sort() });
+    expect(create.body.toolkits).toEqual({
+      enable: [
+        ...new Set(
+          [...scoped.tools].sort().map((name) => ACTION_REGISTRY[name].toolkit),
+        ),
+      ],
+    });
+    expect(create.body.manage_connections).toEqual({ enable: false });
+    expect(create.body.search).toEqual({ enable: false });
+    expect(create.body.execute).toEqual({ enable_multi_execute: false });
+    const tools = await provider.getTools({
+      userId: "scoped-user",
+      sessionId: "trs-user-1",
+      scope: scoped,
+    });
+    expect(Object.keys(tools).sort()).toEqual([...scoped.tools].sort());
+    expect(tools.GMAIL_SEND_EMAIL).toBeUndefined();
+    expect(tools.LINEAR_CREATE_LINEAR_ISSUE).toBeUndefined();
+    expect(
+      Object.values(tools).every((tool) => tool.needsApproval === false),
+    ).toBe(true);
+    const resumed = await createComposioActionProvider(
+      "test-server-key",
+    ).getTools(
+      structuredClone({
+        userId: "scoped-user",
+        sessionId: "trs-user-1",
+        scope: scoped,
+      }),
+    );
+    expect(Object.keys(resumed)).toEqual(Object.keys(tools));
+    if (tools.LINEAR_SEARCH_ISSUES) {
+      expect(
+        (await requestAction(tools, "LINEAR_SEARCH_ISSUES")).toolResults,
+      ).toHaveLength(1);
+      expect(
+        requests.findLast((request) => request.url.endsWith("/execute"))?.body
+          .tool_slug,
+      ).toBe("LINEAR_SEARCH_ISSUES");
+    }
+  }
+});
+test("connection management creates no executable tools and never dispatches an action", async () => {
+  const provider = createComposioActionProvider("test-server-key");
+  await provider.createConnectionSession("connection-user", "linear");
+  const create = requests.find(
+    (request) => request.body.user_id === "connection-user",
+  )!;
+  expect(create.body).toMatchObject({
+    toolkits: { enable: ["linear"] },
+    tools: { linear: { enable: [] } },
+    preload: { tools: [] },
+  });
+  expect(requests.some((request) => request.url.endsWith("/execute"))).toBe(
+    false,
+  );
 });

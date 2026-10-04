@@ -19,7 +19,7 @@ export interface ActionExecutionStore {
   complete(key: ActionExecutionKey, output: unknown): Promise<void>;
 }
 
-/** At-most-once dispatch. An uncertain write must be checked in Gmail manually. */
+/** At-most-once dispatch. An uncertain write must be checked in the connected app manually. */
 export async function executeActionOnce(
   store: ActionExecutionStore,
   execution: Omit<ActionExecution, "status" | "output">,
@@ -39,7 +39,7 @@ export async function executeActionOnce(
       return previous.output;
     }
     throw new Error(
-      "This Gmail action may already have run. Check Gmail before requesting a new action; it will not be retried automatically.",
+      "This external action may already have run. Check the connected app before requesting a new action; it will not be retried automatically.",
     );
   }
   try {
@@ -49,7 +49,7 @@ export async function executeActionOnce(
   } catch {
     // Keep the started claim even on timeout/crash; the remote outcome is unknown.
     throw new Error(
-      "The Gmail action could not be confirmed. Check Gmail before requesting a new action; it will not be retried automatically.",
+      "The external action could not be confirmed. Check the connected app before requesting a new action; it will not be retried automatically.",
     );
   }
 }

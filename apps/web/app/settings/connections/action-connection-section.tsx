@@ -1,16 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { Mail } from "lucide-react";
+import { Mail, CircleDot } from "lucide-react";
 import useSWR from "swr";
 import { Button } from "@/components/ui/button";
 import { fetcher } from "@/lib/swr";
 
-export function GmailSection() {
+import { ACTION_TOOLKITS, type ActionToolkit } from "@/lib/actions/registry";
+
+export function ActionConnectionSection({
+  toolkit,
+}: {
+  toolkit: ActionToolkit;
+}) {
+  const { label, description } = ACTION_TOOLKITS[toolkit];
+  const endpoint = `/api/connections/${toolkit}`;
   const { data, error, isLoading, mutate } = useSWR<{
     enabled: boolean;
     status: "connected" | "not_connected";
-  }>("/api/connections/gmail", fetcher);
+  }>(endpoint, fetcher);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string>();
 
@@ -18,7 +26,7 @@ export function GmailSection() {
     setConnecting(true);
     setConnectError(undefined);
     try {
-      const response = await fetch("/api/connections/gmail", {
+      const response = await fetch(endpoint, {
         method: "POST",
       });
       const result: unknown = await response.json();
@@ -29,11 +37,11 @@ export function GmailSection() {
         !("redirectUrl" in result) ||
         typeof result.redirectUrl !== "string"
       ) {
-        throw new Error("Unable to connect Gmail. Try again.");
+        throw new Error(`Unable to connect ${label}. Try again.`);
       }
       window.location.assign(result.redirectUrl);
     } catch {
-      setConnectError("Unable to connect Gmail. Try again.");
+      setConnectError(`Unable to connect ${label}. Try again.`);
       setConnecting(false);
     }
   }
@@ -41,28 +49,30 @@ export function GmailSection() {
   return (
     <section
       className="rounded-lg border border-border/50 bg-muted/10"
-      aria-labelledby="gmail-heading"
+      aria-labelledby={`${toolkit}-heading`}
     >
       <div className="border-b border-border/50 px-4 py-3">
         <h2
-          id="gmail-heading"
+          id={`${toolkit}-heading`}
           className="flex items-center gap-2.5 text-sm font-medium"
         >
-          <Mail className="size-4" aria-hidden="true" /> Gmail
+          {toolkit === "gmail" ? (
+            <Mail className="size-4" aria-hidden="true" />
+          ) : (
+            <CircleDot className="size-4" aria-hidden="true" />
+          )}{" "}
+          {label}
         </h2>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Read emails and prepare replies in chat. Creating drafts and sending
-          emails require your approval.
-        </p>
+        <p className="mt-2 text-xs text-muted-foreground">{description}</p>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 p-4">
         <p className="text-sm text-muted-foreground" role="status">
           {isLoading
             ? "Checking connection…"
             : error
-              ? "Unable to check Gmail connection."
+              ? `Unable to check ${label} connection.`
               : !data?.enabled
-                ? "Gmail is not configured yet."
+                ? `${label} is not configured yet.`
                 : data.status === "connected"
                   ? "Connected"
                   : "Not connected"}
@@ -71,14 +81,18 @@ export function GmailSection() {
           <Button size="sm" variant="outline" onClick={() => void mutate()}>
             Retry
           </Button>
-        ) : data?.enabled && data.status !== "connected" ? (
+        ) : data?.enabled ? (
           <Button
             size="sm"
             variant="outline"
             disabled={connecting}
             onClick={() => void connect()}
           >
-            {connecting ? "Connecting…" : "Connect Gmail"}
+            {connecting
+              ? "Connecting…"
+              : data.status === "connected"
+                ? `Reconnect ${label}`
+                : `Connect ${label}`}
           </Button>
         ) : null}
         {connectError && (

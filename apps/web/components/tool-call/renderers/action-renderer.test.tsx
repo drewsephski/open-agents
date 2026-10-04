@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { DynamicToolUIPart } from "ai";
-import { GmailRenderer } from "./gmail-renderer";
+import { ActionRenderer } from "./action-renderer";
 
 test("send approval exposes the complete recipient, subject, body and cc/bcc", () => {
   const part: DynamicToolUIPart = {
@@ -19,7 +19,7 @@ test("send approval exposes the complete recipient, subject, body and cc/bcc", (
     },
   };
   const html = renderToStaticMarkup(
-    <GmailRenderer
+    <ActionRenderer
       part={part}
       name="GMAIL_SEND_EMAIL"
       state={{

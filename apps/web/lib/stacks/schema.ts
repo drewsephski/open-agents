@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { actionCapabilitiesSchema } from "@/lib/actions/registry";
 import { isModelDisabled } from "@/lib/model-availability";
 import { missionTypeSchema } from "@/lib/missions";
 import { providerOptionsSchema } from "@/lib/model-variants";
@@ -26,14 +27,7 @@ export const stackModelSchema = z.strictObject({
 
 // Capabilities can only narrow the server registry. New toolkits require code.
 export const stackActionsSchema = z.strictObject({
-  capabilities: z
-    .array(
-      z.strictObject({
-        toolkit: z.literal("gmail"),
-        access: z.enum(["read", "read_write"]),
-      }),
-    )
-    .max(1),
+  capabilities: actionCapabilitiesSchema,
   policy: z.strictObject({
     read: z.literal("automatic"),
     write: z.literal("approval"),
