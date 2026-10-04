@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatPromptInvocation } from "@/lib/chat/prompt-invocations";
 import type { SkillSuggestion } from "@/app/api/sessions/[sessionId]/skills/route";
 
 interface SlashCommandDropdownProps {
@@ -10,6 +11,7 @@ interface SlashCommandDropdownProps {
   selectedIndex: number;
   onSelect: (suggestion: SkillSuggestion) => void;
   isLoading?: boolean;
+  prefix: "/" | "$";
 }
 
 const MAX_VISIBLE_ITEMS = 10;
@@ -19,6 +21,7 @@ export function SlashCommandDropdown({
   selectedIndex,
   onSelect,
   isLoading,
+  prefix,
 }: SlashCommandDropdownProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLButtonElement>(null);
@@ -47,17 +50,23 @@ export function SlashCommandDropdown({
     );
   }
 
-  if (suggestions.length === 0) {
-    return null;
-  }
-
   return (
     <div className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-md border bg-popover shadow-md">
+      <div className="border-b px-3 py-2 text-xs font-medium text-muted-foreground">
+        {prefix === "$" ? "Skills · $" : "Commands · /"}
+      </div>
       <div
         ref={listRef}
         className="max-h-[280px] overflow-y-auto py-1"
         style={{ maxHeight: `${MAX_VISIBLE_ITEMS * 36}px` }}
       >
+        {suggestions.length === 0 && (
+          <p className="px-3 py-3 text-sm text-muted-foreground">
+            {prefix === "$"
+              ? "No installed skills match. Add skills in Preferences."
+              : "No matching commands. Use /help to see available commands."}
+          </p>
+        )}
         {suggestions.map((suggestion, index) => (
           <button
             key={suggestion.name}
@@ -73,7 +82,9 @@ export function SlashCommandDropdown({
           >
             <Terminal className="h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="flex min-w-0 flex-col">
-              <span className="truncate font-medium">/{suggestion.name}</span>
+              <span className="truncate font-medium">
+                {formatPromptInvocation(suggestion.name, prefix)}
+              </span>
               <span className="truncate text-xs text-muted-foreground">
                 {suggestion.description}
               </span>

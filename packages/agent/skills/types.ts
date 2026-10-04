@@ -21,7 +21,7 @@ export const skillFrontmatterSchema = z.object({
   "user-invocable": z
     .boolean()
     .optional()
-    .describe("If false, users cannot invoke this skill via slash command"),
+    .describe("If false, users cannot invoke this skill with $skill-name"),
   "allowed-tools": z
     .string()
     .optional()
@@ -42,7 +42,7 @@ export type SkillFrontmatter = z.infer<typeof skillFrontmatterSchema>;
 export interface SkillOptions {
   /** If true, the model cannot invoke this skill automatically */
   disableModelInvocation?: boolean;
-  /** If false, users cannot invoke this skill via slash command */
+  /** If false, users cannot invoke this skill with $skill-name */
   userInvocable?: boolean;
   /** List of allowed tools when skill is active */
   allowedTools?: string[];

@@ -8,6 +8,7 @@
     ".": "./index.ts",
     "./model-id": "./model-id.ts",
     "./usage-metadata": "./usage-metadata.ts",
+    "./skills": "./skills/index.ts",
     "./model-catalog": "./model-catalog.ts"
   },
   "scripts": {

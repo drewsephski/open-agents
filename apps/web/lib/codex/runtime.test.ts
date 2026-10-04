@@ -45,6 +45,18 @@ mock.module("@open-agents/sandbox", () => ({
     access: async (path: string) => {
       if (!files.has(path)) throw new Error("missing");
     },
+    stat: async (dir: string) => ({
+      isDirectory: () =>
+        [...files.keys()].some((file) => file.startsWith(`${dir}/`)),
+    }),
+    readdir: async (dir: string) =>
+      [
+        ...new Set(
+          [...files.keys()]
+            .filter((file) => file.startsWith(`${dir}/`))
+            .map((file) => file.slice(dir.length + 1).split("/")[0]),
+        ),
+      ].map((name) => ({ name, isDirectory: () => true })),
     mkdir: async () => {},
     writeFile: async (path: string, value: string) => {
       files.set(path, value);
@@ -116,6 +128,48 @@ describe("Codex sandbox runtime", () => {
       "refresh-secret",
     );
   });
+  test("loads a user-selected skill with a command name and retains Codex restrictions", async () => {
+    files.set(
+      "/workspace/.agents/skills/review/SKILL.md",
+      "---\nname: review\ndescription: Review code\ndisable-model-invocation: true\n---\nInspect $ARGUMENTS carefully.",
+    );
+    await startCodexRun({
+      ...options,
+      messages: [
+        {
+          id: "skill",
+          role: "user",
+          parts: [{ type: "text", text: "$review checkout" }],
+        },
+      ],
+    });
+    const input = files.get(`${codexRunDirectory("run")}/input.json`);
+    expect(input).toContain("# Applied user-selected skill: $review");
+    expect(input).toContain("Inspect checkout carefully.");
+    expect(input).toContain("Do not read credentials.");
+    expect(input).toContain(
+      "referenced resources in the user-selected skill directory",
+    );
+    expect(input).toContain("Build carefully.");
+  });
+
+  test("fails unknown explicit skills before starting Codex or writing credentials", async () => {
+    await expect(
+      startCodexRun({
+        ...options,
+        messages: [
+          {
+            id: "skill",
+            role: "user",
+            parts: [{ type: "text", text: "$missing checkout" }],
+          },
+        ],
+      }),
+    ).rejects.toThrow("not installed");
+    expect(starts).toBe(0);
+    expect(files.has(`${codexAuthDirectory("run")}/auth.json`)).toBe(false);
+  });
+
   test("requires a completed turn rather than treating partial provider output as success", () => {
     expect(() =>
       extractCodexAnswer(

@@ -41,6 +41,8 @@ import {
 } from "./chat-post-finish";
 import { dedupeMessageReasoning } from "@/lib/chat/dedupe-message-reasoning";
 import { getResponseGuidance } from "@/lib/chat/response-guidance";
+import { isReadOnlyCommand } from "@/lib/chat/commands";
+import { SkillInvocationError } from "@/lib/skills/invocation-error";
 import { getChatById, getSessionById } from "@/lib/db/sessions";
 import { getUserPreferences } from "@/lib/db/user-preferences";
 import {
@@ -59,6 +61,7 @@ import type {
 } from "@/lib/db/workflow-runs";
 import { resolveChatModelSelection } from "../api/chat/_lib/model-selection";
 import { resolveChatSandboxRuntime } from "./chat-sandbox-runtime";
+import { loadChatSkillGuidance } from "./chat-skill-guidance";
 
 type AuthSessionContext = Pick<AuthSession, "authProvider" | "user"> | null;
 type UnresolvedOpenAgentCallOptions = Omit<
@@ -292,6 +295,7 @@ function withModelMetadata(
 }
 
 function getSetupErrorMessage(error: unknown): string {
+  if (error instanceof SkillInvocationError) return error.message;
   if (!(error instanceof Error)) {
     return "Workspace setup failed. Try again in a moment.";
   }
@@ -726,11 +730,18 @@ export async function runAgentWorkflow(options: Options) {
       ),
     };
 
+    const selectedSkill = await loadChatSkillGuidance({
+      messages: options.messages,
+      sandboxState: runtime.sandboxState,
+      skills: runtime.skills,
+    });
+    if (!selectedSkill.ok) throw new SkillInvocationError(selectedSkill.error);
     const agentOptions: UnresolvedOpenAgentCallOptions = {
       ...modelRuntime.agentOptions,
       ...options.agentOptions,
       customInstructions: [
         getResponseGuidance(options.messages),
+        selectedSkill.guidance,
         options.agentOptions?.customInstructions ??
           modelRuntime.agentOptions.customInstructions,
       ]
@@ -846,6 +857,7 @@ export async function runAgentWorkflow(options: Options) {
 
     const canAutoCommit =
       finishedNaturally &&
+      !isReadOnlyCommand(options.messages) &&
       (options.autoCommitEnabled ?? modelRuntime.autoCommitEnabled) &&
       sandboxState != null &&
       repoOwner != null &&

@@ -10,6 +10,12 @@ export function AgentBehaviorSection() {
           was verified. Ask for more detail whenever you need it.
         </p>
         <p className="text-muted-foreground">
+          Use <code>/help</code> to see app commands, including{" "}
+          <code>/plan</code>, <code>/review</code>, and <code>/explain</code>.
+          Start a message with <code>$skill-name</code> to invoke an installed
+          skill.
+        </p>
+        <p className="text-muted-foreground">
           Start a message with <code>/pstack</code> to enable an engineering
           workflow that investigates before editing and verifies the outcome. It
           stays on in that chat until you send <code>/pstack-off</code>. Works

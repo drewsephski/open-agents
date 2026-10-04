@@ -12,6 +12,18 @@ mock.module("@/lib/actions/runtime", () => ({
 
 // ── Spy state ──────────────────────────────────────────────────────
 
+type SkillGuidanceResult = Awaited<
+  ReturnType<typeof import("./chat-skill-guidance").loadChatSkillGuidance>
+>;
+const loadSkillGuidanceSpy = mock(
+  async (_params: unknown): Promise<SkillGuidanceResult> => ({
+    ok: true,
+    guidance: "",
+  }),
+);
+mock.module("./chat-skill-guidance", () => ({
+  loadChatSkillGuidance: loadSkillGuidanceSpy,
+}));
 const writtenChunks: UIMessageChunk[] = [];
 let runStatus: string = "running";
 
@@ -464,6 +476,11 @@ function makeOptions(overrides?: Record<string, unknown>) {
 // ── Tests ──────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  loadSkillGuidanceSpy.mockReset();
+  loadSkillGuidanceSpy.mockImplementation(async () => ({
+    ok: true,
+    guidance: "",
+  }));
   actionToolsSpy.mockClear();
   writtenChunks.length = 0;
   runStatus = "running";
@@ -601,6 +618,86 @@ describe("runAgentWorkflow", () => {
     expect(agentCallOptions?.missionInstructions).toEqual(
       expect.stringContaining("# Mission: Ship a feature"),
     );
+  });
+
+  test("applies an explicitly selected skill once while retaining shared instructions", async () => {
+    loadSkillGuidanceSpy.mockResolvedValueOnce({
+      ok: true,
+      guidance: "# Applied user-selected skill: $review\nInspect checkout.",
+    });
+    const messages = [
+      {
+        id: "skill",
+        role: "user" as const,
+        parts: [{ type: "text", text: "$review checkout" }],
+      },
+    ];
+    await runAgentWorkflow(makeOptions({ messages }));
+    expect(loadSkillGuidanceSpy).toHaveBeenCalledTimes(1);
+    expect(loadSkillGuidanceSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ messages }),
+    );
+    expect(agentCallOptions?.customInstructions).toEqual(
+      expect.stringContaining("Inspect checkout."),
+    );
+    expect(agentCallOptions?.customInstructions).toEqual(
+      expect.stringContaining("Whole-file links only"),
+    );
+    expect(agentCallOptions?.customInstructions).toEqual(
+      expect.stringContaining("# Response style"),
+    );
+  });
+
+  test("shows safe skill invocation errors without making a model call", async () => {
+    loadSkillGuidanceSpy.mockResolvedValueOnce({
+      ok: false,
+      error: "Skill $missing is not installed in this workspace.",
+    });
+    await expect(
+      runAgentWorkflow(
+        makeOptions({
+          messages: [
+            {
+              id: "skill",
+              role: "user",
+              parts: [{ type: "text", text: "$missing" }],
+            },
+          ],
+        }),
+      ),
+    ).rejects.toThrow("not installed");
+    expect(agentStreamCalls).toBe(0);
+    expect(writtenChunks).toContainEqual(
+      expect.objectContaining({
+        type: "text-delta",
+        delta: "Skill $missing is not installed in this workspace.",
+      }),
+    );
+    expect(spies.clearActiveStream).toHaveBeenCalled();
+  });
+
+  test("read-only commands skip automatic commits and PRs even when enabled", async () => {
+    for (const name of ["plan", "review", "explain", "help"]) {
+      await runAgentWorkflow(
+        makeOptions({
+          messages: [
+            {
+              id: "command",
+              role: "user",
+              parts: [{ type: "text", text: `/${name} checkout` }],
+            },
+          ],
+          autoCommitEnabled: true,
+          autoCreatePrEnabled: true,
+        }),
+      );
+      expect(agentCallOptions?.customInstructions).toEqual(
+        expect.stringContaining(`# Current command: /${name}`),
+      );
+    }
+    expect(spies.hasAutoCommitChangesStep).not.toHaveBeenCalled();
+    expect(spies.runAutoCommitStep).not.toHaveBeenCalled();
+    expect(spies.runAutoCreatePrStep).not.toHaveBeenCalled();
   });
 
   test("keeps pstack active across turns and respects a later opt-out", async () => {

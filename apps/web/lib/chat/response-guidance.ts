@@ -1,4 +1,5 @@
 import { resolveEngineeringMode } from "./engineering-mode";
+import { getCommandGuidance } from "./commands";
 
 const RESPONSE_GUIDANCE = `# Response style
 
@@ -8,7 +9,9 @@ During work, give brief updates about findings and the next useful action. After
 
 # Built-in conversation commands
 
-The app processes /pstack and /pstack-off when they appear at the start of a user message. They are built-in commands, not skills: do not invoke a skill tool or install a plugin for either command. The current engineering-mode instructions below are authoritative for whether the mode is enabled; do not reactivate it from an earlier transcript command. Any text after the command is the user's task. These commands do not grant additional permissions or tools.`;
+Slash prefixes invoke app commands: /help, /plan, /review, /explain, /pstack, and /pstack-off. Dollar prefixes invoke installed skills: $skill-name followed by arguments. Do not interpret slash commands as skill requests or install plugins for them. Explicit skills loaded by the app appear in an Applied user-selected skill section; follow that section without loading the same skill again. Never claim a skill ran merely because its name was mentioned.
+
+The current engineering-mode instructions below are authoritative for whether the mode is enabled; do not reactivate it from an earlier transcript command. Any text after a command is the user's task. Commands and skills do not grant additional permissions or tools. Current read-only /plan, /review, or /explain requests take precedence over a mission's implementation workflow.`;
 
 // Adapted from backnotprop/pstack; source and MIT notice: docs/agent-behavior.md.
 const PSTACK_GUIDANCE = `# Engineering mode: pstack (adapted for Launchstack)
@@ -50,5 +53,11 @@ export function getResponseGuidance(
     ? `\n\nThe latest user message only changes the mode. Briefly confirm that pstack mode is ${mode.enabled ? "enabled for this chat; use /pstack-off to turn it off" : "off"}, then wait for a task. Do not inspect or modify the workspace merely to acknowledge the command.`
     : "";
 
-  return `${RESPONSE_GUIDANCE}\n\n${modeGuidance}${confirmation}`;
+  return [
+    RESPONSE_GUIDANCE,
+    modeGuidance + confirmation,
+    getCommandGuidance(messages),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
