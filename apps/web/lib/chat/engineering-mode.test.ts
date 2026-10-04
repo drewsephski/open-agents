@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  resolveEngineeringMode,
-  withEngineeringModeCommands,
-} from "./engineering-mode";
+import { resolveEngineeringMode } from "./engineering-mode";
 
 const user = (text: string) => ({
   role: "user",
@@ -86,17 +83,5 @@ describe("engineering mode conversation commands", () => {
         },
       ]),
     ).toEqual({ enabled: true, commandOnly: false });
-  });
-
-  test("offers commands without a sandbox and preserves other skills without duplicates", () => {
-    expect(
-      withEngineeringModeCommands(null).map((skill) => skill.name),
-    ).toEqual(["pstack", "pstack-off"]);
-    expect(
-      withEngineeringModeCommands([
-        { name: "PSTACK", description: "Conflicting skill" },
-        { name: "review", description: "Review code" },
-      ]).map((skill) => skill.name),
-    ).toEqual(["pstack", "pstack-off", "review"]);
   });
 });

@@ -106,6 +106,9 @@ import { useTextAttachments } from "@/hooks/use-text-attachments";
 import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
 import { useSessionChats } from "@/hooks/use-session-chats";
 import { useSlashCommands } from "@/hooks/use-slash-commands";
+import { useChatCommandHelp } from "@/hooks/use-chat-command-help";
+import { ChatCommandHelp } from "@/components/chat-command-help";
+import { formatPromptInvocation } from "@/lib/chat/prompt-invocations";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import {
   getGitFinalizationState,
@@ -1868,16 +1871,20 @@ export function SessionChatContent({
     onSelect: handleFileSelect,
   });
 
+  const { helpOpen, setHelpOpen, handleHelpCommand } = useChatCommandHelp();
+
   const handleSlashCommandSelect = (
     skillName: string,
     slashStart: number,
     cursorPos: number,
+    prefix: "/" | "$",
   ) => {
     const before = input.slice(0, slashStart);
     const after = input.slice(cursorPos);
-    const newInput = `${before}/${skillName} ${after}`;
+    const invocation = formatPromptInvocation(skillName, prefix);
+    const newInput = `${before}${invocation} ${after}`;
     setInput(newInput);
-    const newCursorPos = slashStart + skillName.length + 2; // / + name + space
+    const newCursorPos = slashStart + invocation.length + 1;
     setCursorPosition(newCursorPos);
     setTimeout(() => {
       if (inputRef.current && inputRef.current.value === newInput) {
@@ -1906,6 +1913,7 @@ export function SessionChatContent({
   const [deleteMessageError, setDeleteMessageError] = useState<string | null>(
     null,
   );
+
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(
     null,
   );
@@ -3904,12 +3912,14 @@ export function SessionChatContent({
                           if (slashInfo) {
                             handleSlashCommandSelect(
                               suggestion.name,
-                              slashInfo.slashStart,
+                              slashInfo.start,
                               cursorPosition,
+                              slashInfo.prefix,
                             );
                           }
                         }}
-                        isLoading={skillsLoading}
+                        prefix={slashInfo?.prefix ?? "/"}
+                        isLoading={slashInfo?.kind === "skill" && skillsLoading}
                       />
                     )}
                     <ChatAccessNotice
@@ -3937,6 +3947,15 @@ export function SessionChatContent({
                           e.preventDefault();
                           // When inline question is active, don't send a chat message
                           if (showInlineQuestion) return;
+                          if (
+                            handleHelpCommand(
+                              input,
+                              images.length > 0 || textAttachments.length > 0,
+                            )
+                          ) {
+                            setInput("");
+                            return;
+                          }
                           if (
                             isArchived ||
                             isChatInFlight ||
@@ -4155,9 +4174,10 @@ export function SessionChatContent({
                             placeholder={
                               showInlineQuestion
                                 ? inlineQuestion.placeholder
-                                : "Request changes or ask a question..."
+                                : "Ask a question, / for commands, $ for skills..."
                             }
                             rows={1}
+                            aria-label="Message"
                             onFocus={handleTextareaFocus}
                             onChange={(e) => {
                               setInput(e.currentTarget.value);
@@ -4481,6 +4501,11 @@ export function SessionChatContent({
       )}
 
       {/* Diff Viewer Modal */}
+      <ChatCommandHelp
+        open={helpOpen}
+        onOpenChange={setHelpOpen}
+        skills={skills}
+      />
       <DiffViewer open={showDiffPanel} onOpenChange={setShowDiffPanel} />
       <WorkspaceFileViewer
         sessionId={session.id}

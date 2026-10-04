@@ -3,6 +3,12 @@ import { createHash } from "node:crypto";
 import { connectSandbox, type SandboxState } from "@open-agents/sandbox";
 import type { WebAgentUIMessage } from "@/app/types";
 import { getResponseGuidance } from "@/lib/chat/response-guidance";
+import { discoverSkills } from "@open-agents/agent/skills";
+import { getSandboxSkillDirectories } from "@/lib/skills/directories";
+import {
+  getUserSelectedSkill,
+  loadUserSelectedSkill,
+} from "@/lib/skills/user-selected-skill";
 import { getChatById, getSessionById } from "@/lib/db/sessions";
 import { getMissionInstructions } from "@/lib/mission-guidance.server";
 import { normalizeMissionType } from "@/lib/missions";
@@ -30,6 +36,7 @@ export function codexAuthDirectory(runId: string): string {
 export function buildCodexPrompt(
   messages: WebAgentUIMessage[],
   instructions = "",
+  selectedSkillGuidance = "",
 ): string {
   const transcript = messages
     .map((message) => {
@@ -47,7 +54,10 @@ export function buildCodexPrompt(
     throw new CodexRuntimeError(
       "This chat is too large for Codex. Start a new chat with a summary.",
     );
-  return `${instructions}\n\n${getResponseGuidance(messages)}\n\nWork in the current workspace. Continue the conversation below and answer the final user request. Do not read credentials or files outside the workspace. Do not commit or push changes; the user reviews the workspace diff.\n\n${transcript}`;
+  const fileAccess = selectedSkillGuidance
+    ? "Do not read credentials. Read files only in the workspace or referenced resources in the user-selected skill directory identified above."
+    : "Do not read credentials or files outside the workspace.";
+  return `${instructions}\n\n${getResponseGuidance(messages)}\n\n${selectedSkillGuidance}\n\nWork in the current workspace. Continue the conversation below and answer the final user request. ${fileAccess} Do not commit or push changes; the user reviews the workspace diff.\n\n${transcript}`;
 }
 
 export async function startCodexRun(params: {
@@ -77,6 +87,17 @@ export async function startCodexRun(params: {
     throw new CodexRuntimeError(
       "This workspace cannot run Codex in the background.",
     );
+  const selectedSkill = getUserSelectedSkill(params.messages);
+  const selectedSkillGuidance = selectedSkill
+    ? await loadUserSelectedSkill({
+        sandbox,
+        skills: await discoverSkills(
+          sandbox,
+          await getSandboxSkillDirectories(sandbox),
+        ),
+        invocation: selectedSkill,
+      })
+    : "";
   const dir = codexRunDirectory(params.runId);
   const authDir = codexAuthDirectory(params.runId);
   try {
@@ -143,6 +164,7 @@ export async function startCodexRun(params: {
       prompt: buildCodexPrompt(
         params.messages,
         getMissionInstructions(normalizeMissionType(session.missionType)),
+        selectedSkillGuidance,
       ),
     }),
     "utf-8",

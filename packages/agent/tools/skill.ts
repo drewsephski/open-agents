@@ -34,10 +34,10 @@ export const skillTool = tool({
 
 When users ask you to perform tasks, check if any of the available skills can help complete the task more effectively. Skills provide specialized capabilities and domain knowledge.
 
-When users ask you to run a "slash command" or reference "/<something>" (e.g., "/commit", "/review-pr"), they are referring to a skill. Use this tool to invoke the corresponding skill.
+When users reference "$<skill-name>" (e.g., "$commit", "$review-pr"), they are requesting a skill. Use this tool unless the app already supplied an Applied user-selected skill section for that skill. Slash prefixes invoke app commands, not skills.
 
 Example:
-  User: "run /commit"
+  User: "run $commit"
   Assistant: [Calls skill tool with skill: "commit"]
 
 How to invoke:
@@ -48,7 +48,7 @@ How to invoke:
 
 Important:
 - When a skill is relevant, invoke this tool IMMEDIATELY as your first action
-- When the user's message starts with "/<name>", they are invoking a skill — call this tool FIRST before any other tool
+- For a $<name> request not already loaded by the app, call this tool before task work
 - NEVER just announce or mention a skill without actually calling this tool
 - Only use skills listed in "Available skills" in your system prompt
 - If you see a <command-name> tag in the conversation, the skill is ALREADY loaded - follow its instructions directly`,
@@ -57,7 +57,7 @@ Important:
     const sandbox = await getSandbox(experimental_context, "skill");
     const skills = getSkills(experimental_context);
 
-    // Find the skill by name (case-insensitive to match slash command behavior)
+    // Find the skill by name (case-insensitive to match user invocation).
     const normalizedSkillName = skill.toLowerCase();
     const foundSkill = skills.find(
       (s) => s.name.toLowerCase() === normalizedSkillName,

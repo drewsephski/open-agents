@@ -379,20 +379,17 @@ function buildSkillsPrompt(skills: SkillMetadata[]): string {
 ## Skills
 - \`skill\` - Execute a skill to extend your capabilities
 - Use the \`skill\` tool to invoke skills when relevant to the user's request
-- When a user references "/<skill-name>" (e.g., "/commit"), invoke the corresponding skill
+- When a user references "$<skill-name>" (e.g., "$commit"), invoke the corresponding skill unless the app has already loaded it
 - Some skills may be model-only (not user-invocable) and should be invoked automatically when relevant
 
 Available skills:
 ${skillsList}
 
 When a skill is relevant, invoke it IMMEDIATELY using the skill tool.
-If you see a <command-name> tag in the conversation, the skill is already loaded - follow its instructions directly.
+If you see an Applied user-selected skill section in the system prompt or a <command-name> tag in the conversation, the skill is already loaded - follow its instructions directly.
 
-IMPORTANT - Slash command detection:
-When the user's message starts with "/<name>", they are invoking a skill.
-The app's built-in /pstack and /pstack-off commands are exceptions: their instructions are already supplied in the system prompt. Do not invoke the skill tool for these commands.
-Check if "<name>" matches an available skill above. If it does, your FIRST tool call MUST be the skill tool -- do not
-read files, search code, or take any other action before invoking the skill.
+IMPORTANT - Skill invocation:
+Dollar prefixes request skills; slash prefixes request app commands. Never invoke the skill tool for /help, /plan, /review, /explain, /pstack, or /pstack-off. For a $<name> request matching an available skill that the app has not already loaded, invoke the skill tool before task work.
 
 To find and install new skills, use \`npx skills\`. Prefer \`-a amp\` (the universal agent format) so skills work across all agents.
 

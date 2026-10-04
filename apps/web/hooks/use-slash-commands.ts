@@ -1,12 +1,21 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import type { SkillSuggestion } from "@/app/api/sessions/[sessionId]/skills/route";
-import { withEngineeringModeCommands } from "@/lib/chat/engineering-mode";
+import { CHAT_COMMANDS } from "@/lib/chat/commands";
+import {
+  extractPromptInvocation,
+  type PromptInvocation,
+} from "@/lib/chat/prompt-invocations";
 
 interface UseSlashCommandsOptions {
   inputValue: string;
   cursorPosition: number;
   skills: SkillSuggestion[] | null;
-  onSelect: (skillName: string, slashStart: number, cursorPos: number) => void;
+  onSelect: (
+    name: string,
+    start: number,
+    cursorPos: number,
+    prefix: "/" | "$",
+  ) => void;
 }
 
 interface UseSlashCommandsResult {
@@ -14,46 +23,8 @@ interface UseSlashCommandsResult {
   slashSuggestions: SkillSuggestion[];
   selectedSlashIndex: number;
   handleSlashKeyDown: (e: React.KeyboardEvent) => boolean;
-  slashInfo: { slashStart: number; partialCommand: string } | null;
+  slashInfo: PromptInvocation | null;
   closeSlashCommands: () => void;
-}
-
-/**
- * Extract the / command from input text at the cursor position.
- * Only triggers when / is at position 0 or preceded by whitespace.
- */
-export function extractSlashCommand(
-  text: string,
-  cursorPosition: number,
-): { slashStart: number; partialCommand: string } | null {
-  let slashIndex = -1;
-  for (let i = cursorPosition - 1; i >= 0; i--) {
-    const char = text[i];
-    if (char === undefined) break;
-    // Stop at whitespace — no slash command spans whitespace
-    if (char === " " || char === "\t" || char === "\n") {
-      break;
-    }
-    if (char === "/") {
-      slashIndex = i;
-      break;
-    }
-  }
-
-  if (slashIndex === -1) {
-    return null;
-  }
-
-  // / must be at the start of input or preceded by whitespace
-  if (slashIndex > 0) {
-    const preceding = text[slashIndex - 1];
-    if (preceding !== " " && preceding !== "\t" && preceding !== "\n") {
-      return null;
-    }
-  }
-
-  const partialCommand = text.slice(slashIndex + 1, cursorPosition);
-  return { slashStart: slashIndex, partialCommand };
 }
 
 /**
@@ -67,7 +38,7 @@ export function filterSkillSuggestions(
   const query = partialCommand.toLowerCase();
 
   if (!query) {
-    // Show all skills when just "/" is typed
+    // Show the selected namespace when only its prefix is typed.
     return skills.slice(0, maxResults);
   }
 
@@ -90,27 +61,27 @@ export function useSlashCommands({
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
   const [dismissed, setDismissed] = useState(false);
 
-  // Extract slash command info from current input/cursor
-  const slashInfo = useMemo(() => {
-    if (dismissed) return null;
-    return extractSlashCommand(inputValue, cursorPosition);
-  }, [inputValue, cursorPosition, dismissed]);
+  const invocation = useMemo(
+    () => extractPromptInvocation(inputValue, cursorPosition),
+    [inputValue, cursorPosition],
+  );
+  const slashInfo = dismissed ? null : invocation;
 
   // Filter suggestions based on partial command
   const slashSuggestions = useMemo(() => {
     if (!slashInfo) return [];
-    const isLeadingCommand =
-      inputValue.slice(0, slashInfo.slashStart).trim().length === 0;
     return filterSkillSuggestions(
-      isLeadingCommand ? withEngineeringModeCommands(skills) : (skills ?? []),
-      slashInfo.partialCommand,
+      slashInfo.kind === "command" ? [...CHAT_COMMANDS] : (skills ?? []),
+      slashInfo.query,
     );
-  }, [slashInfo, skills, inputValue]);
+  }, [slashInfo, skills]);
 
-  const showSlashCommands = slashInfo !== null && slashSuggestions.length > 0;
+  const showSlashCommands = slashInfo !== null;
 
   // Reset state when command changes
-  const partialCommand = slashInfo?.partialCommand;
+  const partialCommand = invocation
+    ? `${invocation.start}:${invocation.prefix}${invocation.query}`
+    : undefined;
   useEffect(() => {
     setSelectedSlashIndex(0);
     setDismissed(false);
@@ -142,7 +113,12 @@ export function useSlashCommands({
           const selected = slashSuggestions[selectedSlashIndex];
           if (selected && slashInfo) {
             e.preventDefault();
-            onSelect(selected.name, slashInfo.slashStart, cursorPosition);
+            onSelect(
+              selected.name,
+              slashInfo.start,
+              cursorPosition,
+              slashInfo.prefix,
+            );
             setDismissed(true);
             return true;
           }

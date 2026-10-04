@@ -1,31 +1,9 @@
-export const ENGINEERING_MODE_COMMANDS = [
-  {
-    name: "pstack",
-    description:
-      "Enable pstack engineering mode for this chat: investigate, implement, verify.",
-  },
-  {
-    name: "pstack-off",
-    description: "Return this chat to the standard workflow.",
-  },
-] as const;
-
-interface ConversationMessage {
-  role: string;
-  parts: readonly { type: string; text?: string }[];
-}
+import { getUserText } from "./prompt-invocations";
+import type { ConversationMessage } from "./prompt-invocations";
 
 export interface EngineeringModeState {
   enabled: boolean;
   commandOnly: boolean;
-}
-
-function getUserText(message: ConversationMessage): string {
-  return message.parts
-    .filter((part) => part.type === "text")
-    .map((part) => part.text ?? "")
-    .join("\n")
-    .trim();
 }
 
 export function resolveEngineeringMode(
@@ -49,18 +27,4 @@ export function resolveEngineeringMode(
   }
 
   return { enabled, commandOnly };
-}
-
-export function withEngineeringModeCommands<
-  T extends { name: string; description: string },
->(skills: readonly T[] | null): { name: string; description: string }[] {
-  const commandNames = new Set<string>(
-    ENGINEERING_MODE_COMMANDS.map((command) => command.name),
-  );
-  return [
-    ...ENGINEERING_MODE_COMMANDS,
-    ...(skills ?? []).filter(
-      (skill) => !commandNames.has(skill.name.toLowerCase()),
-    ),
-  ];
 }

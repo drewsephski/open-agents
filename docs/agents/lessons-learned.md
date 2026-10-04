@@ -20,7 +20,7 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 
 - Model defaults are also Drizzle column defaults through `APP_DEFAULT_MODEL_ID`; changing the shared constant requires `pnpm --dir apps/web db:generate` even when `schema.ts` itself is unchanged. Keep the web and agent defaults sourced from the lightweight `@open-agents/agent/model-id` entrypoint.
 - Skill discovery de-duplicates by first-seen name, so project skill directories must be scanned before user-level directories to allow project overrides.
-- The system prompt should list all model-invocable skills (including non-user-invocable ones), and reserve user-invocable filtering for the slash-command UI.
+- The system prompt should list all model-invocable skills (including non-user-invocable ones), and reserve user-invocable filtering for the dollar-skill UI.
 - Glob patterns ending in `**` (for example `"**"` or `"src/**"`) should be treated as recursive, even when `**` is the final segment.
 - In shell tools, avoid piping primary command output directly to `head` when exit-code handling matters; pipeline semantics can mask real failures from the primary command.
 - In zsh, do not use `path` as a loop or task variable; it is tied to `PATH`, so assigning it can make commands such as `git` and `rg` disappear for the rest of the shell invocation.
@@ -178,7 +178,7 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 
 ## Models / OpenRouter
 
-- Conversation-wide behavior must be supplied on every agent step and through the separate Codex prompt path. Resolve built-in mode commands only from user text, reserve their names against skill shadowing, and preserve action approvals and mission guidance.
+- Conversation-wide behavior must be supplied on every agent step and through the separate Codex prompt path. Resolve built-in mode commands only from user text, keep `/` app commands separate from `$` skills, and preserve action approvals and mission guidance. Read-only commands must also suppress automatic commits and PR creation after the model finishes.
 
 - This repo uses `@openrouter/ai-sdk-provider` with AI SDK 6 (`createOpenRouter` + `provider.chat`). Do not point `createGateway()` at OpenRouter and do not use `@ai-sdk/openai` as the OpenRouter transport.
 - Importing `@open-agents/agent` must not require `OPENROUTER_API_KEY`. `ToolLoopAgent` constructors use `constructorPlaceholderModel()`; real OpenRouter transport is created in `prepareCall` / `defaultLanguageModel()`.

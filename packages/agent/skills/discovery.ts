@@ -7,12 +7,6 @@ import {
 } from "./types";
 
 /**
- * Built-in commands that skills cannot shadow.
- * Skills with these names will be unreachable via slash command.
- */
-const BUILTIN_COMMANDS = ["model", "resume", "new", "pstack", "pstack-off"];
-
-/**
  * Parse YAML frontmatter from SKILL.md content.
  * Returns null if frontmatter is missing or invalid.
  *
@@ -160,14 +154,6 @@ export async function discoverSkills(
       }
 
       const frontmatter = result.data;
-
-      // Skip skills that shadow built-in commands (they would be unreachable)
-      if (BUILTIN_COMMANDS.includes(frontmatter.name.toLowerCase())) {
-        console.warn(
-          `Warning: Skill "${frontmatter.name}" in ${skillDir} shadows built-in command /${frontmatter.name}. Skipping.`,
-        );
-        continue;
-      }
 
       // Skip duplicate skill names (first one wins, case-insensitive)
       const normalizedName = frontmatter.name.toLowerCase();
