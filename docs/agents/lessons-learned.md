@@ -1,5 +1,12 @@
 # Lessons Learned
 
+## Match CI's Bun version to migration validation
+
+The Action binding upgrade passed locally with Bun 1.4.0, but CI's pinned Bun
+1.2.14 segfaulted while starting PGlite on Linux before producing test results.
+CI now pins the locally validated 1.4.0 runtime; keep runtime versions explicit
+when comparing migration-test evidence across environments.
+
 ## Agent Stack execution configuration
 
 - Freeze resolved model IDs and variant options, subagent settings, and skill

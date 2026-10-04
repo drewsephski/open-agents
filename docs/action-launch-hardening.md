@@ -79,6 +79,9 @@ unused remote records; no garbage collector or revocation webhook is introduced.
 - **PASS:** Node 24 `pnpm run ci`: formatting/lint, all workspace TypeScript,
   **204 isolated test files, 1,264 passing tests, 3,261 assertions, zero failures**,
   migration consistency.
+- CI initially used Bun 1.2.14 and segfaulted while starting PGlite on Linux.
+  Its Bun pin now matches locally validated 1.4.0; hosted results are tracked on
+  the PR separately from local validation.
 - **PASS:** full PGlite migration chain, upgrade from PR #11 with preserved
   snapshot/runtime evidence, null historical bindings, immutable new bindings,
   and allowed status/title changes.
@@ -94,6 +97,8 @@ unused remote records; no garbage collector or revocation webhook is introduced.
   Builds explicitly omitted live database migration; isolated upgrade tests provide
   migration evidence. Vercel pull supplied sensitive placeholders, so the build
   is compilation/function-output evidence, not production credential/auth proof.
+- The PR's automatic hosted Vercel preview also reported success. Its live
+  runtime, provider credentials and deployed upgrade behavior were not exercised.
 - **Browser inspection:** real local readiness showed sandbox-capacity blockers.
   Existing local database lacks PR #10's Stack tables, so saved-Stack/provider UI
   states used labeled browser-only fixtures. Multiple Gmail selection removed its
@@ -108,8 +113,8 @@ unused remote records; no garbage collector or revocation webhook is introduced.
 
 Live OAuth/account identities, bounded Gmail/Linear list-and-detail reads,
 provider-side cleanup/revocation under real credentials, deployed Workflow
-reconstruction and deployment migrations remain unproven. No deployment, email,
-issue/comment write or provider data mutation was performed.
+reconstruction and deployed upgrade behavior remain unproven. No production
+deployment, email, issue/comment write or provider data mutation was performed.
 
 Next PR: complete the credentialed read verification and add a deliberately
 allowlisted, provider-safe profile path for verified Gmail addresses/Linear
