@@ -125,6 +125,11 @@ export function SessionHeader() {
 
   return (
     <header className="border-b border-border px-3 py-1.5">
+      {session.stackSnapshot && (
+        <p className="mb-1 break-words text-xs text-muted-foreground">
+          {session.stackSnapshot.name} · v{session.stackSnapshot.version}
+        </p>
+      )}
       <div className="flex items-center justify-between gap-2">
         {/* Left side: panel toggle + repo/branch + title */}
         <div className="flex min-w-0 items-center gap-2">

@@ -24,6 +24,10 @@ for instruction layering, conversation commands, and compatibility boundaries.
 
 ## Key Packages
 
+Reusable worker configuration lives in the web control plane as versioned
+[Agent Stacks](agent-stacks.md). Sessions freeze a resolved Stack configuration
+at launch; the existing agent, sandbox, and action-provider paths consume it.
+
 - **packages/agent/** - Core agent implementation with tools, subagents, and context management
 - **packages/sandbox/** - Execution environment abstraction for cloud sandboxes
 - **packages/shared/** - Shared utilities across packages

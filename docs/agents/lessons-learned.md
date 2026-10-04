@@ -1,5 +1,18 @@
 # Lessons Learned
 
+## Agent Stack execution configuration
+
+- Freeze resolved model IDs and variant options, subagent settings, and skill
+  references at Session launch. Pinning only a Stack ID leaves preferences and
+  mutable model variants able to change subsequent execution.
+- Stack capabilities restrict the server tool registry. Reapply that restriction
+  whenever durable steps reconstruct tools, and derive ownership from persisted
+  Chat/Session records rather than model-provided context.
+- Codex currently has no external-action or auto-delivery stage. Do not expose
+  Native capabilities as working Codex settings.
+- Bun's rejection assertions require a real Promise; wrap lazy Drizzle query
+  builders with `Promise.resolve` before testing database-trigger rejections.
+
 - Creem store `launchstackpro` reviews the public site at `https://launchstack.sh`, not `launchstackpro.com`. Pro is $29/month with included AI usage, 25 running sandbox hours, and two concurrent sandboxes. The internal managed-inference cap remains $10; customer-facing copy describes included usage and shows percentage consumption. Checkout validates Creem/webhook configuration and the encryption keyring before creating a purchase; it no longer uses the obsolete `PRO_CHECKOUT_ENABLED` flag. Creem account approval is still required for live payments. Keep public policy pages accessible without a session and product descriptions consistent.
 - Creem's checkout return query is untrusted. Poll the authenticated access summary after returning, and show activation only after webhook-confirmed paid access. The CLI's stored key and another worktree's `.env.local` may be live credentials even when the Creem connector/dashboard is in test mode; verify the key prefix and use a separate database for payment tests.
 

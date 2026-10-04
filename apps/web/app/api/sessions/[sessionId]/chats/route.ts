@@ -13,6 +13,7 @@ import { sanitizeUserPreferencesForSession } from "@/lib/model-access";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 import { getNewChatBackend } from "@/lib/access/chat-backend";
+import { readStackSnapshot } from "@/lib/stacks/schema";
 
 type RouteContext = {
   params: Promise<{ sessionId: string }>;
@@ -97,13 +98,22 @@ export async function POST(req: Request, context: RouteContext) {
     session,
     req.url,
   );
-  const executionBackend = await getNewChatBackend(authResult.userId);
+  const configuration = readStackSnapshot(
+    sessionContext.sessionRecord.stackSnapshot,
+  )?.configuration;
+  const executionBackend =
+    configuration?.executionBackend ??
+    (await getNewChatBackend(authResult.userId));
   const chat = await createChat({
     id: requestedChatId ?? nanoid(),
     sessionId,
     title: "New chat",
     modelId:
-      executionBackend === "codex" ? "codex" : preferences.defaultModelId,
+      executionBackend === "codex"
+        ? "codex"
+        : (configuration?.model?.selectedId ??
+          configuration?.model?.id ??
+          preferences.defaultModelId),
     executionBackend,
   });
 

@@ -151,6 +151,12 @@ export function SessionLayoutShell({
   const layoutContext = useMemo(
     () => ({
       session: {
+        stackSnapshot: initialSession.stackSnapshot
+          ? {
+              name: initialSession.stackSnapshot.name,
+              version: initialSession.stackSnapshot.version,
+            }
+          : null,
         title: initialSession.title,
         repoName: initialSession.repoName,
         repoOwner: initialSession.repoOwner,

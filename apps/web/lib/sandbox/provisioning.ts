@@ -47,6 +47,7 @@ import { getSandboxProviderConfig } from "@/lib/sandbox/provider-config";
 import { sandboxProviderCircuit } from "@/lib/sandbox/provider-circuit";
 import { emitSandboxTelemetry } from "@/lib/sandbox/telemetry";
 import { syncProjectEnvironment } from "@/lib/sandbox/sync-project-environment";
+import { readStackSnapshot } from "@/lib/stacks/schema";
 import { installGlobalSkills } from "@/lib/skills/global-skill-installer";
 import { eq } from "drizzle-orm";
 import {
@@ -163,7 +164,11 @@ async function installSessionGlobalSkills(params: {
     return;
   }
 
-  const globalSkillRefs = params.session.globalSkillRefs ?? [];
+  const globalSkillRefs =
+    readStackSnapshot(params.session.stackSnapshot)?.configuration
+      .globalSkillRefs ??
+    params.session.globalSkillRefs ??
+    [];
   if (globalSkillRefs.length === 0) {
     return;
   }

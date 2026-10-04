@@ -31,6 +31,7 @@ export type SessionWithUnread = Pick<
 };
 
 interface CreateSessionInput {
+  stackVersionId?: string;
   title?: string;
   repoOwner?: string;
   repoName?: string;

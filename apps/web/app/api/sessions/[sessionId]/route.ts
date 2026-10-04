@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { after } from "next/server";
 import {
   deleteSession,
@@ -8,14 +9,15 @@ import { archiveSession } from "@/lib/sandbox/archive-session";
 import { hasRuntimeSandboxState } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
 
-interface UpdateSessionRequest {
-  title?: string;
-  status?: "running" | "completed" | "failed" | "archived";
-  linesAdded?: number;
-  linesRemoved?: number;
-  prNumber?: number;
-  prStatus?: "open" | "merged" | "closed";
-}
+const updateSessionSchema = z.object({
+  title: z.string().trim().min(1).optional(),
+  status: z.enum(["running", "completed", "failed", "archived"]).optional(),
+  linesAdded: z.number().int().nonnegative().optional(),
+  linesRemoved: z.number().int().nonnegative().optional(),
+  prNumber: z.number().int().positive().optional(),
+  prStatus: z.enum(["open", "merged", "closed"]).optional(),
+});
+type UpdateSessionRequest = z.infer<typeof updateSessionSchema>;
 
 export async function GET(
   _req: Request,
@@ -60,12 +62,12 @@ export async function PATCH(
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  let body: UpdateSessionRequest;
-  try {
-    body = (await req.json()) as UpdateSessionRequest;
-  } catch {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
+  const parsed = updateSessionSchema.safeParse(
+    await req.json().catch(() => null),
+  );
+  if (!parsed.success)
+    return Response.json({ error: "Invalid session update" }, { status: 400 });
+  const body = parsed.data;
 
   const shouldStopSandboxAfterArchive =
     body.status === "archived" && existingSession.status !== "archived";

@@ -33,6 +33,7 @@ import { validateGmailApprovalMessages } from "@/lib/actions/approval";
 import { persistAssistantMessagesWithToolResults } from "./_lib/persist-tool-results";
 
 import { getCodexConnection } from "@/lib/codex/credentials";
+import { readStackSnapshot } from "@/lib/stacks/schema";
 
 type WebAgentUIMessageChunk = InferUIMessageChunk<WebAgentUIMessage>;
 
@@ -107,11 +108,17 @@ export async function POST(req: Request) {
       },
       { status: 400 },
     );
+  const stackModel = readStackSnapshot(sessionRecord.stackSnapshot)
+    ?.configuration.model;
+  const admissionModelId =
+    stackModel && chat.modelId === (stackModel.selectedId ?? stackModel.id)
+      ? stackModel.id
+      : (chat.modelId ?? APP_DEFAULT_MODEL_ID);
   const admission = usesCodex
     ? { allowed: true as const }
     : await resolveModelCredential({
         userId,
-        modelId: chat.modelId ?? APP_DEFAULT_MODEL_ID,
+        modelId: admissionModelId,
       });
   if (!admission.allowed) {
     return toInferenceAccessErrorResponse(admission.failure);

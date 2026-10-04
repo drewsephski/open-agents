@@ -1,7 +1,13 @@
+import { buildDefaultStack } from "@/lib/stacks/default-stack";
+import { getUserPreferences } from "@/lib/db/user-preferences";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import type { VercelProjectSelection } from "@/lib/vercel/types";
 
+let selectedStack: import("@/lib/stacks/schema").StackSummary | undefined;
+mock.module("@/lib/db/stacks", () => ({
+  getOwnedStackVersion: async () => selectedStack,
+}));
 mock.module("@/lib/access/chat-backend", () => ({
   getNewChatBackend: async () => "launchstack_native",
 }));
@@ -150,6 +156,7 @@ describe("/api/sessions POST vercel project linking", () => {
   });
 
   beforeEach(() => {
+    selectedStack = undefined;
     currentSession = {
       user: {
         id: "user-1",
@@ -506,6 +513,55 @@ describe("/api/sessions POST vercel project linking", () => {
 
     expect(response.status).toBe(200);
     expect(createCalls[0]).toMatchObject({ missionType: "custom" });
+  });
+
+  test("launches an owned frozen Stack version with run-specific overrides", async () => {
+    const configuration = buildDefaultStack(
+      await getUserPreferences("user-1"),
+      "launchstack_native",
+    );
+    configuration.missionType = "fix_build";
+    configuration.instructions = "Repair CI only";
+    configuration.globalSkillRefs = [];
+    selectedStack = {
+      id: "stack-1",
+      name: "CI Repair",
+      description: "",
+      versionId: "version-2",
+      version: 2,
+      configuration,
+    };
+    const { POST } = await routeModulePromise;
+    const response = await POST(
+      createJsonRequest({
+        repoOwner: "acme",
+        repoName: "app",
+        stackVersionId: "version-2",
+        autoCommitPush: true,
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(createCalls[0]).toMatchObject({
+      stackVersionId: "version-2",
+      missionType: "fix_build",
+      globalSkillRefs: [],
+      stackSnapshot: {
+        name: "CI Repair",
+        version: 2,
+        configuration: { instructions: "Repair CI only", autoCommitPush: true },
+      },
+    });
+    expect(configuration.autoCommitPush).toBe(false);
+  });
+
+  test("unowned versions cannot silently fall back to the default", async () => {
+    const { POST } = await routeModulePromise;
+    const response = await POST(
+      createJsonRequest({ stackVersionId: "someone-elses-version" }),
+    );
+    expect(response.status).toBe(404);
+    expect(createCalls).toHaveLength(0);
+    expect(provisioningKickCalls).toHaveLength(0);
   });
 
   test("rejects unsupported Mission values", async () => {

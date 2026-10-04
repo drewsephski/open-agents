@@ -1,3 +1,5 @@
+import { buildDefaultStack } from "@/lib/stacks/default-stack";
+import { getUserPreferences } from "@/lib/db/user-preferences";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 type AuthResult =
@@ -13,7 +15,10 @@ type AuthResult =
 type OwnedSessionResult =
   | {
       ok: true;
-      sessionRecord: { id: string };
+      sessionRecord: {
+        id: string;
+        stackSnapshot?: import("@/lib/stacks/schema").StackSnapshot;
+      };
     }
   | {
       ok: false;
@@ -150,6 +155,26 @@ describe("/api/sessions/[sessionId]/chats", () => {
     };
     getSummaryCalls.length = 0;
     createChatCalls.length = 0;
+  });
+
+  test("new chats inherit the frozen Stack runtime instead of current preferences", async () => {
+    const configuration = buildDefaultStack(
+      await getUserPreferences("user-1"),
+      "codex",
+    );
+    if (!ownedSessionResult.ok) throw new Error("Missing fixture session");
+    ownedSessionResult.sessionRecord.stackSnapshot = {
+      name: "Codex worker",
+      version: 1,
+      configuration,
+    };
+    const { POST } = await routeModulePromise;
+    const response = await POST(createJsonRequest({}), createContext());
+    expect(response.status).toBe(200);
+    expect(createChatCalls[0]).toMatchObject({
+      executionBackend: "codex",
+      modelId: "codex",
+    });
   });
 
   test("GET returns auth error from session guard", async () => {

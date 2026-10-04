@@ -17,7 +17,7 @@ import {
 } from "@/lib/db/vercel-project-links";
 import { getUserPreferences } from "@/lib/db/user-preferences";
 import { sanitizeUserPreferencesForSession } from "@/lib/model-access";
-import { isMissionType, resolveNewSessionMissionType } from "@/lib/missions";
+import { isMissionType } from "@/lib/missions";
 import {
   isValidGitHubRepoName,
   isValidGitHubRepoOwner,
@@ -45,8 +45,12 @@ import {
 } from "@/lib/vercel/types";
 
 import { getNewChatBackend } from "@/lib/access/chat-backend";
+import { getOwnedStackVersion } from "@/lib/db/stacks";
+import { buildDefaultStack } from "@/lib/stacks/default-stack";
+import { freezeStackLaunch } from "@/lib/stacks/launch";
 
 interface CreateSessionRequest {
+  stackVersionId?: string;
   title?: string;
   repoOwner?: string;
   repoName?: string;
@@ -221,6 +225,16 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  if (
+    body.stackVersionId !== undefined &&
+    (typeof body.stackVersionId !== "string" || !body.stackVersionId.trim())
+  ) {
+    return Response.json({ error: "Invalid Stack version" }, { status: 400 });
+  }
+
   if (isTrialUser && (body.repoOwner || body.repoName || body.cloneUrl)) {
     return Response.json(
       { error: MANAGED_TEMPLATE_TRIAL_GITHUB_SESSION_ERROR },
@@ -314,15 +328,10 @@ export async function POST(req: Request) {
     branch,
     cloneUrl,
     isNewBranch,
-    sandboxType = "vercel",
     autoCommitPush,
     autoCreatePr,
   } = body;
   const hasRepository = Boolean(repoOwner && repoName);
-  const missionType = resolveNewSessionMissionType({
-    hasRepository,
-    missionType: isMissionType(body.missionType) ? body.missionType : undefined,
-  });
 
   let finalBranch = branch;
   if (isNewBranch) {
@@ -330,6 +339,15 @@ export async function POST(req: Request) {
   }
 
   try {
+    const selectedStack = body.stackVersionId
+      ? await getOwnedStackVersion(session.user.id, body.stackVersionId)
+      : undefined;
+    if (body.stackVersionId && !selectedStack) {
+      return Response.json(
+        { error: "Stack version not found" },
+        { status: 404 },
+      );
+    }
     const titlePromise = resolveSessionTitle(body, session.user.id);
     const preferencesPromise = getUserPreferences(session.user.id);
 
@@ -388,25 +406,51 @@ export async function POST(req: Request) {
       session,
       req.url,
     );
-    const executionBackend = await getNewChatBackend(session.user.id);
+    const defaultBackend = selectedStack
+      ? null
+      : await getNewChatBackend(session.user.id);
+    const configuration =
+      selectedStack?.configuration ??
+      buildDefaultStack(preferences, defaultBackend ?? "launchstack_native");
+    if (
+      configuration.executionBackend === "codex" &&
+      (await getNewChatBackend(session.user.id)) !== "codex"
+    ) {
+      return Response.json(
+        { error: "Connect Codex before launching this Stack" },
+        { status: 403 },
+      );
+    }
+    const stackSnapshot = freezeStackLaunch({
+      name: selectedStack?.name ?? "LaunchStack default",
+      version: selectedStack?.version ?? 1,
+      configuration,
+      hasRepository,
+      missionType: isMissionType(body.missionType)
+        ? body.missionType
+        : undefined,
+      autoCommitPush,
+      autoCreatePr,
+    });
+    const effective = stackSnapshot.configuration;
+    const executionBackend = effective.executionBackend;
     if (hasRepository && executionBackend === "launchstack_native") {
       const access = await resolveModelCredential({
         userId: session.user.id,
-        modelId: preferences.defaultModelId,
+        modelId: effective.model?.id ?? preferences.defaultModelId,
       });
       if (!access.allowed)
         return toInferenceAccessErrorResponse(access.failure);
     }
-    const effectiveAutoCommitPush =
-      autoCommitPush ?? preferences.autoCommitPush;
-    const effectiveAutoCreatePr = autoCreatePr ?? preferences.autoCreatePr;
     const result = await createSessionWithInitialChat({
       session: {
         id: nanoid(),
         userId: session.user.id,
         title,
         status: "running",
-        missionType,
+        missionType: effective.missionType,
+        stackVersionId: selectedStack?.versionId ?? null,
+        stackSnapshot,
         repoOwner,
         repoName,
         branch: finalBranch,
@@ -416,12 +460,10 @@ export async function POST(req: Request) {
         vercelTeamId: resolvedVercelProject?.teamId ?? null,
         vercelTeamSlug: resolvedVercelProject?.teamSlug ?? null,
         isNewBranch: isNewBranch ?? false,
-        autoCommitPushOverride: effectiveAutoCommitPush,
-        autoCreatePrOverride: effectiveAutoCommitPush
-          ? effectiveAutoCreatePr
-          : false,
-        globalSkillRefs: preferences.globalSkillRefs,
-        sandboxState: { type: sandboxType },
+        autoCommitPushOverride: effective.autoCommitPush,
+        autoCreatePrOverride: effective.autoCreatePr,
+        globalSkillRefs: effective.globalSkillRefs,
+        sandboxState: { type: effective.sandboxType },
         lifecycleState: "provisioning",
         lifecycleVersion: 0,
       },
@@ -429,7 +471,9 @@ export async function POST(req: Request) {
         id: nanoid(),
         title: "New chat",
         modelId:
-          executionBackend === "codex" ? "codex" : preferences.defaultModelId,
+          executionBackend === "codex"
+            ? "codex"
+            : (effective.model?.selectedId ?? effective.model?.id),
         executionBackend,
       },
     });
