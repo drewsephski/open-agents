@@ -3,6 +3,11 @@ import type { SandboxState } from "@open-agents/sandbox";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import type { ModelVariant } from "@/lib/model-variants";
 import type { GlobalSkillRef } from "@/lib/skills/global-skill-refs";
+import type {
+  StackActions,
+  StackConfiguration,
+  StackSnapshot,
+} from "@/lib/stacks/schema";
 import {
   DEFAULT_CHAT_MISSION_TYPE,
   MISSION_TYPE_VALUES,
@@ -426,6 +431,58 @@ export const vercelProjectLinks = pgTable(
   ],
 );
 
+export const agentStacks = pgTable(
+  "agent_stacks",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description").notNull(),
+    currentVersion: integer("current_version").notNull().default(1),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [index("agent_stacks_user_idx").on(table.userId)],
+);
+
+// Append-only configuration. Scalar fields are queryable; structured fields use
+// the same typed shapes as the execution snapshot and existing preferences.
+export const agentStackVersions = pgTable(
+  "agent_stack_versions",
+  {
+    id: text("id").primaryKey(),
+    stackId: text("stack_id")
+      .notNull()
+      .references(() => agentStacks.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    schemaVersion: integer("schema_version").notNull(),
+    executionBackend: text("execution_backend", {
+      enum: ["launchstack_native", "codex"],
+    }).notNull(),
+    model: jsonb("model").$type<StackConfiguration["model"]>(),
+    subagentModel:
+      jsonb("subagent_model").$type<StackConfiguration["subagentModel"]>(),
+    sandboxType: text("sandbox_type", { enum: ["vercel"] }).notNull(),
+    missionType: text("mission_type", { enum: MISSION_TYPE_VALUES }).notNull(),
+    instructions: text("instructions").notNull(),
+    globalSkillRefs: jsonb("global_skill_refs")
+      .$type<GlobalSkillRef[]>()
+      .notNull(),
+    autoCommitPush: boolean("auto_commit_push").notNull(),
+    autoCreatePr: boolean("auto_create_pr").notNull(),
+    actions: jsonb("actions").$type<StackActions>().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("agent_stack_versions_stack_version_idx").on(
+      table.stackId,
+      table.version,
+    ),
+  ],
+);
+
 export const sessions = pgTable(
   "sessions",
   {
@@ -434,6 +491,10 @@ export const sessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
+    stackVersionId: text("stack_version_id").references(
+      () => agentStackVersions.id,
+    ),
+    stackSnapshot: jsonb("stack_snapshot").$type<StackSnapshot>(),
     status: text("status", {
       enum: ["running", "completed", "failed", "archived"],
     })

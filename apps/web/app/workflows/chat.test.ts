@@ -1,3 +1,4 @@
+import { buildDefaultStack } from "@/lib/stacks/default-stack";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
@@ -132,6 +133,7 @@ let testSessionRecord: {
   id: string;
   userId: string;
   missionType: string;
+  stackSnapshot?: import("@/lib/stacks/schema").StackSnapshot;
   autoCommitPushOverride: boolean | null;
   autoCreatePrOverride: boolean | null;
   repoOwner: string | null;
@@ -571,6 +573,67 @@ describe("runAgentWorkflow", () => {
       expect(context).toEqual({ userId: "user-1", chatId: "chat-1" });
     }
     expect(agentCallOptions).not.toHaveProperty("actionTools");
+  });
+  test("runs from frozen models, behavior and delivery after preferences change", async () => {
+    const configuration = buildDefaultStack(
+      testPreferences,
+      "launchstack_native",
+    );
+    configuration.instructions = "Keep this worker focused";
+    configuration.missionType = "fix_bug";
+    configuration.model = {
+      id: "openai/gpt-6.1-sol",
+      providerOptionsOverrides: { openai: { reasoningEffort: "high" } },
+    };
+    configuration.subagentModel = { id: "openai/gpt-5.6-luna" };
+    testSessionRecord.stackSnapshot = {
+      name: "Repair",
+      version: 1,
+      configuration,
+    };
+    testChatRecord.modelId = configuration.model.id;
+    testPreferences.defaultSubagentModelId = "openai/gpt-6.1-sol";
+    testPreferences.autoCommitPush = true;
+    testPreferences.autoCreatePr = true;
+    testSessionRecord.missionType = "ship_feature";
+    await runAgentWorkflow(makeOptions());
+    expect(agentCallOptions?.model).toEqual(configuration.model);
+    expect(agentCallOptions?.subagentModel).toEqual(
+      configuration.subagentModel,
+    );
+    expect(agentCallOptions?.customInstructions).toContain(
+      "Keep this worker focused",
+    );
+    expect(agentCallOptions?.missionInstructions).toContain(
+      "# Mission: Fix a bug",
+    );
+    expect(spies.runAutoCommitStep).not.toHaveBeenCalled();
+    expect(spies.runAutoCreatePrStep).not.toHaveBeenCalled();
+  });
+  test("a saved variant keeps its resolved options while an explicit base-model override clears them", async () => {
+    const configuration = buildDefaultStack(
+      testPreferences,
+      "launchstack_native",
+    );
+    configuration.model = {
+      id: "openai/gpt-6.1-sol",
+      selectedId: "variant:removed",
+      providerOptionsOverrides: { openai: { reasoningEffort: "xhigh" } },
+    };
+    testSessionRecord.stackSnapshot = {
+      name: "Shipping",
+      version: 1,
+      configuration,
+    };
+    testChatRecord.modelId = "variant:removed";
+    await runAgentWorkflow(makeOptions());
+    expect(agentCallOptions?.model).toEqual({
+      id: "openai/gpt-6.1-sol",
+      providerOptionsOverrides: { openai: { reasoningEffort: "xhigh" } },
+    });
+    testChatRecord.modelId = "openai/gpt-6.1-sol";
+    await runAgentWorkflow(makeOptions());
+    expect(agentCallOptions?.model).toEqual({ id: "openai/gpt-6.1-sol" });
   });
   test("passes Ship Feature guidance without rewriting the visible user message", async () => {
     testSessionRecord.missionType = "ship_feature";

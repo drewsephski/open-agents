@@ -59,9 +59,11 @@ import type {
   WorkflowRunStatus,
   WorkflowRunStepTiming,
 } from "@/lib/db/workflow-runs";
-import { resolveChatModelSelection } from "../api/chat/_lib/model-selection";
+import { resolveChatModelSelection } from "@/lib/model-selection";
 import { resolveChatSandboxRuntime } from "./chat-sandbox-runtime";
 import { loadChatSkillGuidance } from "./chat-skill-guidance";
+import { readStackSnapshot } from "@/lib/stacks/schema";
+import { toStackModelSelection } from "@/lib/stacks/runtime";
 
 type AuthSessionContext = Pick<AuthSession, "authProvider" | "user"> | null;
 type UnresolvedOpenAgentCallOptions = Omit<
@@ -181,6 +183,9 @@ async function resolveChatModelRuntime(params: {
   if (!chat || chat.sessionId !== params.sessionId) {
     throw new Error("Chat not found");
   }
+  const configuration = readStackSnapshot(
+    sessionRecord.stackSnapshot,
+  )?.configuration;
 
   const preferences = rawPreferences
     ? sanitizeUserPreferencesForSession(
@@ -203,33 +208,47 @@ async function resolveChatModelRuntime(params: {
     ) ??
     chat.modelId ??
     null;
-  const mainModelSelection = resolveChatModelSelection({
-    selectedModelId,
-    modelVariants,
-    missingVariantLabel: "Selected model variant",
-  });
-  const subagentModelSelection = preferences?.defaultSubagentModelId
-    ? resolveChatModelSelection({
-        selectedModelId: sanitizeSelectedModelIdForSession(
-          preferences.defaultSubagentModelId,
+  const mainModelSelection =
+    configuration?.model &&
+    selectedModelId ===
+      (configuration.model.selectedId ?? configuration.model.id)
+      ? toStackModelSelection(configuration.model)
+      : resolveChatModelSelection({
+          selectedModelId,
           modelVariants,
-          params.authSession,
-          params.requestUrl,
-        ),
-        modelVariants,
-        missingVariantLabel: "Subagent model variant",
-      })
-    : undefined;
+          missingVariantLabel: "Selected model variant",
+        });
+  const subagentModelSelection = configuration
+    ? configuration.subagentModel
+      ? toStackModelSelection(configuration.subagentModel)
+      : undefined
+    : preferences?.defaultSubagentModelId
+      ? resolveChatModelSelection({
+          selectedModelId: sanitizeSelectedModelIdForSession(
+            preferences.defaultSubagentModelId,
+            modelVariants,
+            params.authSession,
+            params.requestUrl,
+          ),
+          modelVariants,
+          missingVariantLabel: "Subagent model variant",
+        })
+      : undefined;
   const autoCommitEnabled =
-    (sessionRecord.autoCommitPushOverride ??
+    (configuration?.autoCommitPush ??
+      sessionRecord.autoCommitPushOverride ??
       preferences?.autoCommitPush ??
       false) &&
     Boolean(sessionRecord.repoOwner && sessionRecord.repoName);
   const autoCreatePrEnabled =
     autoCommitEnabled &&
-    (sessionRecord.autoCreatePrOverride ?? preferences?.autoCreatePr ?? false);
+    (configuration?.autoCreatePr ??
+      sessionRecord.autoCreatePrOverride ??
+      preferences?.autoCreatePr ??
+      false);
   const missionInstructions = getMissionInstructions(
-    normalizeMissionType(sessionRecord.missionType),
+    configuration?.missionType ??
+      normalizeMissionType(sessionRecord.missionType),
   );
 
   return {
@@ -240,7 +259,9 @@ async function resolveChatModelRuntime(params: {
       ...(subagentModelSelection
         ? { subagentModel: subagentModelSelection }
         : {}),
-      customInstructions: assistantFileLinkPrompt,
+      customInstructions: [assistantFileLinkPrompt, configuration?.instructions]
+        .filter(Boolean)
+        .join("\n\n"),
       ...(missionInstructions ? { missionInstructions } : {}),
     },
     autoCommitEnabled,

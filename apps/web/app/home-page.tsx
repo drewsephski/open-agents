@@ -35,23 +35,14 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
   const handleCreateSession = async (input: SessionStarterSubmitInput) => {
     setIsCreating(true);
     try {
-      const { session: createdSession, chat } = await createSession({
-        repoOwner: input.repoOwner,
-        repoName: input.repoName,
-        branch: input.branch,
-        cloneUrl: input.cloneUrl,
-        isNewBranch: input.isNewBranch,
-        sandboxType: input.sandboxType,
-        autoCommitPush: input.autoCommitPush,
-        autoCreatePr: input.autoCreatePr,
-        missionType: input.missionType,
-        vercelProject: input.vercelProject,
-      });
+      const { initialMessage, ...sessionInput } = input;
+      const { session: createdSession, chat } =
+        await createSession(sessionInput);
 
       await startInitialMessage({
         sessionId: createdSession.id,
         chatId: chat.id,
-        text: input.initialMessage ?? "",
+        text: initialMessage ?? "",
       });
 
       router.push(`/sessions/${createdSession.id}/chats/${chat.id}`);

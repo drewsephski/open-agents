@@ -3,6 +3,7 @@
 import {
   ArrowLeft,
   Cable,
+  Layers,
   CreditCard,
   LogOut,
   Menu,
@@ -84,6 +85,12 @@ const baseSidebarItems = [
     label: "Connections",
     href: "/settings/connections",
     icon: Cable,
+  },
+  {
+    id: "stacks",
+    label: "Stacks",
+    href: "/settings/stacks",
+    icon: Layers,
   },
   {
     id: "billing",

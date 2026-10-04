@@ -4,6 +4,17 @@ Launchstack lets people run coding agents against their software projects while 
 
 ## Language
 
+**Stack**:
+A User-owned reusable software-engineering worker configuration combining an
+Execution Backend, models, sandbox, Mission, instructions, skills, permitted
+external capabilities, and delivery behavior. Edits publish immutable versions.
+_Avoid_: Saved prompt, technology recommendation
+
+**Stack Snapshot**:
+The effective Stack configuration frozen on a Session at launch, including
+explicit launch overrides. Later Stack or preference edits do not change it.
+_Avoid_: Live settings, mutable preset
+
 **User**:
 The authenticated person who owns provider credentials, a Pro subscription, and the associated managed inference allowance. A User's access and allowance apply across all of their repositories, sessions, chats, main agents, and subagents.
 _Avoid_: Customer, account, repository owner

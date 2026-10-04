@@ -15,6 +15,9 @@ import { Button } from "./ui/button";
 import { useGitHubConnectionStatus } from "@/hooks/use-github-connection-status";
 import { useSession } from "@/hooks/use-session";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
+import { useSessionStack } from "@/hooks/use-session-stack";
+import { DEFAULT_STACK_ID } from "@/lib/stacks/schema";
+import { StackSelector } from "./stack-selector";
 import { useVercelRepoProjects } from "@/hooks/use-vercel-repo-projects";
 import {
   DEFAULT_REPOSITORY_MISSION_TYPE,
@@ -86,8 +89,18 @@ export function SessionStarter({
       enabled: hasGitHub,
     });
   const { preferences, loading: preferencesLoading } = useUserPreferences();
-  const defaultAutoCommitPush = preferences?.autoCommitPush ?? false;
-  const defaultAutoCreatePr = preferences?.autoCreatePr ?? false;
+  const {
+    choices: stacks,
+    configuration: stackConfiguration,
+    versionId: stackVersionId,
+    loading: stacksLoading,
+    error: stacksError,
+    selectStack,
+  } = useSessionStack();
+  const defaultAutoCommitPush =
+    stackConfiguration?.autoCommitPush ?? preferences?.autoCommitPush ?? false;
+  const defaultAutoCreatePr =
+    stackConfiguration?.autoCreatePr ?? preferences?.autoCreatePr ?? false;
   const [autoCommitPush, setAutoCommitPush] = useState<boolean | null>(null);
   const [autoCreatePr, setAutoCreatePr] = useState<boolean | null>(null);
   const [gitSettingsExpanded, setGitSettingsExpanded] = useState(false);
@@ -101,10 +114,16 @@ export function SessionStarter({
     summary: accessSummary,
     error: accessError,
     refresh: refreshAccess,
-  } = useAccessSummary();
+  } = useAccessSummary(
+    stackConfiguration?.model?.id,
+    stackConfiguration?.executionBackend,
+  );
   const modeTabsRef = useRef<HTMLDivElement>(null);
   const activeModeTabBox = useSlidingTabBox(modeTabsRef, mode);
-  const sandboxType = preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE;
+  const sandboxType =
+    stackConfiguration?.sandboxType ??
+    preferences?.defaultSandboxType ??
+    DEFAULT_SANDBOX_TYPE;
   const sandboxName =
     SANDBOX_OPTIONS.find((s) => s.id === sandboxType)?.name ?? sandboxType;
   const isRepoModeDisabled = sessionLoading || isTrialUser;
@@ -207,7 +226,7 @@ export function SessionStarter({
     repoProjects.projects.length > 0 &&
     repoProjects.selectedProjectId === null &&
     vercelProjectChoice === undefined;
-  const controlsDisabled = isLoading || preferencesLoading;
+  const controlsDisabled = isLoading || preferencesLoading || stacksLoading;
   const isSubmitDisabled =
     controlsDisabled ||
     (isRepoModeDisabled && mode === "repo") ||
@@ -231,7 +250,7 @@ export function SessionStarter({
     if (isSubmitDisabled) return;
 
     if (initialMessage.trim()) {
-      const currentAccess = await refreshAccess();
+      const currentAccess = await refreshAccess(stackConfiguration?.model?.id);
       if (!currentAccess?.eligible) {
         if (mode === "empty") {
           savePendingPrompt(window.localStorage, "new-session", initialMessage);
@@ -260,6 +279,8 @@ export function SessionStarter({
 
     await onSubmit(
       buildSessionStarterSubmission({
+        stackVersionId:
+          stackVersionId === DEFAULT_STACK_ID ? undefined : stackVersionId,
         mode,
         selectedOwner,
         selectedRepo,
@@ -331,6 +352,20 @@ export function SessionStarter({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          <StackSelector
+            value={stackVersionId}
+            stacks={stacks}
+            disabled={controlsDisabled}
+            error={Boolean(stacksError)}
+            onChange={(versionId) => {
+              const config = selectStack(versionId);
+              setMissionType(
+                config?.missionType ?? DEFAULT_REPOSITORY_MISSION_TYPE,
+              );
+              setAutoCommitPush(null);
+              setAutoCreatePr(null);
+            }}
+          />
           {mode === "repo" && (
             <div
               className={cn(
@@ -403,74 +438,78 @@ export function SessionStarter({
             </div>
           )}
 
-          {mode === "repo" && !gitSettingsExpanded && (
-            <button
-              type="button"
-              onClick={() => setGitSettingsExpanded(true)}
-              className="flex w-full shrink-0 items-center gap-2.5 rounded-lg border border-border bg-muted/40 px-3.5 py-2 text-left transition-colors hover:bg-muted"
-            >
-              <GitCommitHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
-              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                {effectiveAutoCommitPush ? (
-                  <>
-                    Auto commit{" "}
-                    <span className="font-medium text-foreground/80">on</span>
-                    {effectiveAutoCreatePr && (
-                      <>
-                        {" · "}Auto PR{" "}
-                        <span className="font-medium text-foreground/80">
-                          on
-                        </span>
-                      </>
-                    )}
-                  </>
-                ) : (
-                  "Auto commit and push disabled"
-                )}
-              </span>
-              <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
-            </button>
-          )}
-
-          {mode === "repo" && gitSettingsExpanded && (
-            <div className="shrink-0 overflow-hidden rounded-lg border border-border bg-muted/40">
+          {mode === "repo" &&
+            stackConfiguration?.executionBackend !== "codex" &&
+            !gitSettingsExpanded && (
               <button
                 type="button"
-                onClick={() => setGitSettingsExpanded(false)}
-                className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition-colors hover:bg-muted/30"
+                onClick={() => setGitSettingsExpanded(true)}
+                className="flex w-full shrink-0 items-center gap-2.5 rounded-lg border border-border bg-muted/40 px-3.5 py-2 text-left transition-colors hover:bg-muted"
               >
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">Auto commit and push</p>
-                  <p className="text-xs text-muted-foreground">
-                    Automatically commit and push after each agent turn.
-                  </p>
-                </div>
-                <ChevronUpIcon className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+                <GitCommitHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+                <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  {effectiveAutoCommitPush ? (
+                    <>
+                      Auto commit{" "}
+                      <span className="font-medium text-foreground/80">on</span>
+                      {effectiveAutoCreatePr && (
+                        <>
+                          {" · "}Auto PR{" "}
+                          <span className="font-medium text-foreground/80">
+                            on
+                          </span>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    "Auto commit and push disabled"
+                  )}
+                </span>
+                <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
               </button>
-              <div className="border-t border-border">
-                <div className="flex items-center justify-between gap-4 px-3 py-2">
-                  <p className="text-sm font-medium">Commit and push</p>
-                  <Switch
-                    checked={effectiveAutoCommitPush}
-                    onCheckedChange={setAutoCommitPush}
-                    disabled={controlsDisabled}
-                  />
-                </div>
-                {effectiveAutoCommitPush && (
-                  <div className="flex items-center justify-between gap-4 border-t border-border px-3 py-2 pl-6">
-                    <p className="text-sm text-muted-foreground">
-                      Create pull request
+            )}
+
+          {mode === "repo" &&
+            stackConfiguration?.executionBackend !== "codex" &&
+            gitSettingsExpanded && (
+              <div className="shrink-0 overflow-hidden rounded-lg border border-border bg-muted/40">
+                <button
+                  type="button"
+                  onClick={() => setGitSettingsExpanded(false)}
+                  className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left transition-colors hover:bg-muted/30"
+                >
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Auto commit and push</p>
+                    <p className="text-xs text-muted-foreground">
+                      Automatically commit and push after each agent turn.
                     </p>
+                  </div>
+                  <ChevronUpIcon className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+                </button>
+                <div className="border-t border-border">
+                  <div className="flex items-center justify-between gap-4 px-3 py-2">
+                    <p className="text-sm font-medium">Commit and push</p>
                     <Switch
-                      checked={effectiveAutoCreatePr}
-                      onCheckedChange={setAutoCreatePr}
+                      checked={effectiveAutoCommitPush}
+                      onCheckedChange={setAutoCommitPush}
                       disabled={controlsDisabled}
                     />
                   </div>
-                )}
+                  {effectiveAutoCommitPush && (
+                    <div className="flex items-center justify-between gap-4 border-t border-border px-3 py-2 pl-6">
+                      <p className="text-sm text-muted-foreground">
+                        Create pull request
+                      </p>
+                      <Switch
+                        checked={effectiveAutoCreatePr}
+                        onCheckedChange={setAutoCreatePr}
+                        disabled={controlsDisabled}
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
         </div>
 
         {accessBlocked && (

@@ -11,6 +11,7 @@ import {
 } from "@/lib/skills/user-selected-skill";
 import { getChatById, getSessionById } from "@/lib/db/sessions";
 import { getMissionInstructions } from "@/lib/mission-guidance.server";
+import { readStackSnapshot } from "@/lib/stacks/schema";
 import { normalizeMissionType } from "@/lib/missions";
 import { loadCodexAuth, persistRefreshedCodexAuth } from "./credentials";
 import { codexAuthFileSchema } from "./auth-file";
@@ -156,6 +157,9 @@ export async function startCodexRun(params: {
   );
   await sandbox.writeFile(dir + "/runner.cjs", CODEX_RUNNER_SCRIPT, "utf-8");
   await sandbox.writeFile(dir + "/heartbeat", "", "utf-8");
+  const stackConfiguration = readStackSnapshot(
+    session.stackSnapshot,
+  )?.configuration;
   await sandbox.writeFile(
     dir + "/input.json",
     JSON.stringify({
@@ -163,7 +167,15 @@ export async function startCodexRun(params: {
       authDirectory: authDir,
       prompt: buildCodexPrompt(
         params.messages,
-        getMissionInstructions(normalizeMissionType(session.missionType)),
+        [
+          getMissionInstructions(
+            stackConfiguration?.missionType ??
+              normalizeMissionType(session.missionType),
+          ),
+          stackConfiguration?.instructions,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
         selectedSkillGuidance,
       ),
     }),

@@ -5,6 +5,7 @@ import type { VercelProjectSelection } from "@/lib/vercel/types";
 export type SessionStarterMode = "empty" | "repo";
 
 export interface SessionStarterSubmitInput {
+  stackVersionId?: string;
   repoOwner?: string;
   repoName?: string;
   branch?: string;
@@ -19,6 +20,7 @@ export interface SessionStarterSubmitInput {
 }
 
 interface BuildSessionStarterSubmissionInput {
+  stackVersionId?: string;
   mode: SessionStarterMode;
   selectedOwner: string;
   selectedRepo: string;
@@ -39,6 +41,7 @@ export function buildSessionStarterSubmission(
     input.mode === "repo" && Boolean(input.selectedOwner && input.selectedRepo);
 
   return {
+    ...(input.stackVersionId ? { stackVersionId: input.stackVersionId } : {}),
     repoOwner: hasRepository ? input.selectedOwner : undefined,
     repoName: hasRepository ? input.selectedRepo : undefined,
     branch: hasRepository ? input.selectedBranch || undefined : undefined,
