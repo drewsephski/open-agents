@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
+import type { SessionLaunchDetailsData } from "@/components/session-launch-details";
 import type { SessionChatListItem } from "@/hooks/use-session-chats";
 import type { Chat, Session } from "@/lib/db/schema";
 
@@ -15,6 +16,7 @@ type SessionLayoutContextValue = {
       NonNullable<Session["stackSnapshot"]>,
       "name" | "version"
     > | null;
+    launchDetails: SessionLaunchDetailsData | null;
     title: string;
     repoName: string | null;
     repoOwner: string | null;

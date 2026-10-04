@@ -1,3 +1,4 @@
+import { cleanupActionRuntimes } from "@/lib/db/action-runtime-cleanup";
 import "server-only";
 
 import { getSessionById, updateSession } from "@/lib/db/sessions";
@@ -252,8 +253,12 @@ export async function archiveSession(
   const archiveTriggered = shouldStopSandboxAfterArchive && !!updatedSession;
 
   if (archiveTriggered) {
-    const runFinalize = () =>
-      finalizeArchivedSessionSandbox(sessionId, logPrefix);
+    const runFinalize = async () => {
+      await Promise.all([
+        cleanupActionRuntimes({ sessionId }),
+        finalizeArchivedSessionSandbox(sessionId, logPrefix),
+      ]);
+    };
 
     if (options.scheduleBackgroundWork) {
       options.scheduleBackgroundWork(runFinalize);

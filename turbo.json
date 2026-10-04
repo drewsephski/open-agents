@@ -2,6 +2,7 @@
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "build": {
+      "cache": false,
       "dependsOn": ["^build"],
       "env": [
         "BETTER_AUTH_SECRET",
@@ -42,9 +43,10 @@
         "ENCRYPTION_KEY_VERSION",
         "ENCRYPTION_KEY_V1",
         "COMPOSIO_API_KEY",
-        "COMPOSIO_GMAIL_AUTH_CONFIG_ID"
+        "COMPOSIO_GMAIL_AUTH_CONFIG_ID",
+        "COMPOSIO_LINEAR_AUTH_CONFIG_ID"
       ],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
     },
     "dev": {
       "cache": false,

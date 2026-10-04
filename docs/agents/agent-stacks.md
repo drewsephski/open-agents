@@ -134,3 +134,14 @@ configuration consumption, launch overrides, unsupported capabilities, action
 reconstruction, and existing approval/replay behavior. Provider OAuth, actual
 delivery, cloud execution, and deployment still require environment-specific
 proof.
+
+
+## Launch account provenance
+
+Stacks declare Gmail read/read-write and Linear read capabilities, never account
+IDs, emails or credentials. Launch readiness shows their required connections;
+missing integrations/accounts or ambiguous selections block launch. Session
+`action_bindings` freezes the selected provider-safe IDs and labels separately from
+the Stack snapshot. All Chats in that Session use those identities. Reconnect or
+another account selection applies to a new Session; existing identities do not
+change. Authorization remains live and revocable. See [Action Providers](action-providers.md).

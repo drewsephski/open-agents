@@ -81,11 +81,12 @@ const createSession = mock(
 );
 const provider: ActionProvider = {
   id: "composio",
+  listAccounts: async () => [],
+  deleteSession: async () => {},
   createSession,
   createConnectionSession: async () => {
     throw new Error("Runtime must not create connections");
   },
-  getConnection: async () => ({ status: "not_connected" }),
   connect: async () => {
     throw new Error("Runtime must not authorize");
   },

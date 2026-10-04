@@ -1,4 +1,5 @@
 import type { ActionExecutionScope } from "@/lib/actions/scope";
+import type { ActionBindings } from "@/lib/actions/bindings";
 import type { InferenceAccountingSettlement } from "@open-agents/agent";
 import type { SandboxState } from "@open-agents/sandbox";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
@@ -502,6 +503,7 @@ export const sessions = pgTable(
       () => agentStackVersions.id,
     ),
     stackSnapshot: jsonb("stack_snapshot").$type<StackSnapshot>(),
+    actionBindings: jsonb("action_bindings").$type<ActionBindings>(),
     status: text("status", {
       enum: ["running", "completed", "failed", "archived"],
     })

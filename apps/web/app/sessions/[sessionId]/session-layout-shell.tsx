@@ -157,6 +157,15 @@ export function SessionLayoutShell({
               version: initialSession.stackSnapshot.version,
             }
           : null,
+        launchDetails: initialSession.stackSnapshot
+          ? {
+              runtime:
+                initialSession.stackSnapshot.configuration.executionBackend,
+              model:
+                initialSession.stackSnapshot.configuration.model?.id ?? null,
+              bindings: initialSession.actionBindings ?? null,
+            }
+          : null,
         title: initialSession.title,
         repoName: initialSession.repoName,
         repoOwner: initialSession.repoOwner,

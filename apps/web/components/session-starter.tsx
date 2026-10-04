@@ -17,6 +17,8 @@ import { useSession } from "@/hooks/use-session";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { useSessionStack } from "@/hooks/use-session-stack";
 import { DEFAULT_STACK_ID } from "@/lib/stacks/schema";
+import { useLaunchReadiness } from "@/hooks/use-launch-readiness";
+import { StackLaunchReadiness } from "./stack-launch-readiness";
 import { StackSelector } from "./stack-selector";
 import { useVercelRepoProjects } from "@/hooks/use-vercel-repo-projects";
 import {
@@ -227,16 +229,29 @@ export function SessionStarter({
     repoProjects.selectedProjectId === null &&
     vercelProjectChoice === undefined;
   const controlsDisabled = isLoading || preferencesLoading || stacksLoading;
+  const effectiveAutoCommitPush = autoCommitPush ?? defaultAutoCommitPush;
+  const effectiveAutoCreatePr = autoCreatePr ?? defaultAutoCreatePr;
+  const readiness = useLaunchReadiness({
+    versionId: stackVersionId,
+    autoCommitPush: effectiveAutoCommitPush,
+    autoCreatePr: effectiveAutoCreatePr,
+    enabled: !stacksLoading && !sessionLoading,
+    repository:
+      mode === "repo" && selectedOwner && selectedRepo
+        ? { owner: selectedOwner, repo: selectedRepo }
+        : undefined,
+  });
   const isSubmitDisabled =
     controlsDisabled ||
+    !readiness.data?.ready ||
+    readiness.isLoading ||
+    Boolean(readiness.error) ||
     (isRepoModeDisabled && mode === "repo") ||
     (mode === "repo" && (githubConnectionLoading || reconnectRequired)) ||
     !isRepoSelectionComplete ||
     (mode === "repo" && initialMessage.trim().length === 0) ||
     isVercelLookupPending ||
     requiresVercelChoice;
-  const effectiveAutoCommitPush = autoCommitPush ?? defaultAutoCommitPush;
-  const effectiveAutoCreatePr = autoCreatePr ?? defaultAutoCreatePr;
   const showVercelProjectSection =
     mode === "repo" &&
     !isTrialUser &&
@@ -279,6 +294,7 @@ export function SessionStarter({
 
     await onSubmit(
       buildSessionStarterSubmission({
+        actionAccountIds: readiness.accountIds,
         stackVersionId:
           stackVersionId === DEFAULT_STACK_ID ? undefined : stackVersionId,
         mode,
@@ -365,6 +381,10 @@ export function SessionStarter({
               setAutoCommitPush(null);
               setAutoCreatePr(null);
             }}
+          />
+          <StackLaunchReadiness
+            readiness={readiness}
+            runtime={stackConfiguration?.executionBackend}
           />
           {mode === "repo" && (
             <div

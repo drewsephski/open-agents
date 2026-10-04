@@ -1,19 +1,20 @@
 import "server-only";
 import { type ToolSet } from "ai";
 import { actionExecutionStore } from "@/lib/db/action-executions";
-import { findActionSession } from "@/lib/db/action-sessions";
 import { createComposioActionProvider } from "./composio";
 import { executeActionOnce } from "./execution";
 import { getChatById, getSessionById } from "@/lib/db/sessions";
 import { readStackSnapshot } from "@/lib/stacks/schema";
+import { ACTION_REGISTRY, requiresActionApproval } from "./registry";
 import {
-  ACTION_REGISTRY,
-  ACTION_TOOLKITS,
-  requiresActionApproval,
-} from "./registry";
-import { ensureActionRuntimeSession } from "@/lib/db/action-runtime-sessions";
+  ensureActionRuntimeSession,
+  findLegacyActionScope,
+  invalidateActionRuntimeSession,
+} from "@/lib/db/action-runtime-sessions";
 import type { ActionExecutionScope } from "./scope";
 import { getStackActionIds, isStackActionAllowed } from "./stack-policy";
+import { actionBindingsSchema, validateActionAccounts } from "./bindings";
+import { normalizeActionScope } from "./scope";
 
 export function getActionProvider() {
   const apiKey = process.env.COMPOSIO_API_KEY;
@@ -28,7 +29,9 @@ export async function getUserActionTools(context: {
   const codingSession = chat ? await getSessionById(chat.sessionId) : undefined;
   if (!codingSession || codingSession.userId !== context.userId)
     throw new Error("Unauthorized action context");
-  if (chat?.executionBackend === "codex") return {};
+  if (chat?.executionBackend !== "launchstack_native") return {};
+  if (codingSession.status === "archived")
+    throw new Error("Session is archived");
   const configuration = readStackSnapshot(
     codingSession.stackSnapshot,
   )?.configuration;
@@ -47,58 +50,92 @@ export async function getUserActionTools(context: {
       "External actions required by this Stack are not configured on this deployment.",
     );
   }
-  const toolkits = [
-    ...new Set(toolsAllowed.map((name) => ACTION_REGISTRY[name].toolkit)),
-  ];
-  const connectedAccounts: ActionExecutionScope["connectedAccounts"] = {};
-  for (const toolkit of toolkits) {
-    const connectionSession = await findActionSession(
-      context.userId,
-      provider.id,
-      toolkit,
-    );
-    const connection = connectionSession
-      ? await provider.getConnection(connectionSession, toolkit)
-      : undefined;
-    if (connection?.status !== "connected") {
-      // Legacy sessions historically degrade to coding-only when Gmail is absent.
+  let scope: ActionExecutionScope;
+  if (codingSession.actionBindings != null) {
+    const bindings = actionBindingsSchema.parse(codingSession.actionBindings);
+    const connectedAccounts: ActionExecutionScope["connectedAccounts"] = {};
+    for (const name of toolsAllowed) {
+      const toolkit = ACTION_REGISTRY[name].toolkit;
+      const binding = bindings[toolkit];
+      if (!binding)
+        throw new Error(
+          `Missing frozen ${toolkit} account binding. Launch a new Session.`,
+        );
+      connectedAccounts[toolkit] = binding.accountId;
+    }
+    // Extra bindings, malformed identifiers, and broadened scopes fail closed.
+    if (Object.keys(bindings).length !== Object.keys(connectedAccounts).length)
+      throw new Error(
+        "Frozen account bindings do not match Stack capabilities",
+      );
+    scope = normalizeActionScope({ tools: toolsAllowed, connectedAccounts });
+  } else {
+    const persisted = await findLegacyActionScope(context);
+    if (!persisted) {
       if (!configuration) return {};
       throw new Error(
-        `${ACTION_TOOLKITS[toolkit].label} is required by this Stack. Connect it in Settings → Connections before using this worker.`,
+        "This legacy worker has no proven account binding. Launch a new Session to use its external Actions.",
       );
     }
-    connectedAccounts[toolkit] = connection.accountId;
+    if (JSON.stringify(persisted.tools) !== JSON.stringify(toolsAllowed))
+      throw new Error(
+        "Legacy action scope does not match this worker. Launch a new Session.",
+      );
+    scope = persisted;
   }
-  const session = await ensureActionRuntimeSession(context, provider, {
-    tools: toolsAllowed,
-    connectedAccounts,
-  });
-  const tools = await provider.getTools(session);
+  const frozenScope = scope;
+  await validateActionAccounts(provider, context.userId, frozenScope);
+  let session = await ensureActionRuntimeSession(context, provider, scope);
+  let tools: ToolSet;
+  try {
+    tools = await provider.getTools(session);
+  } catch (error) {
+    // Only a confirmed missing runtime allows recreation. Never retry execution.
+    if (!(error instanceof Error && "status" in error && error.status === 404))
+      throw error;
+    await validateActionAccounts(provider, context.userId, frozenScope);
+    await invalidateActionRuntimeSession(context, session);
+    session = await ensureActionRuntimeSession(context, provider, frozenScope);
+    tools = await provider.getTools(session);
+  }
   for (const [name, definition] of Object.entries(tools)) {
     if (!isStackActionAllowed(name, configuration?.actions)) {
       delete tools[name];
       continue;
     }
-    if (!requiresActionApproval(name)) {
-      tools[name] = { ...definition, needsApproval: false };
-      continue;
-    }
     const execute = definition.execute;
     if (!execute) throw new Error("Action has no executor");
+    const dispatch: NonNullable<typeof execute> = async (input, options) => {
+      if (!(await getChatById(context.chatId)))
+        throw new Error("Chat no longer exists");
+      const current = await getSessionById(chat.sessionId);
+      if (
+        !current ||
+        current.userId !== context.userId ||
+        current.status === "archived"
+      )
+        throw new Error("Worker is no longer active");
+      await validateActionAccounts(provider, context.userId, frozenScope);
+      return execute(input, options);
+    };
     tools[name] = {
       ...definition,
-      needsApproval: true,
-      execute: (input, options) =>
-        executeActionOnce(
-          actionExecutionStore,
-          {
-            ...context,
-            toolCallId: options.toolCallId,
-            toolName: name,
-            input,
-          },
-          async () => execute(input, options),
-        ),
+      needsApproval: requiresActionApproval(name),
+      execute: requiresActionApproval(name)
+        ? async (input, options) => {
+            await validateActionAccounts(provider, context.userId, frozenScope);
+            return executeActionOnce(
+              actionExecutionStore,
+              {
+                ...context,
+                toolCallId: options.toolCallId,
+                toolName: name,
+                input,
+              },
+              async () => dispatch(input, options),
+            );
+          }
+        : dispatch,
     };
   }
   return tools;

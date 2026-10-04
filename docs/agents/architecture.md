@@ -27,6 +27,10 @@ for instruction layering, conversation commands, and compatibility boundaries.
 Reusable worker configuration lives in the web control plane as versioned
 [Agent Stacks](agent-stacks.md). Sessions freeze a resolved Stack configuration
 at launch; the existing agent, sandbox, and action-provider paths consume it.
+Account bindings live alongside that snapshot on the Session, never inside the
+reusable Stack. Launch readiness composes existing access policies and external
+connection requirements before provisioning. Frozen account identity remains
+subject to live, revocable User authorization at every Action dispatch.
 
 - **packages/agent/** - Core agent implementation with tools, subagents, and context management
 - **packages/sandbox/** - Execution environment abstraction for cloud sandboxes

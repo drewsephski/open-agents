@@ -1,5 +1,21 @@
 # Lessons Learned
 
+## Do not cache deployment builds that apply migrations
+
+The first Action-hardening preview built successfully, but a subsequent
+documentation/CI update hit Turbo's build cache. The task declared only `dist/**`,
+so no Next.js artifacts were restored and Vercel could not find its routes
+manifest. Build outputs now include `.next/**` excluding its internal cache.
+The build task also runs database migrations, so caching is disabled to keep
+each deployment's migration step authoritative.
+
+## Match CI's Bun version to migration validation
+
+The Action binding upgrade passed locally with Bun 1.4.0, but CI's pinned Bun
+1.2.14 segfaulted while starting PGlite on Linux before producing test results.
+CI now pins the locally validated 1.4.0 runtime; keep runtime versions explicit
+when comparing migration-test evidence across environments.
+
 ## Agent Stack execution configuration
 
 - Freeze resolved model IDs and variant options, subagent settings, and skill
@@ -216,3 +232,13 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 
 - Composio connected accounts are reusable user authorization, but Tool Router execution sessions carry tool/account policy. Never execute a worker through the broad connection-management session; persist a Chat plus exact-tool/account scope and reconstruct it server-side.
 - Drizzle can generate a replacement composite primary key before adding its new column. Review generated DDL order and run the full migration chain, including legacy rows, before shipping.
+
+
+- A Composio connection-management session can resolve a different active account
+  after reconnect. Never use that implicit selection to reconstruct a worker;
+  freeze IDs at launch and check the User-filtered PRIVATE active-account list
+  before loading tools and every dispatch.
+- Keep legacy runtime scope evidence when archiving. Database FK cleanup does not
+  delete provider runtimes, and deleting proof before a resume would force an
+  unsafe guess about historical account identity. Only confirmed runtime 404s
+  permit recreation with the same exact scope; execution failures never do.

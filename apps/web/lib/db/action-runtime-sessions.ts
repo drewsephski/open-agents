@@ -13,6 +13,40 @@ import {
 import { db } from "./client";
 import { actionRuntimeSessions } from "./schema";
 
+/** Only persisted execution evidence can bind a legacy Chat. Never consult current accounts. */
+export async function findLegacyActionScope(context: {
+  userId: string;
+  chatId: string;
+}): Promise<ActionExecutionScope | undefined> {
+  const rows = await db.query.actionRuntimeSessions.findMany({
+    where: and(
+      eq(actionRuntimeSessions.userId, context.userId),
+      eq(actionRuntimeSessions.chatId, context.chatId),
+      eq(actionRuntimeSessions.providerId, "composio"),
+    ),
+    limit: 2,
+  });
+  if (rows.length !== 1) return undefined;
+  return normalizeActionScope(rows[0]!.scope);
+}
+
+/** A confirmed missing remote runtime can be replaced without changing its scope. */
+export async function invalidateActionRuntimeSession(
+  context: { userId: string; chatId: string },
+  session: ActionExecutionSession,
+): Promise<void> {
+  await db
+    .delete(actionRuntimeSessions)
+    .where(
+      and(
+        eq(actionRuntimeSessions.userId, context.userId),
+        eq(actionRuntimeSessions.chatId, context.chatId),
+        eq(actionRuntimeSessions.scopeKey, actionScopeKey(session.scope)),
+        eq(actionRuntimeSessions.sessionId, session.sessionId),
+      ),
+    );
+}
+
 /** Never reuse connection-management sessions or a different Chat/policy/account scope. */
 export async function ensureActionRuntimeSession(
   context: { userId: string; chatId: string },
