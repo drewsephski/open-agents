@@ -1,7 +1,4 @@
-import {
-  ensureActionSession,
-  findActionSession,
-} from "@/lib/db/action-sessions";
+import { ensureActionSession } from "@/lib/db/action-sessions";
 import { getActionProvider } from "./runtime";
 import { ACTION_TOOLKITS, actionToolkitSchema } from "./registry";
 import { getServerSession } from "@/lib/session/get-server-session";
@@ -21,12 +18,13 @@ export async function getConnectionStatus(toolkitValue: string) {
         { enabled: false, status: "not_connected" },
         { headers: { "Cache-Control": "no-store" } },
       );
-    const session = await findActionSession(auth.user.id, provider.id, toolkit);
-    const connection = session
-      ? await provider.getConnection(session, toolkit)
-      : { status: "not_connected" };
+    const accounts = await provider.listAccounts(auth.user.id, toolkit);
     return Response.json(
-      { enabled: true, status: connection.status },
+      {
+        enabled: true,
+        status: accounts.length ? "connected" : "not_connected",
+        accounts,
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch {

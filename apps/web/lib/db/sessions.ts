@@ -441,7 +441,12 @@ export async function clearSessionSandboxProvisioningRunIdIfOwned(
 }
 
 export async function deleteSession(sessionId: string) {
+  const { prepareActionRuntimeCleanup } =
+    await import("./action-runtime-cleanup");
+  await updateSession(sessionId, { status: "archived" });
+  const cleanup = await prepareActionRuntimeCleanup({ sessionId });
   await db.delete(sessions).where(eq(sessions.id, sessionId));
+  await cleanup();
 }
 
 export async function createChat(data: NewChat) {
@@ -616,7 +621,11 @@ export async function claimChatActiveStreamId(
 }
 
 export async function deleteChat(chatId: string) {
+  const { prepareActionRuntimeCleanup } =
+    await import("./action-runtime-cleanup");
+  const cleanup = await prepareActionRuntimeCleanup({ chatId });
   await db.delete(chats).where(eq(chats.id, chatId));
+  await cleanup();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

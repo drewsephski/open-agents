@@ -15,6 +15,23 @@ The effective Stack configuration frozen on a Session at launch, including
 explicit launch overrides. Later Stack or preference edits do not change it.
 _Avoid_: Live settings, mutable preset
 
+**Stack Capability**:
+The external Action permissions a Stack selects from the server Action Registry.
+It cannot contain account identities, credentials or broader catalog authority.
+
+**Connected Account**:
+A User-owned authorization relationship with an external app, held by its provider.
+Launchstack stores only provider-safe identifiers and display metadata.
+
+**Account Binding**:
+The exact external Connected Account identity frozen alongside a Session's Stack
+Snapshot. All its Chats reuse that identity; authorization remains live and revocable.
+_Avoid_: Frozen authorization, Stack credential
+
+**Action Execution Session**:
+A scoped provider runtime for one User and Chat with exact registered Actions and
+exact Account Bindings. It is distinct from a connection-management context.
+
 **User**:
 The authenticated person who owns provider credentials, a Pro subscription, and the associated managed inference allowance. A User's access and allowance apply across all of their repositories, sessions, chats, main agents, and subagents.
 _Avoid_: Customer, account, repository owner

@@ -41,6 +41,53 @@ beforeEach(() => {
     const body: Record<string, unknown> =
       typeof init?.body === "string" ? JSON.parse(init.body) : {};
     requests.push({ url, body });
+    if (url.includes("/connected_accounts")) {
+      return Response.json({
+        items: [
+          {
+            id: "ca-user-1",
+            word_id: "safe-account",
+            status: connected ? "ACTIVE" : "EXPIRED",
+            toolkit: { slug: "gmail" },
+            is_disabled: false,
+          },
+          {
+            id: "ca-disabled",
+            status: "ACTIVE",
+            toolkit: { slug: "gmail" },
+            is_disabled: true,
+          },
+          {
+            id: "ca-wrong-toolkit",
+            status: "ACTIVE",
+            toolkit: { slug: "linear" },
+            is_disabled: false,
+          },
+          {
+            id: "ca-revoked",
+            status: "EXPIRED",
+            toolkit: { slug: "gmail" },
+            is_disabled: false,
+          },
+        ].map((item) => ({
+          ...item,
+          auth_config: {
+            id: "ac-gmail",
+            is_composio_managed: true,
+            is_disabled: false,
+          },
+          status_reason: null,
+          created_at: "2026-10-04",
+          updated_at: "2026-10-04",
+          data: {
+            access_token: "private-token",
+            refresh_token: "private-refresh",
+          },
+        })),
+        next_cursor: null,
+        total_pages: 1,
+      });
+    }
     if (url.endsWith("/execute")) {
       return Response.json(
         {
@@ -191,9 +238,7 @@ describe("Composio Gmail vertical with real SDKs and stubbed HTTP", () => {
       sessionId: "trs-user-1",
       scope,
     };
-    expect(await provider.getConnection(reference, "gmail")).toEqual({
-      status: "not_connected",
-    });
+    expect(await provider.listAccounts(reference.userId, "gmail")).toEqual([]);
     expect(
       await provider.connect(
         reference,
@@ -208,10 +253,9 @@ describe("Composio Gmail vertical with real SDKs and stubbed HTTP", () => {
       callback_url: "https://launchstack.sh/settings/connections",
     });
     connected = true; // OAuth provider completion; callback query parameters are not trusted.
-    expect(await provider.getConnection(reference, "gmail")).toEqual({
-      status: "connected",
-      accountId: "ca-user-1",
-    });
+    expect(await provider.listAccounts(reference.userId, "gmail")).toEqual([
+      { accountId: "ca-user-1", label: "safe-account" },
+    ]);
     expect(requests.filter((request) => request.body.user_id).length).toBe(1);
   });
 
@@ -402,4 +446,17 @@ test("connection management creates no executable tools and never dispatches an 
   expect(requests.some((request) => request.url.endsWith("/execute"))).toBe(
     false,
   );
+});
+
+test("account discovery uses an exact user/private/toolkit filter and returns sanitized identifiers only", async () => {
+  connected = true;
+  const provider = createComposioActionProvider("test-server-key");
+  expect(await provider.listAccounts("user-1", "gmail")).toEqual([
+    { accountId: "ca-user-1", label: "safe-account" },
+  ]);
+  const url = new URL(requests[0]!.url);
+  expect(url.searchParams.get("user_ids")).toBe("user-1");
+  expect(url.searchParams.get("toolkit_slugs")).toBe("gmail");
+  expect(url.searchParams.get("statuses")).toBe("ACTIVE");
+  expect(url.searchParams.get("account_type")).toBe("PRIVATE");
 });

@@ -1,4 +1,5 @@
 "use client";
+import { SessionLaunchDetails } from "@/components/session-launch-details";
 
 import {
   ExternalLink,
@@ -125,10 +126,17 @@ export function SessionHeader() {
 
   return (
     <header className="border-b border-border px-3 py-1.5">
-      {session.stackSnapshot && (
-        <p className="mb-1 break-words text-xs text-muted-foreground">
-          {session.stackSnapshot.name} · v{session.stackSnapshot.version}
-        </p>
+      {session.stackSnapshot && session.launchDetails && (
+        <SessionLaunchDetails
+          name={session.stackSnapshot.name}
+          version={session.stackSnapshot.version}
+          details={session.launchDetails}
+          repository={
+            session.repoOwner && session.repoName
+              ? `${session.repoOwner}/${session.repoName}`
+              : null
+          }
+        />
       )}
       <div className="flex items-center justify-between gap-2">
         {/* Left side: panel toggle + repo/branch + title */}

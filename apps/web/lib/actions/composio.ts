@@ -10,6 +10,7 @@ import {
 } from "./registry";
 import { normalizeActionScope } from "./scope";
 import type { ActionProvider } from "./provider";
+import { actionAccountSchema } from "./bindings";
 
 function authConfigs(toolkits: Array<"gmail" | "linear">) {
   return Object.fromEntries(
@@ -37,6 +38,58 @@ export function createComposioActionProvider(apiKey: string): ActionProvider {
 
   return {
     id: "composio",
+    async listAccounts(userId, toolkit) {
+      actionToolkitSchema.parse(toolkit);
+      const accounts = new Map<string, import("./bindings").ActionAccount>();
+      let cursor: string | undefined;
+      const signal = AbortSignal.timeout(15_000);
+      // User-filtered PRIVATE accounts only. Shared accounts are deliberately excluded.
+      for (let page = 0; page < 10; page++) {
+        const result = await composio.connectedAccounts.list(
+          {
+            userIds: [userId],
+            toolkitSlugs: [toolkit],
+            statuses: ["ACTIVE"],
+            accountType: "PRIVATE",
+            limit: 100,
+            cursor,
+          },
+          { signal },
+        );
+        for (const account of result.items) {
+          if (
+            account.status !== "ACTIVE" ||
+            account.isDisabled ||
+            account.authConfig.isDisabled ||
+            account.toolkit.slug !== toolkit
+          )
+            continue;
+          const safe = actionAccountSchema.parse({
+            accountId: account.id,
+            label: account.wordId || account.id,
+          });
+          accounts.set(safe.accountId, safe);
+        }
+        if (!result.nextCursor)
+          return [...accounts.values()].sort((a, b) =>
+            a.accountId.localeCompare(b.accountId),
+          );
+        cursor = result.nextCursor;
+      }
+      throw new Error(
+        "Connected account list exceeded its bounded pagination limit",
+      );
+    },
+    async deleteSession(sessionId) {
+      try {
+        await client.toolRouter.session.delete(sessionId, requestOptions());
+      } catch (error) {
+        if (
+          !(error instanceof Error && "status" in error && error.status === 404)
+        )
+          throw error;
+      }
+    },
     async createSession(userId, value) {
       const scope = normalizeActionScope(value);
       const toolkits = [
@@ -87,32 +140,16 @@ export function createComposioActionProvider(apiKey: string): ActionProvider {
       );
       return session.sessionId;
     },
-    async getConnection({ sessionId }, toolkit) {
-      actionToolkitSchema.parse(toolkit);
-      const session = await composio.use(
-        sessionId,
-        undefined,
-        requestOptions(),
-      );
-      const { items } = await session.toolkits({ toolkits: [toolkit] });
-      const connection = items.find(
-        (item) => item.slug === toolkit,
-      )?.connection;
-      return connection?.isActive && connection.connectedAccount
-        ? { status: "connected", accountId: connection.connectedAccount.id }
-        : { status: "not_connected" };
-    },
     async connect({ sessionId }, toolkit, callbackUrl) {
       actionToolkitSchema.parse(toolkit);
-      const session = await composio.use(
+      const connection = await client.toolRouter.session.link(
         sessionId,
-        undefined,
+        { toolkit, callback_url: callbackUrl },
         requestOptions(),
       );
-      const connection = await session.authorize(toolkit, { callbackUrl });
-      if (!connection.redirectUrl)
+      if (!connection.redirect_url)
         throw new Error("Authorization did not return a redirect URL");
-      const url = new URL(connection.redirectUrl);
+      const url = new URL(connection.redirect_url);
       if (url.protocol !== "https:")
         throw new Error("Invalid authorization URL");
       return url.href;

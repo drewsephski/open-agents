@@ -32,9 +32,11 @@ export function NewSessionDialog({
   createSession,
 }: NewSessionDialogProps) {
   const router = useRouter();
+  const [launchError, setLaunchError] = useState<string>();
   const [isCreating, setIsCreating] = useState(false);
 
   const handleCreateSession = async (input: SessionStarterSubmitInput) => {
+    setLaunchError(undefined);
     setIsCreating(true);
     try {
       const { initialMessage, ...sessionInput } = input;
@@ -48,7 +50,11 @@ export function NewSessionDialog({
       onOpenChange(false);
       router.push(`/sessions/${createdSession.id}/chats/${chat.id}`);
     } catch (error) {
-      console.error("Failed to create session:", error);
+      setLaunchError(
+        error instanceof Error
+          ? error.message
+          : "Unable to launch Session. Try again.",
+      );
     } finally {
       setIsCreating(false);
     }
@@ -57,6 +63,14 @@ export function NewSessionDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[calc(100%-2rem)] max-w-none gap-0 overflow-hidden border-none bg-transparent p-0 shadow-none [&>button]:hidden">
+        {launchError && (
+          <p
+            role="alert"
+            className="rounded-lg border border-destructive bg-card p-3 text-sm text-destructive"
+          >
+            {launchError}
+          </p>
+        )}
         <DialogHeader className="sr-only">
           <DialogTitle>New Session</DialogTitle>
           <DialogDescription>

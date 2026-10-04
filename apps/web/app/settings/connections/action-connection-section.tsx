@@ -16,6 +16,7 @@ export function ActionConnectionSection({
   const { label, description } = ACTION_TOOLKITS[toolkit];
   const endpoint = `/api/connections/${toolkit}`;
   const { data, error, isLoading, mutate } = useSWR<{
+    accounts?: Array<{ accountId: string; label: string }>;
     enabled: boolean;
     status: "connected" | "not_connected";
   }>(endpoint, fetcher);
@@ -77,6 +78,20 @@ export function ActionConnectionSection({
                   ? "Connected"
                   : "Not connected"}
         </p>
+        {data?.accounts?.map((account) => (
+          <p
+            key={account.accountId}
+            className="w-full break-words text-xs text-muted-foreground"
+          >
+            {account.label} · {account.accountId}
+          </p>
+        ))}
+        {data?.accounts && data.accounts.length > 1 && (
+          <p className="w-full text-xs text-muted-foreground">
+            Choose which account to use when launching a Stack. Existing workers
+            keep their original account.
+          </p>
+        )}
         {error ? (
           <Button size="sm" variant="outline" onClick={() => void mutate()}>
             Retry

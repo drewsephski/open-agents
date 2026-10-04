@@ -33,6 +33,12 @@ mock.module("@/lib/actions/runtime", () => ({
       ? {
           id: "composio",
           connect,
+          listAccounts: async () => {
+            if (fail) throw new Error("private server key");
+            return savedSession && status === "connected"
+              ? [{ accountId: "ca-user-1", label: "safe-account" }]
+              : [];
+          },
           getConnection: async () => ({ status, accountId: "ca-user-1" }),
         }
       : undefined,
@@ -83,6 +89,7 @@ describe("Gmail connection API", () => {
     expect(await response.json()).toEqual({
       enabled: true,
       status: "connected",
+      accounts: [{ accountId: "ca-user-1", label: "safe-account" }],
     });
     expect(response.headers.get("cache-control")).toBe("no-store");
   });

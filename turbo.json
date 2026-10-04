@@ -42,7 +42,8 @@
         "ENCRYPTION_KEY_VERSION",
         "ENCRYPTION_KEY_V1",
         "COMPOSIO_API_KEY",
-        "COMPOSIO_GMAIL_AUTH_CONFIG_ID"
+        "COMPOSIO_GMAIL_AUTH_CONFIG_ID",
+        "COMPOSIO_LINEAR_AUTH_CONFIG_ID"
       ],
       "outputs": ["dist/**"]
     },

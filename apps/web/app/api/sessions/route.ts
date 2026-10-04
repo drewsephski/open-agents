@@ -1,9 +1,7 @@
 import { nanoid } from "nanoid";
 import { checkBotProtection } from "@/lib/botid";
-import {
-  resolveModelCredential,
-  toInferenceAccessErrorResponse,
-} from "@/lib/access/model-credential-resolver";
+import { getLaunchReadiness } from "@/lib/stacks/launch-readiness";
+import { actionAccountIdsSchema } from "@/lib/actions/bindings";
 import {
   countSessionsByUserId,
   createSessionWithInitialChat,
@@ -51,6 +49,7 @@ import { freezeStackLaunch } from "@/lib/stacks/launch";
 
 interface CreateSessionRequest {
   stackVersionId?: string;
+  actionAccountIds?: unknown;
   title?: string;
   repoOwner?: string;
   repoName?: string;
@@ -235,6 +234,12 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid Stack version" }, { status: 400 });
   }
 
+  if (!actionAccountIdsSchema.safeParse(body.actionAccountIds ?? {}).success)
+    return Response.json(
+      { error: "Invalid account selection" },
+      { status: 400 },
+    );
+
   if (isTrialUser && (body.repoOwner || body.repoName || body.cloneUrl)) {
     return Response.json(
       { error: MANAGED_TEMPLATE_TRIAL_GITHUB_SESSION_ERROR },
@@ -412,15 +417,6 @@ export async function POST(req: Request) {
     const configuration =
       selectedStack?.configuration ??
       buildDefaultStack(preferences, defaultBackend ?? "launchstack_native");
-    if (
-      configuration.executionBackend === "codex" &&
-      (await getNewChatBackend(session.user.id)) !== "codex"
-    ) {
-      return Response.json(
-        { error: "Connect Codex before launching this Stack" },
-        { status: 403 },
-      );
-    }
     const stackSnapshot = freezeStackLaunch({
       name: selectedStack?.name ?? "LaunchStack default",
       version: selectedStack?.version ?? 1,
@@ -434,14 +430,20 @@ export async function POST(req: Request) {
     });
     const effective = stackSnapshot.configuration;
     const executionBackend = effective.executionBackend;
-    if (hasRepository && executionBackend === "launchstack_native") {
-      const access = await resolveModelCredential({
-        userId: session.user.id,
-        modelId: effective.model?.id ?? preferences.defaultModelId,
-      });
-      if (!access.allowed)
-        return toInferenceAccessErrorResponse(access.failure);
-    }
+    const readiness = await getLaunchReadiness({
+      userId: session.user.id,
+      configuration: effective,
+      accountIds: body.actionAccountIds,
+      repository:
+        hasRepository && repoOwner && repoName
+          ? { owner: repoOwner, repo: repoName }
+          : undefined,
+    });
+    if (!readiness.ready)
+      return Response.json(
+        { error: "Stack is not ready to launch", readiness },
+        { status: 409 },
+      );
     const result = await createSessionWithInitialChat({
       session: {
         id: nanoid(),
@@ -451,6 +453,7 @@ export async function POST(req: Request) {
         missionType: effective.missionType,
         stackVersionId: selectedStack?.versionId ?? null,
         stackSnapshot,
+        actionBindings: readiness.bindings,
         repoOwner,
         repoName,
         branch: finalBranch,

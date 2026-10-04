@@ -4,6 +4,33 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import type { VercelProjectSelection } from "@/lib/vercel/types";
 
+mock.module("@/lib/access/access-summary", () => ({
+  getAccessSummary: async () => ({
+    sandbox: {
+      remainingMilliseconds: 1000,
+      runningSandboxCount: 0,
+      concurrencyLimit: 2,
+    },
+  }),
+}));
+mock.module("@/lib/github/access", () => ({
+  verifyRepoAccess: async () => ({ ok: true }),
+  getRepoAccessErrorMessage: () => "Repository access required",
+}));
+let actionConnected = true;
+let actionAccountId = "ca-1";
+mock.module("@/lib/actions/runtime", () => ({
+  getActionProvider: () => ({
+    id: "composio",
+    listAccounts: async () =>
+      actionConnected
+        ? [{ accountId: actionAccountId, label: "Account 1" }]
+        : [],
+  }),
+}));
+
+mock.module("server-only", () => ({}));
+
 let selectedStack: import("@/lib/stacks/schema").StackSummary | undefined;
 mock.module("@/lib/db/stacks", () => ({
   getOwnedStackVersion: async () => selectedStack,
@@ -157,6 +184,8 @@ describe("/api/sessions POST vercel project linking", () => {
 
   beforeEach(() => {
     selectedStack = undefined;
+    actionConnected = true;
+    actionAccountId = "ca-1";
     currentSession = {
       user: {
         id: "user-1",
@@ -181,9 +210,17 @@ describe("/api/sessions POST vercel project linking", () => {
     const response = await POST(
       createJsonRequest({ repoOwner: "acme", repoName: "repo" }),
     );
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({
-      error: { code: "inference_source_required" },
+      readiness: {
+        ready: false,
+        blockers: [
+          {
+            code: "inference_unavailable",
+            reason: "inference_source_required",
+          },
+        ],
+      },
     });
     expect(createCalls).toHaveLength(0);
     expect(provisioningKickCalls).toHaveLength(0);
@@ -582,4 +619,101 @@ describe("/api/sessions POST vercel project linking", () => {
     expect(body.error).toBe("Invalid Mission type");
     expect(createCalls).toHaveLength(0);
   });
+});
+
+test("launch API independently blocks missing Gmail before Session creation or provisioning", async () => {
+  actionConnected = false;
+  createCalls.length = 0;
+  provisioningKickCalls.length = 0;
+  const { POST } = await routeModulePromise;
+  const response = await POST(createJsonRequest({}));
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({
+    readiness: {
+      ready: false,
+      blockers: [{ code: "connection_required", toolkit: "gmail" }],
+    },
+  });
+  expect(createCalls).toHaveLength(0);
+  expect(provisioningKickCalls).toHaveLength(0);
+});
+
+test("launch independently rejects missing Linear and never narrows a Stack", async () => {
+  const configuration = buildDefaultStack(
+    await getUserPreferences("user-1"),
+    "launchstack_native",
+  );
+  configuration.actions.capabilities = [{ toolkit: "linear", access: "read" }];
+  selectedStack = {
+    id: "linear",
+    versionId: "linear-v1",
+    name: "Linear",
+    description: "",
+    version: 1,
+    configuration,
+  };
+  actionConnected = false;
+  createCalls.length = 0;
+  provisioningKickCalls.length = 0;
+  const { POST } = await routeModulePromise;
+  const response = await POST(
+    createJsonRequest({ stackVersionId: "linear-v1" }),
+  );
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({
+    readiness: {
+      blockers: [{ code: "connection_required", toolkit: "linear" }],
+    },
+  });
+  expect(createCalls).toHaveLength(0);
+  expect(provisioningKickCalls).toHaveLength(0);
+});
+
+test("launch rejects a stale displayed account while a new Session can select the replacement", async () => {
+  selectedStack = undefined;
+  actionConnected = true;
+  actionAccountId = "ca-new";
+  createCalls.length = 0;
+  provisioningKickCalls.length = 0;
+  const { POST } = await routeModulePromise;
+  const rejected = await POST(
+    createJsonRequest({ actionAccountIds: { gmail: "ca-1" } }),
+  );
+  expect(rejected.status).toBe(409);
+  expect(createCalls).toHaveLength(0);
+  expect(provisioningKickCalls).toHaveLength(0);
+  const accepted = await POST(
+    createJsonRequest({ actionAccountIds: { gmail: "ca-new" } }),
+  );
+  expect(accepted.status).toBe(200);
+  expect(createCalls[0]).toMatchObject({
+    actionBindings: { gmail: { accountId: "ca-new", label: "Account 1" } },
+  });
+  const snapshot = createCalls[0]?.stackSnapshot;
+  expect(JSON.stringify(snapshot)).not.toContain("ca-new");
+});
+
+test("Codex Stacks require Codex without invoking native inference", async () => {
+  const configuration = buildDefaultStack(
+    await getUserPreferences("user-1"),
+    "codex",
+  );
+  selectedStack = {
+    id: "codex",
+    versionId: "codex-v1",
+    name: "Codex",
+    description: "",
+    version: 1,
+    configuration,
+  };
+  createCalls.length = 0;
+  const { POST } = await routeModulePromise;
+  const response = await POST(
+    createJsonRequest({ stackVersionId: "codex-v1" }),
+  );
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({
+    readiness: { blockers: [{ code: "codex_required" }] },
+  });
+  expect(createCalls).toHaveLength(0);
 });

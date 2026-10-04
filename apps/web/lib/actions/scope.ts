@@ -1,14 +1,15 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { ACTION_REGISTRY, actionIdSchema } from "./registry";
+import { connectedAccountIdSchema } from "./bindings";
 
 /** Serializable immutable runtime policy, including exact account selection. */
 export const actionExecutionScopeSchema = z
   .strictObject({
     tools: z.array(actionIdSchema).min(1).max(6),
     connectedAccounts: z.strictObject({
-      gmail: z.string().min(1).optional(),
-      linear: z.string().min(1).optional(),
+      gmail: connectedAccountIdSchema.optional(),
+      linear: connectedAccountIdSchema.optional(),
     }),
   })
   .superRefine((scope, ctx) => {

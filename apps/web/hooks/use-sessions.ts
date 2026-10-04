@@ -1,4 +1,5 @@
 "use client";
+import type { ActionAccountIds } from "@/lib/actions/bindings";
 import { getAccessFailureMessage } from "@/lib/access/access-failure-message";
 
 import { useCallback, useEffect } from "react";
@@ -32,6 +33,7 @@ export type SessionWithUnread = Pick<
 
 interface CreateSessionInput {
   stackVersionId?: string;
+  actionAccountIds?: ActionAccountIds;
   title?: string;
   repoOwner?: string;
   repoName?: string;
@@ -150,10 +152,14 @@ export function useSessions(options?: {
         session?: Session;
         chat?: Chat;
         error?: unknown;
+        readiness?: { blockers: Array<{ label: string }> };
       };
 
       if (!res.ok || !responseData.session || !responseData.chat) {
         const message =
+          responseData.readiness?.blockers
+            .map((blocker) => blocker.label)
+            .join(". ") ??
           getAccessFailureMessage(responseData.error) ??
           (typeof responseData.error === "string"
             ? responseData.error

@@ -87,9 +87,10 @@ const createSession = mock(
 );
 const provider: ActionProvider = {
   id: "composio",
+  listAccounts: async () => [],
+  deleteSession: async () => {},
   createConnectionSession: createSession,
   createSession: async () => "trs-runtime",
-  getConnection: async () => ({ status: "not_connected" }),
   connect: async () => "https://connect.composio.dev",
   getTools: async () => ({}),
 };

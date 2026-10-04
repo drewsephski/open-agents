@@ -1,3 +1,4 @@
+import type { ActionAccountIds } from "@/lib/actions/bindings";
 import type { SandboxType } from "@/components/sandbox-selector-compact";
 import { DEFAULT_CHAT_MISSION_TYPE, type MissionType } from "@/lib/missions";
 import type { VercelProjectSelection } from "@/lib/vercel/types";
@@ -6,6 +7,7 @@ export type SessionStarterMode = "empty" | "repo";
 
 export interface SessionStarterSubmitInput {
   stackVersionId?: string;
+  actionAccountIds?: ActionAccountIds;
   repoOwner?: string;
   repoName?: string;
   branch?: string;
@@ -21,6 +23,7 @@ export interface SessionStarterSubmitInput {
 
 interface BuildSessionStarterSubmissionInput {
   stackVersionId?: string;
+  actionAccountIds?: ActionAccountIds;
   mode: SessionStarterMode;
   selectedOwner: string;
   selectedRepo: string;
@@ -41,6 +44,7 @@ export function buildSessionStarterSubmission(
     input.mode === "repo" && Boolean(input.selectedOwner && input.selectedRepo);
 
   return {
+    actionAccountIds: input.actionAccountIds,
     ...(input.stackVersionId ? { stackVersionId: input.stackVersionId } : {}),
     repoOwner: hasRepository ? input.selectedOwner : undefined,
     repoName: hasRepository ? input.selectedRepo : undefined,
